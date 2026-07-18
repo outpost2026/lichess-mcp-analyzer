@@ -4,11 +4,9 @@
   </a>
 </div>
 
-# lichess-mcp-analyzer
+# Lichess MCP Analyzer
 
 **MCP server pro analyzu sachovych partii, detekci vzorovych chyb (pattern library) a spaced repetition trening.**
-
-|
 
 ---
 
