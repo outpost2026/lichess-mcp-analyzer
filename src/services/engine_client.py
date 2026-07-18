@@ -88,12 +88,16 @@ def evaluate_move(fen: str, move_uci: str, depth: int = 16) -> dict:
         ].relative.score()
         best_move_info = engine.analyse(board, chess.engine.Limit(depth=depth), multipv=1)
         best_move = best_move_info["pv"][0] if "pv" in best_move_info else None
-        cp_loss = (
-            (eval_before - eval_after) if eval_before is not None and eval_after is not None else 0
-        )
+        # eval_before is from player's perspective (side-to-move before push)
+        # eval_after is from opponent's perspective (side-to-move after push)
+        # Converting eval_after to player's perspective: -eval_after
+        if eval_before is not None and eval_after is not None:
+            cp_loss = eval_before + eval_after
+        else:
+            cp_loss = 0
         return {
             "eval_before": eval_before,
-            "eval_after": eval_after,
+            "eval_after": -eval_after if eval_after is not None else 0,
             "centipawn_loss": cp_loss,
             "best_move_uci": best_move.uci() if best_move else None,
         }
