@@ -4,11 +4,10 @@
   </a>
 </div>
 
-# lichess-mcp-analyzer
+# Lichess MCP Analyzer
 
 **MCP server for chess game analysis, pattern detection, and spaced repetition training.**
 
-|
 
 ---
 
@@ -20,7 +19,7 @@ This repository has a **dual purpose**:
 
 2. **MCP construction kit** — a demonstration project that validates MCP server design principles on real case studies. Every component (Lichess API, Stockfish engine, pattern detection engine, SRS, B2B-Knowledge-Base persistence) is independently usable and transferable to other domains.
 
-> "Build tools for yourself first. If they solve a real problem, they solve a general one."
+ >"Build tools for yourself first. If they solve a real problem, they solve a general one."
 
 ---
 
