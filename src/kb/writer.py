@@ -9,11 +9,10 @@ KB_ROOT = os.path.join(
     "..",
     "..",
     "..",
-    "..",
     "B2B-Knowledge-Base",
 )
 
-ANALYSIS_DIR = os.path.join(KB_ROOT, "02_ANALYZY", "02_chess")
+ANALYSIS_DIR = os.path.join(KB_ROOT, "02_ANAL\xddZY", "02_chess")
 PATTERN_DIR = os.path.join(KB_ROOT, "04_KNOWLEDGE_BASE", "02_chess")
 
 

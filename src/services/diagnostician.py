@@ -6,7 +6,6 @@ from src.models.pattern import PatternMatch
 
 
 def diagnose(analyses: list[GameAnalysis], username: str) -> WeaknessReport:
-    report = WeaknessReport(username=username, total_games_analyzed=len(analyses))
     total_blunders = 0
     total_mistakes = 0
     total_inaccuracies = 0
@@ -15,7 +14,6 @@ def diagnose(analyses: list[GameAnalysis], username: str) -> WeaknessReport:
     total_acpl_sum = 0.0
     move_count = 0
     openings = {}
-    pattern_counts = {}
     for analysis in analyses:
         total_blunders += len(analysis.blunders)
         total_mistakes += len(analysis.mistakes)
@@ -32,30 +30,39 @@ def diagnose(analyses: list[GameAnalysis], username: str) -> WeaknessReport:
                 openings[opening_name] = {"games": 0, "blunders": 0}
             openings[opening_name]["games"] += 1
             openings[opening_name]["blunders"] += len(analysis.blunders) + len(analysis.mistakes)
-    report.blunder_count = total_blunders
-    report.mistake_count = total_mistakes
-    report.inaccuracy_count = total_inaccuracies
-    if move_count > 0:
-        report.total_acpl = total_acpl_sum / move_count
+    total_acpl = total_acpl_sum / move_count if move_count > 0 else 0.0
+    phase_weaknesses = {}
     for phase, acpl_list in phase_acpl.items():
         if acpl_list:
-            report.phase_weaknesses[phase] = {
+            phase_weaknesses[phase] = {
                 "acpl": sum(acpl_list) / len(acpl_list),
                 "blunders": phase_blunders[phase],
                 "move_count": len(acpl_list),
             }
+    leaky_openings = []
     for name, data in sorted(openings.items(), key=lambda x: x[1]["blunders"], reverse=True)[:5]:
-        report.leaky_openings.append(
+        leaky_openings.append(
             {
                 "name": name,
                 "games": data["games"],
                 "blunders": data["blunders"],
             }
         )
+    top_weaknesses = []
     if phase_blunders["middlegame"] >= phase_blunders["opening"] + phase_blunders["endgame"]:
-        report.top_weaknesses.append("Tactical awareness in middlegame transitions")
-    if report.total_acpl > 80:
-        report.top_weaknesses.append("Overall precision: high centipawn loss")
+        top_weaknesses.append("Tactical awareness in middlegame transitions")
+    if total_acpl > 80:
+        top_weaknesses.append("Overall precision: high centipawn loss")
     if openings and list(openings.values())[0]["blunders"] > 2:
-        report.top_weaknesses.append(f"Opening preparation: {list(openings.keys())[0]}")
-    return report
+        top_weaknesses.append(f"Opening preparation: {list(openings.keys())[0]}")
+    return WeaknessReport(
+        username=username,
+        total_games_analyzed=len(analyses),
+        total_acpl=total_acpl,
+        blunder_count=total_blunders,
+        mistake_count=total_mistakes,
+        inaccuracy_count=total_inaccuracies,
+        phase_weaknesses=phase_weaknesses,
+        leaky_openings=leaky_openings,
+        top_weaknesses=top_weaknesses,
+    )
