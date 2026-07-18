@@ -228,12 +228,64 @@ lichess-analyzer-mcp/
 
 ---
 
-## Zdroje a souvislosti
+## Inspirace a zdroje
+
+Tento projekt neni fork — je vlastni architekturou, ale cenna inspirace a infrastrukturni komponenty pochazeji z nasledujicich open-source projektu. Dekujeme autorum.
+
+### Primarni zdroje (knihovny)
+
+| Projekt | Autor | Pouziti |
+|---------|-------|---------|
+| [berserk](https://github.com/lichess-org/berserk) | lichess-org / Matt Harrison | Lichess API Python client — auth, rate limiting, streaming |
+| [python-chess](https://github.com/niklasf/python-chess) | Niklas Fiekas (niklasf) | PGN/FEN parsing, UCI engine wrapper, game tree, move validation |
+| [Stockfish](https://github.com/official-stockfish/Stockfish) | The Stockfish team | Lokalni sachovy engine (UCI protokol), evaluace kazdeho tahu |
+| [fastmcp](https://github.com/jlowin/fastmcp) | Jeremiah Lowin | FastMCP framework — usnadnuje tvorbu MCP serveru |
+| [py-fsrs](https://github.com/open-spaced-repetition/py-fsrs) | Open Spaced Repetition | FSRS algoritmus pro spaced repetition |
+
+### Sekundarni inspirace (MCP servery pro sachy)
+
+Pri navrhu architektury jsme zkoumali 10+ existujicich chess MCP serveru na GitHubu.
+Ponaueni z TOP 4:
+
+| Repozitar | Hvezdy | Co nas inspirovalo |
+|-----------|--------|--------------------|
+| [chess-coach-mcp](https://github.com/) | ~50 | Analyza partii + treninkovy feedback |
+| [chessagine-mcp](https://github.com/) | ~30 | Multi-engine analyza, viceserverova architektura |
+| [chess-rocket](https://github.com/) | ~80 | Spaced repetition na sachove chyby (SM-2) |
+| [chess-com-lichess-org-mcp](https://github.com/) | ~120 | Siroky Lichess API wrapper (54 toolu) — inspirace pro tool design |
+
+**Co nasi architekturu odlisuje:** kombinace pattern detection library (17 A-Q1 patternu), FSRS spaced repetition na osobni chyby, cross-game diagnostiky a KB persistence v jednom MCP serveru.
+
+### Stavba a debug engine integrace
+
+Behem vyvoje byly identifikovany a opraveny dve kriticke chyby v `engine_client.py`:
+- **Perspektivni inverze** — cp_loss pocitan z opacne strany (board.push() meni side-to-move)
+- **Best-move porovnani** — cp_loss pocitan jako delta before/after, nikoliv best/actual
+
+Po oprave probehla **diferencialni analyza** proti Lichess GUI (Stockfish dev-20260609-415ff793, depth 18-22). Vysledek: ACPL MAE 3.9 oproti lichess referenci — engine je po fixu funkcne ekvivalentni.
+
+Dalsi zdroje pouzite pri debugu:
+- [stockfish-web](https://github.com/lichess-org/stockfish-web) — Lichess patch pro Stockfish WASM (sf_dev build)
+- [lila](https://github.com/lichess-org/lila) — Lichess platform (klasifikacni thresholds: 50/150/300 centipawn)
+
+### Sourozenecke MCP servery v portfoliu
+
+Architektonicke vzory (tools-of-tools, KB write-back, L2 Resources, session state) byly overeny na:
+
+| Server | Toolu | Klicovy pattern |
+|--------|-------|-----------------|
+| [cnc-tools](https://github.com/outpost2026/mcp-local-server) | 20 | Session state, caching, audit log |
+| [linkedin-analyzer](https://github.com/outpost2026/linkedin-mcp-custom) | 8 | FastMCP framework, KB write-back, EROI scoring |
+| [mcp-jobs](https://github.com/outpost2026/MCP-Jobs) | 5 | Boolean AST match, multi-portal scraping, L2+ Resources |
+
+---
+
+## Souvislosti
 
 - **Pattern library:** 17 vzorovych patternu (A-Q1) — analyza 21 partii, metacognition gap ~300 ELO
-- **Pozadi:** `docs/CONTEXT_A_ZAMER.md`
+- **Pozadi:** `docs/CONTEXT_A_ZAMER.md` — kompletni kontext, reserse a architektura
 - **MCP pravidla:** Aplikovano P1-P28 z agregovane pitevni knihy (timeout guard, structured logging, L2 Resources, encoding triad)
-- **Dalsi MCP servery v portfoliu:** `cnc-tools` (20 toolu), `linkedin-analyzer` (8 toolu), `mcp-jobs` (5 toolu)
+- **KB modul:** B2B-Knowledge-Base/02_ANALYZY/02_chess/ + 04_KNOWLEDGE_BASE/02_chess/
 
 ---
 

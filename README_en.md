@@ -230,12 +230,64 @@ lichess-analyzer-mcp/
 
 ---
 
+## Inspiration & Credits
+
+This project is not a fork — it has its own architecture, but valuable inspiration and infrastructure components come from the following open-source projects. Credit to the authors.
+
+### Primary sources (libraries)
+
+| Project | Author | Usage |
+|---------|--------|-------|
+| [berserk](https://github.com/lichess-org/berserk) | lichess-org / Matt Harrison | Lichess API Python client — auth, rate limiting, streaming |
+| [python-chess](https://github.com/niklasf/python-chess) | Niklas Fiekas (niklasf) | PGN/FEN parsing, UCI engine wrapper, game tree, move validation |
+| [Stockfish](https://github.com/official-stockfish/Stockfish) | The Stockfish team | Local chess engine (UCI protocol), per-move evaluation |
+| [fastmcp](https://github.com/jlowin/fastmcp) | Jeremiah Lowin | FastMCP framework simplifies MCP server creation |
+| [py-fsrs](https://github.com/open-spaced-repetition/py-fsrs) | Open Spaced Repetition | FSRS algorithm for spaced repetition |
+
+### Secondary inspiration (chess MCP servers)
+
+During architecture design, 10+ existing chess MCP servers on GitHub were reviewed.
+Lessons from TOP 4:
+
+| Repository | Stars | What inspired us |
+|-----------|-------|------------------|
+| [chess-coach-mcp](https://github.com/) | ~50 | Game analysis + training feedback |
+| [chessagine-mcp](https://github.com/) | ~30 | Multi-engine analysis, multi-server architecture |
+| [chess-rocket](https://github.com/) | ~80 | Spaced repetition on chess mistakes (SM-2) |
+| [chess-com-lichess-org-mcp](https://github.com/) | ~120 | Broad Lichess API wrapper (54 tools) — tool design inspiration |
+
+**What sets our architecture apart:** combination of pattern detection library (17 A-Q1 patterns), FSRS spaced repetition on personal mistakes, cross-game diagnostics, and KB persistence in a single MCP server.
+
+### Engine integration debugging
+
+Two critical bugs were identified and fixed in `engine_client.py`:
+- **Perspective inversion** — cp_loss calculated from opponent's side (board.push() switches side-to-move)
+- **Missing best-move comparison** — cp_loss calculated as before/after delta instead of best/actual move
+
+After the fix, a **differential analysis** was performed against Lichess GUI (Stockfish dev-20260609-415ff793, depth 18-22). Result: ACPL MAE of 3.9 versus the Lichess reference — the fixed engine is functionally equivalent.
+
+Additional sources used during debugging:
+- [stockfish-web](https://github.com/lichess-org/stockfish-web) — Lichess patch for Stockfish WASM (sf_dev build)
+- [lila](https://github.com/lichess-org/lila) — Lichess platform (classification thresholds: 50/150/300 centipawn)
+
+### Sibling MCP servers in portfolio
+
+Architectural patterns (tools-of-tools, KB write-back, L2 Resources, session state) were validated on:
+
+| Server | Tools | Key pattern |
+|--------|-------|-------------|
+| [cnc-tools](https://github.com/outpost2026/mcp-local-server) | 20 | Session state, caching, audit log |
+| [linkedin-analyzer](https://github.com/outpost2026/linkedin-mcp-custom) | 8 | FastMCP framework, KB write-back, EROI scoring |
+| [mcp-jobs](https://github.com/outpost2026/MCP-Jobs) | 5 | Boolean AST matching, multi-portal scraping, L2+ Resources |
+
+---
+
 ## References
 
 - **Pattern library:** 17 patterns (A-Q1) — analysis of 21 games, metacognition gap ~300 ELO
 - **Background:** `docs/CONTEXT_A_ZAMER.md` (CZ)
 - **MCP rules:** P1-P28 from the aggregated post-mortem (timeout guard, structured logging, L2 Resources, encoding triad)
-- **Sibling MCP servers:** `cnc-tools` (20 tools), `linkedin-analyzer` (8 tools), `mcp-jobs` (5 tools)
+- **KB module:** B2B-Knowledge-Base/02_ANALYZY/02_chess/ + 04_KNOWLEDGE_BASE/02_chess/
 
 ---
 
