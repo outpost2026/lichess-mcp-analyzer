@@ -9,8 +9,12 @@ _engine: Optional[chess.engine.SimpleEngine] = None
 
 
 def _find_stockfish() -> str:
+    project_stockfish = os.path.join(
+        os.path.dirname(__file__), "..", "..", "stockfish", "stockfish.exe"
+    )
     paths = [
         os.environ.get("STOCKFISH_PATH", ""),
+        project_stockfish,
         "stockfish",
         "stockfish.exe",
         r"C:\Program Files\Stockfish\stockfish.exe",
