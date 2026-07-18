@@ -79,25 +79,37 @@ def evaluate_move(fen: str, move_uci: str, depth: int = 16) -> dict:
 
     def _run():
         move = chess.Move.from_uci(move_uci)
-        eval_before = engine.analyse(board, chess.engine.Limit(depth=depth))[
-            "score"
-        ].relative.score()
+        # 1) eval BEFORE (player's perspective) + best move
+        info_before = engine.analyse(board, chess.engine.Limit(depth=depth))
+        eval_before = info_before["score"].relative.score()
+        best_move = info_before["pv"][0] if "pv" in info_before else None
+
+        # 2) eval AFTER best move (opponent's perspective → negated for player)
+        if best_move:
+            board_best = board.copy()
+            board_best.push(best_move)
+            best_res = engine.analyse(board_best, chess.engine.Limit(depth=depth))
+            best_score = best_res["score"].relative.score()
+            # Convert opponent perspective → player perspective
+            best_player = -best_score if best_score is not None else None
+        else:
+            best_player = eval_before
+
+        # 3) eval AFTER actual move (opponent's perspective → negated for player)
         board.push(move)
-        eval_after = engine.analyse(board, chess.engine.Limit(depth=depth))[
-            "score"
-        ].relative.score()
-        best_move_info = engine.analyse(board, chess.engine.Limit(depth=depth), multipv=1)
-        best_move = best_move_info["pv"][0] if "pv" in best_move_info else None
-        # eval_before is from player's perspective (side-to-move before push)
-        # eval_after is from opponent's perspective (side-to-move after push)
-        # Converting eval_after to player's perspective: -eval_after
-        if eval_before is not None and eval_after is not None:
-            cp_loss = eval_before + eval_after
+        actual_res = engine.analyse(board, chess.engine.Limit(depth=depth))
+        actual_score = actual_res["score"].relative.score()
+        actual_player = -actual_score if actual_score is not None else None
+
+        # 4) centipawn loss = best_player - actual_player (both player-perspective)
+        if best_player is not None and actual_player is not None:
+            cp_loss = max(0, best_player - actual_player)
         else:
             cp_loss = 0
+
         return {
             "eval_before": eval_before,
-            "eval_after": -eval_after if eval_after is not None else 0,
+            "eval_after": actual_player if actual_player is not None else 0,
             "centipawn_loss": cp_loss,
             "best_move_uci": best_move.uci() if best_move else None,
         }
