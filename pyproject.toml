@@ -1,0 +1,23 @@
+[project]
+name = "lichess-analyzer-mcp"
+version = "0.1.0"
+description = "MCP server for Lichess chess analysis with pattern detection and spaced repetition"
+requires-python = ">=3.12"
+dependencies = [
+    "mcp>=1.0.0",
+    "berserk>=0.14.0",
+    "python-chess>=1.1000",
+    "httpx>=0.28.0",
+    "py-fsrs>=0.1.0",
+]
+
+[project.scripts]
+lichess-analyzer = "src.server:main"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]

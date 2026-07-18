@@ -1,0 +1,8 @@
+data/
+stockfish/
+.env
+*.pyc
+__pycache__/
+.venv/
+*.log
+.ruff_cache/
