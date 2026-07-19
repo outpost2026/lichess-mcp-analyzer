@@ -2,6 +2,9 @@ from src.app import app
 from src.services.lichess_client import fetch_user_games, fetch_game_pgn
 from src.services.game_analyzer import analyze_pgn
 from src.services.pattern_detector import PatternDetector
+from src.services.compressibility_validator import compute_compression
+from src.services.validator import validate_pattern_artifact, ValidationError
+from src.kb.schemas import validate_against_schema
 from src.services.logger import get_logger
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -14,7 +17,7 @@ async def lichess_match_patterns(username: str, max_games: int = 20, depth: int 
 
     Analyzes recent games and matches them against the pattern library
     imported from chess_pattern_v5.json. Returns detected patterns with
-    confidence scores, evidence, and mitigation advice.
+    confidence scores, evidence, mitigation advice, and compression validation.
 
     Args:
         username: Lichess username
@@ -74,44 +77,55 @@ async def lichess_match_patterns(username: str, max_games: int = 20, depth: int 
         detector = PatternDetector()
         metadata = {"username": username, "total_games": len(analyses)}
         matches = detector.detect_all(analyses, metadata)
-        log.info("patterns detected | user=%s | total=%d", username, len(matches))
 
         result = []
         for m in matches:
-            result.append(
-                {
-                    "pattern_id": m.pattern_id,
-                    "pattern_name": m.pattern_name,
-                    "confidence": round(m.confidence * 100, 0),
-                    "frequency": m.frequency,
-                    "severity": m.severity,
-                    "evidence": m.evidence,
-                    "mitigation": detector.library.patterns[m.pattern_id].mitigation
-                    if m.pattern_id in detector.library.patterns
-                    else "",
-                }
-            )
-        from datetime import datetime
-        from src.resources.pattern_resources import store_patterns
+            m = compute_compression(m, analyses)
+            entry = {
+                "pattern_id": m.pattern_id,
+                "pattern_name": m.pattern_name,
+                "confidence": round(m.confidence * 100, 0),
+                "frequency": m.frequency,
+                "severity": m.severity,
+                "evidence": m.evidence,
+                "mitigation": detector.library.patterns[m.pattern_id].mitigation
+                if m.pattern_id in detector.library.patterns
+                else "",
+            }
+            if m.hypothesis:
+                entry["hypothesis"] = m.hypothesis
+            if m.compression_ratio is not None:
+                entry["compression_ratio"] = m.compression_ratio
+            result.append(entry)
 
-        resource_key = f"{username}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
-        store_patterns(
-            resource_key,
-            {
-                "username": username,
-                "games_analyzed": len(analyses),
-                "patterns_detected": result,
-                "total_patterns": len(result),
-            },
-        )
-        result.sort(key=lambda x: x["severity"] == "critical", reverse=True)
-        result.sort(key=lambda x: x["confidence"], reverse=True)
-        return {
+        log.info("patterns detected | user=%s | total=%d", username, len(result))
+
+        artifact = {
             "username": username,
             "games_analyzed": len(analyses),
             "patterns_detected": result,
             "total_patterns": len(result),
         }
+
+        schema_errors = validate_against_schema(artifact)
+        if schema_errors:
+            log.warning("schema issues | user=%s | count=%d", username, len(schema_errors))
+            artifact["_schema_warnings"] = schema_errors
+
+        sanity_issues = validate_pattern_artifact(artifact)
+        if sanity_issues:
+            log.warning("sanity issues | user=%s | count=%d", username, len(sanity_issues))
+            artifact["_sanity_warnings"] = sanity_issues
+
+        from datetime import datetime
+        from src.resources.pattern_resources import store_patterns
+
+        resource_key = f"{username}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+        store_patterns(resource_key, artifact)
+
+        result.sort(key=lambda x: x["severity"] == "critical", reverse=True)
+        result.sort(key=lambda x: x["confidence"], reverse=True)
+        return artifact
     except Exception as e:
         log.exception("patterns error | user=%s", username)
         return {"error": str(e)}

@@ -9,12 +9,18 @@ class PatternDetector:
         self.library = PatternLibrary().load_baseline()
 
     def detect_all(self, analyses: list[GameAnalysis], metadata: dict) -> list[PatternMatch]:
+        total_games = len(analyses)
         matches = []
         for pid in self.library.patterns:
+            pdef = self.library.patterns[pid]
+            if total_games < pdef.min_games:
+                continue
             detector = getattr(self, f"_detect_{pid.lower()}", None)
             if detector:
                 match = detector(analyses, metadata)
                 if match:
+                    if match.frequency < pdef.min_occurrences:
+                        continue
                     matches.append(match)
         return matches
 
@@ -39,6 +45,7 @@ class PatternDetector:
                 game_ids=[g.game.id for g in anonymous_games],
                 frequency=len(anonymous_games),
                 severity="high",
+                hypothesis="Hypothesis: unknown opponent rating lowers perceived threat threshold, leading to higher blunder rate.",
             )
         return None
 
@@ -62,6 +69,7 @@ class PatternDetector:
                 game_ids=list(set(affected_games)),
                 frequency=blunder_captures,
                 severity="high",
+                hypothesis="Hypothesis: player captures automatically without evaluating opponent's counterplay — analogous to git push --force.",
             )
         return None
 
@@ -86,6 +94,7 @@ class PatternDetector:
                 game_ids=[g.game.id for g in white_analyses],
                 frequency=len(white_analyses),
                 severity="high",
+                hypothesis="Hypothesis: player's style shifts with color — more impulsive as White (higher blunder rate).",
             )
         return None
 
@@ -110,6 +119,7 @@ class PatternDetector:
                 game_ids=list(set(affected)),
                 frequency=len(set(affected)),
                 severity="critical",
+                hypothesis="Hypothesis: player refuses threefold repetition hoping for more, which often leads to position collapse.",
             )
         return None
 
@@ -133,6 +143,7 @@ class PatternDetector:
                 game_ids=list(set(affected)),
                 frequency=len(set(affected)),
                 severity="high",
+                hypothesis="Hypothesis: player misreads non-forcing moves as forcing sequences, overlooking counterplay.",
             )
         return None
 
@@ -152,5 +163,6 @@ class PatternDetector:
                 game_ids=defensive_wins,
                 frequency=len(defensive_wins),
                 severity="low",
+                hypothesis="Hypothesis: player prefers active counterplay over passive defense, creating winning chances even in lost positions.",
             )
         return None

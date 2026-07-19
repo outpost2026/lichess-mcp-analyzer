@@ -13,6 +13,8 @@ class PatternDef:
     severity: str
     mitigation: str
     detection_rules: dict = field(default_factory=dict)
+    min_games: int = 3
+    min_occurrences: int = 2
 
 
 @dataclass
@@ -24,6 +26,8 @@ class PatternMatch:
     game_ids: list[str]
     frequency: int
     severity: str
+    hypothesis: Optional[str] = None
+    compression_ratio: Optional[float] = None
 
 
 @dataclass
