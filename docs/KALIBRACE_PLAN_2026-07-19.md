@@ -10,6 +10,13 @@ vychozi-dokumenty:
   - docs/PHASE2_BUILD_PLAN.md
 status: aktualizace
 version: 2.3
+warning-devi-llm: >
+  Tento dokument je REFERENCNI RAMEC — mapuje, co by bylo teoreticky mozne.
+  Pri kazdem commitu si poloz otazku: "Resi tento kod konkretni problem, ktery
+  prave ted znam?"
+  Nepridavej filozofii do kodu. Filozofie patri sem do dokumentu. Kod resi:
+  engine → data → ACPL → pattern → artifact. Nic vic.
+  Kdo prida epistemologii do pipeline, at nese vinu za monstrum.
 changes-v2.2:
   - Sekce 2.6: Tri operacni rezimy pipeline (Sharp Descent / Orbital Search / Disentanglement)
   - Sekce 2.7: Reality Calibration Loop — zpetnovazebni smycka
