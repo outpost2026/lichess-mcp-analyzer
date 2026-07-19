@@ -14,9 +14,53 @@ version: 2.0
 
 # Kalibracni plan MCP pipeline — vrstvena architektura
 
+## 0. Filozofie autora: determinismus + LLM abstrakce
+
+### 0.1 Princip (z profilove landing page)
+
+> **"Fyzická realita je jedinečná absolutní metrika pravdy. Digitální svět je jen její abstrakce."**
+>
+> *"Nástroje, které tvořím s pomocí AI, slouží k pomyslnému hledání jehly v kupce sena = k datové analýze založené na filtraci vaty a všudypřítomného šumu."*
+>
+> *"Skutečná seniorita se měří úrovní abstrakce problému, který dokážete řešit."*
+
+Autor kombinuje **dva svety**:
+
+| Svet | Co to je | V pipeline | Priklad |
+|------|---------|------------|---------|
+| **Determinismus** | Strojove parsovana data, fyzicka realita jako metrika | Stockfish engine, lichess API, game cache, cp_loss | `engine_client.py` — per-move evaluace |
+| **LLM abstrakce** | Prace se slovy a symboly na pripravenych artefaktech | Pattern detection, hypothesis, treninkova doporuceni | `lichess_match_patterns` → narativni vystup |
+
+**Klicova teze:** LLM modely jsou v pripade **constrains a predem upravenych vstupu** (prevedenych na LLM-friendly artefakty) schopny naplno vyuzit svych schopnosti prace se slovy a symboly. Bez techto constrains produkuji stochasticky sum.
+
+### 0.2 Jak se to projevuje v architektuře
+
+| Autoruv princip | Implementace v pipeline | Odkud to vime |
+|----------------|------------------------|---------------|
+| Realita = metrika pravdy | Stockfish cp_loss jako ground truth pro kazdy tah | LLM differential test (odchylka +25-35cp bez enginu) |
+| Filtrace sumu | Game-level cache eliminuje variance mezi runy | 21 min → 2 sec, 100% reprodukovatelne |
+| Abstrakce problemu | Pattern library (A-Q1) jako behavioralni abstrakce nad cp_loss | Analyticky obsah, ne jen "prumer chyb" |
+| Call to action | KB report + SRS karty + hypotezy = co delat | Diagnostician: "trenuj Italian Two Knights" |
+| Golden master | Lichess GUI reference pro ACPL kalibraci | MAE 3.9 oproti Lichess depth 18 |
+| Modularita, testovatelnost | 8 MCP tools, kazdy samostatne pouzitelny | 6/17 pattern detectoru, cache, diagnostician |
+
+### 0.3 Vazba na chess pattern artifact
+
+Chess pattern artifact je **konkretni realizaci teto filozofie**:
+
+1. **Deterministicka vrstva** (engine + API) produkuje cp_loss, eval, klasifikaci — "realitu"
+2. **LLM vrstva** (pattern detector + hypothesis generator) produkuje abstrakci — "vyznam"
+3. **Artifact** (JSON output) je LLM-friendly struktura, se kterou muze LLM dale pracovat
+
+Bez kroku 1 = stochasticita a halucinace (puvodni postup).
+Bez kroku 2 = pouze cisla bez vyznamu (surovy Stockfish dump).
+S obema = high SNR, high EROI.
+
+---
+
 ## 1. Proc chess pattern artifact?
 
-**Problem:** Chess pattern artifact (17 patternu A-Q1) vznikal rucni analyzou PGN s LLM + feedbackem autora (zkuseny hrac, ~2000 ELO). Proces: LLM cetl PGN, hledal vzory, autor korigoval halucinace. Vysledek: cenna, ale **stochasticka a neoveritelna** baseline.
+**Problem:** Chess pattern artifact (17 patternu A-Q1) vznikal rucni analyzou PGN s LLM + feedbackem autora (zkuseny hrac, ~2000 ELO). Proces: LLM cetl PGN, hledal vzory, autor korigoval halucinace. Vysledek: cenna, ale **stochasticka a neoveritelna** baseline — odporuje principu "realita = metrika pravdy".
 
 **Reseni:** Soucasna MCP pipeline obsahuje deterministicky prvek (Stockfish 18 engine + lichess API). Ta muze posunout chess pattern artifact z oblasti pravdepodobnosti do oblasti **deterministicky podmienene analyzy** — kazdy pattern bude mit:
 
@@ -96,6 +140,57 @@ Kazdy z 8 MCP toolu pokryva jinou cast pipeline:
 | `lichess_workspace_info` | — | Pouze kontext pro LLM |
 
 **Klicovy poznatek:** Celá pipeline je navrzena tak, aby kazdy tool prispival k chess pattern artifactu. Tool `lichess_match_patterns` je terminal point — vsechny ostatni tooly mu dodavaji data.
+
+### 2.3 Deterministicka vrstva → LLM abstrakce (tok dat)
+
+Toto je **klicovy architektonicky princip** vyplivajici z autorovy filozofie:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  DETERMINISTICKA VRSTVA (vrstvy 1-4)                            │
+│                                                                  │
+│  Stockfish engine ──► cp_loss, eval, best_move                   │
+│       +             ──► blunder/mistake/inaccuracy klasifikace    │
+│  Lichess API        ──► ACPL, phase_stats, leaky openings         │
+│                                                                  │
+│  Vystup: ----------------------------------------------------   │
+│  JSON s cisly, zadny text, zadna interpretace                   │
+│  "Hrac v tahu 5 ztratil 66cp. Best move byl Nf3." = fakt       │
+│  Overitelno: kdykoliv, kazdym Stockfishem, stejny vysledek      │
+└─────────────────────────────────────────────────────────────────┘
+                                  │
+                                  │ (data jsou predana jako
+                                  │  LLM-friendly artifact)
+                                  ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  LLM ABSTRAKCE (vrstva 5 — hypotezy + narace)                   │
+│                                                                  │
+│  Pattern detector     ──► "Toto odpovida patternu Q: aktivni     │
+│  + LLM explainer          obrana s confidence 0.72"              │
+│                                                                  │
+│  Vystup: ----------------------------------------------------   │
+│  Text + hypotezy                                                │
+│  "Hypothesis: Hrac preferuje aktivni obranu pred pasivnim       │
+│   cekanim, coz je vetsinou spravne, ale nekdy prehlidne         │
+│   jednodussi pasivni reseni."                                   │
+│  Overitelno: pouze proti Stockfish datum (pattern match)        │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Pravidlo:** LLM nikdy negeneruje surova data (cp_loss, ACPL, klasifikaci). LLM pouze **interpretuje** jiz overena deterministicka data. Toto pravidlo je vynuceno architekturou — LLM nema pristup k engine ani API.
+
+### 2.4 Call to action — kazdy vystup musi vest k rozhodnuti
+
+Druhy klicovy princip: pipeline negeneruje "zajimave informace", ale **akcni vystupy**.
+
+| Vystup | Call to action | Kdo rozhoduje |
+|--------|---------------|---------------|
+| Diagnoza: "ACPL 34.5, fazove slabiny: endgame" | "Trenuj koncovky — specificky pesecne koncovky s vezi" | LLM na zaklade diagnostician dat |
+| Pattern Q: aktivni obrana (conf 0.72) | "Pred obrannym tahem si rekni: je pasivni reseni jednodussi?" | LLM na zaklade pattern detector dat |
+| Leaky opening: Italian Two Knights (5 blunderu) | "Prostuduj variantu Italian: Two Knights Fritz pred dalsi hrou" | LLM na zaklade leaky openings |
+| Blunder: 62...Ra1 (324cp) — SRS karta | "Opakuj FEN pozici za 3 dny (FSRS)" | SRS engine |
+
+**Zadny vystup nesmi byt "pouze informativni"** (poruseni EROI). Toto je prinos LinkedIn analyzatoru (viz landing page: "reagovat, nereagovat, zvážit, doučit se") aplikovany na sachovou analyzu.
 
 ---
 
@@ -324,6 +419,20 @@ LICHESS API ──► lichess_fetch_games
 ```
 
 **Klicovy bod:** LLM je v teto architekture az **posledni** clen pipeline — neanalyze, neprodukuje data. Pouze **interpretuje** jiz overena deterministicka data. To je opak puvodniho postupu (LLM analyzoval PGN → autor korigoval → vznikl pattern).
+
+### 7.1 Call to action: kazdy vystup pipeline
+
+Kazda vrstva pipeline produkuje vystup s explicitnim "co s tim":
+
+| Vrstva | Vystup | Call to action signal | Prijemce |
+|--------|--------|----------------------|----------|
+| **3. Engine** | cp_loss, eval | "Tah X ztratil Y cp" (fakt) | Vrstva 4 |
+| **4. Analyzator** | ACPL, fazove slabiny | "Endgame ACPL 44.8 = nejslabsi faze" | Vrstva 5 |
+| **5. Pattern** | Pattern Q, conf 0.72 | "Hypothesis: aktivni obrana — overit pasivni alternativy" | LLM → hrac |
+| **KB report** | Diagnoza v MD | "Trenuj Italian Two Knights (5 blunderu/2 hry)" | Hrac |
+| **SRS** | Karty k opakovani | "Pozici z tahu 62 si zopakuj za 3 dny" | Hrac |
+
+**Zadny vystup nesmi byt "pouze informativni"** bez dalsiho postupu.
 
 ---
 
