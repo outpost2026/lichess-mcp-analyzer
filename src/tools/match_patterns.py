@@ -47,7 +47,7 @@ async def lichess_match_patterns(username: str, max_games: int = 20, depth: int 
                     == username.lower()
                 ):
                     color = "black"
-                return analyze_pgn(pgn, player_color=color, depth=depth)
+                return analyze_pgn(pgn, player_color=color, depth=depth, game_id=game_id)
             except Exception as e:
                 log.warning("skip game %s: %s", game_id, e)
                 return None

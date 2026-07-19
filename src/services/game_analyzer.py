@@ -1,31 +1,72 @@
 """Game analysis: per-move Stockfish classification."""
 
+import json
+import os
+
 from src.models.game import GameSummary, MoveAnalysis, GameAnalysis
 from src.services import engine_client
 from src.services.lichess_client import fetch_game_pgn
 
-
-def _classify_move(cp_loss: float) -> str:
-    if cp_loss >= 300:
-        return "blunder"
-    if cp_loss >= 150:
-        return "mistake"
-    if cp_loss >= 50:
-        return "inaccuracy"
-    if cp_loss >= 20:
-        return "good"
-    return "best"
+CACHE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data", "game_cache")
 
 
-def _detect_phase(ply: int) -> str:
-    if ply <= 20:
-        return "opening"
-    if ply <= 50:
-        return "middlegame"
-    return "endgame"
+def _cache_path(game_id: str, depth: int) -> str:
+    d = os.path.join(CACHE_DIR, f"{game_id}_d{depth}.json")
+    return d
 
 
-def analyze_pgn(pgn: str, player_color: str = "white", depth: int = 14) -> GameAnalysis:
+def _load_cached_analysis(game_id: str, depth: int) -> GameAnalysis | None:
+    path = _cache_path(game_id, depth)
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return GameAnalysis.from_dict(json.load(f))
+    except Exception:
+        return None
+
+
+def _save_cached_analysis(game_id: str, depth: int, analysis: GameAnalysis) -> None:
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    path = _cache_path(game_id, depth)
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(analysis.to_dict(), f, ensure_ascii=False)
+    except Exception:
+        pass
+
+
+def analyze_pgn(
+    pgn: str,
+    player_color: str = "white",
+    depth: int = 14,
+    game_id: str | None = None,
+    use_cache: bool = True,
+) -> GameAnalysis:
+    if use_cache:
+        if game_id is None:
+            import io
+            import chess.pgn
+
+            game_node = chess.pgn.read_game(io.StringIO(pgn))
+            if game_node is not None:
+                site = game_node.headers.get("Site", "")
+                if "/" in site:
+                    game_id = site.split("/")[-1]
+        if game_id:
+            cached = _load_cached_analysis(game_id, depth)
+            if cached is not None:
+                return cached
+
+    analysis = _run_analyze_pgn(pgn, player_color, depth)
+
+    if use_cache and game_id:
+        _save_cached_analysis(game_id, depth, analysis)
+
+    return analysis
+
+
+def _run_analyze_pgn(pgn: str, player_color: str = "white", depth: int = 14) -> GameAnalysis:
     import chess.pgn
     import io
 
@@ -34,9 +75,10 @@ def analyze_pgn(pgn: str, player_color: str = "white", depth: int = 14) -> GameA
         raise ValueError("Invalid PGN")
     headers = game_node.headers
     result = headers.get("Result", "*")
+    site = headers.get("Site", "")
     game_summary = GameSummary(
-        id=headers.get("Site", "").split("/")[-1] if "/" in headers.get("Site", "") else "",
-        platform="lichess" if "lichess" in headers.get("Site", "") else "chesscom",
+        id=site.split("/")[-1] if "/" in site else "",
+        platform="lichess" if "lichess" in site else "chesscom",
         opening=headers.get("Opening", ""),
         opening_eco=headers.get("ECO", ""),
         color=player_color,
@@ -52,7 +94,7 @@ def analyze_pgn(pgn: str, player_color: str = "white", depth: int = 14) -> GameA
         else int(headers.get("BlackElo", 0)),
         time_control=headers.get("TimeControl", ""),
         date=headers.get("Date", ""),
-        url=headers.get("Site", ""),
+        url=site,
     )
     analysis = GameAnalysis(game=game_summary)
     board = game_node.board()
@@ -105,3 +147,23 @@ def analyze_pgn(pgn: str, player_color: str = "white", depth: int = 14) -> GameA
     if move_count > 0:
         analysis.total_acpl = total_cp / move_count
     return analysis
+
+
+def _classify_move(cp_loss: float) -> str:
+    if cp_loss >= 300:
+        return "blunder"
+    if cp_loss >= 150:
+        return "mistake"
+    if cp_loss >= 50:
+        return "inaccuracy"
+    if cp_loss >= 20:
+        return "good"
+    return "best"
+
+
+def _detect_phase(ply: int) -> str:
+    if ply <= 20:
+        return "opening"
+    if ply <= 50:
+        return "middlegame"
+    return "endgame"

@@ -51,7 +51,7 @@ def main():
                 == username.lower()
             ):
                 color = "black"
-            analysis = analyze_pgn(pgn, player_color=color, depth=depth)
+            analysis = analyze_pgn(pgn, player_color=color, depth=depth, game_id=game_id)
             analyses.append(analysis)
             print(
                 f"  [{i + 1}/{len(games_data[:max_games])}] {game_id} OK ({len(analysis.moves)} tahu)"
