@@ -9,13 +9,14 @@ vychozi-dokumenty:
   - docs/CONTEXT_A_ZAMER.md
   - docs/PHASE2_BUILD_PLAN.md
 status: aktualizace
-version: 2.2
-changes-v2.1:
-  - Sekce 2.5: Kompresni validator (Mikolov) s confidence vzorcem
-  - Sekce 3.2: Entropie + compression_ratio v Pattern JSON schema
-  - Sekce 6.2: Task K8.1 (CompressibilityValidator)
-  - Sekce 6.5: compression_ratio >2:1 jako acceptance criterion #6
-  - Section 11: Mikolov reference
+version: 2.3
+changes-v2.2:
+  - Sekce 2.6: Tri operacni rezimy pipeline (Sharp Descent / Orbital Search / Disentanglement)
+  - Sekce 2.7: Reality Calibration Loop — zpetnovazebni smycka
+  - Sekce 3.4: TOT (Tip-of-the-Tongue) stav — treti moznost v pattern detection
+  - Sekce 6.3: Task K10.1 (Konsolidacni protokol), K11.1 (TOT + Gated konsolidace)
+  - Sekce 8: Acceptance criteria #7 (TOT), #8 (offline konsolidace)
+  - Zdroj: 05_EPISTEMIKA/00_kompresni_realismus/ (SYSTEQ neuroarchitektura)
 ---
 
 # Kalibracni plan MCP pipeline — vrstvena architektura
@@ -271,9 +272,32 @@ Pattern Q (Active Defense):
   → Hrac se brani aktivne misto pasivniho cekani
 ```
 
-**Tim se chess pattern artifact meni z** "LLM si mysli, ze hrac ma sklon k X" **na** "Engine dokazuje, ze hrac v Y situacich ztratil v prumeru Z cp, coz odpovida patternu W s confidence C".
+### 3.4 TOT (Tip-of-the-Tongue) stav v pattern detection
+
+Z neuroarchitektury "mozek jako geometricky procesor": ne kazdy pattern match je binary. Pridat treti stav:
+
+| Stav | Confidence | Vyhodnoceni | Akce |
+|------|-----------|-------------|------|
+| **MATCH** | > 0.6 | Pattern jednoznacne detekovan | Pridej do artifactu |
+| **TOT** | 0.3-0.6 | "Vypada jako pattern X, ale neni jistota" | Pridej jako candidate + TOT flag |
+| **NO_MATCH** | < 0.3 | Pattern neni pritomen | Ignoruj |
+
+**TOT v artifactu:**
+```json
+{
+  "pattern_id": "Q?",
+  "pattern_name": "Active Defense (TOT)",
+  "confidence": 0.42,
+  "tot": true,
+  "reason": "Pouze 2 vyskpty ve 3 hrach, ale struktura odpovida patternu Q (aktivni obrana s cp_loss > 100)"
+}
+```
+
+**Prinos:** Detekce novych patternu drive, nez maji statistickou silu — Rezim 3 (Disentanglement) v pipeline.
 
 ---
+
+## 4. Determinismus vs stochastika: kvantifikace prinosu
 
 ## 4. Determinismus vs stochastika: kvantifikace prinosu
 
@@ -404,6 +428,8 @@ Priorita: zabezpecit, aby artifact nebyl kontaminovan falesnymi signaly.
 | **P1** | Rozsireni patternu (C, D, E, F, H, I, J-N) | `pattern_detector.py` | 4 hod | Vice dimenzi programoveho vektoru |
 | **P2** | Program vector generator | `diagnostician.py` extension | 2 hod | Nova struktura artifactu (sekce 5.1) |
 | **K9.1** | Lichess ACPL reference | `tools/compare_acpl.py` | 2 hod | Kalibracni metrika |
+| **K10.1** | Konsolidacni protokol (offline pattern update) — periodic job, ktery prepocita pattern library z novych her, aktualizuje compression_ratio a confidence trend | `src/services/consolidator.py` (novy) | 2 hod | Dynamicka pattern library (ne staticka) |
+| **K11.1** | TOT flag + Gated konsolidace — TOT stav v pattern detection (confidence 0.3-0.6 = kandidat) + gating: novy pattern vyzaduje lidsky souhlas pred zarazenim do detection rules | `pattern_detector.py`, `src/services/gate.py` (novy) | 1.5 hod | Signal detection drive, nez ma statistickou silu |
 
 ### 6.4 Phase 3 — Trendy a backtesting (1 mesic)
 
@@ -489,6 +515,36 @@ Kde compression_score ma nejvyssi vahu — pattern, ktery komprimuje data, je va
 - Patterns s nizkou kompresi (= mnoho vyjimek) = nizsi confidence (i pri N > 50)
 - Pridan CompressibilityValidator (vrstva 4.5) jako samostatna komponenta
 
+### 2.6 Tri operacni rezimy pipeline (Mikolov-SYSTEQ)
+
+Z neuroarchitektury "mozek jako geometrický procesor" (SYSTEQ, 2026) — kazdy vstup pipeline (sada her) ma implicitni entropii, ktera urcuje rezim zpracovani:
+
+| Rezim | Entropie | Kognitivni naklad | Co to znamena v pipeline | Priklad |
+|-------|----------|-------------------|--------------------------|---------|
+| **R1: Sharp Descent** | Nizka (ACPL < 50, variance < 15) | Nizky | Cache hit, znamy pattern, rychla inference | Hrac s 20 analyzovanymi hrami, pattern Q potvrzeny |
+| **R2: Orbital Search** | Stredni (ACPL 50-100, variance < 30) | Vysoky | Nove hry, cache miss, candidate pattern s nizkou conf | 2 nove hry, pattern podezreni ale neni jistota |
+| **R3: Disentanglement** | Vysoka (nova strategie, neznamy pattern) | Masivni | Vystup: navrh noveho patternu k validaci | Hrac pouziva strategii, ktera neodpovida zadnemu z 17 patternu |
+
+**Implementace:** Do pipeline pridat explicitni `entropy_switch` — pred kazdou analyzou zmerit entropii vstupu (pocet novych her, variance ACPL, cache hit ratio) a zvolit rezim.
+
+### 2.7 Reality Calibration Loop (zpetnovazebni smycka)
+
+Z axiomu SYSTEQ Kernel v1.0 — kazdy vystup pipeline musi byt overitelny a zpetne kalibrovatelny:
+
+```
+Analyza → Vystup → Intervence (hrac/trenink) → Dalsi analyza → Mereni zmeny → Update modelu
+```
+
+**V chess kontextu:**
+1. Pipeline detekuje pattern Q (conf 0.76)
+2. Hrac obdrzi: "trenuj pasivni alternativy v obranych pozicich"
+3. Hrac odehraje dalsich 10 her
+4. Pipeline zmeri: changes in pattern Q frequency/severity
+5. Pokud pattern Q klesl → pattern validni, conf se zvysi
+6. Pokud pattern Q stejny nebo horsi → pattern byl falesny, conf se snizi
+
+**Implementace:** Do pattern artifact pridat `calibration_history` — pole zmen confidence v case po kazde dalsi analyze.
+
 ---
 
 ## 8. Kriterium uspechu
@@ -512,6 +568,8 @@ Kde compression_score ma nejvyssi vahu — pattern, ktery komprimuje data, je va
 4. **Program vector je kompletni** — vsech 6 vektoru (precision, phase, color, volatility, tactical, endgame)
 5. **Artifact je validni JSON** — prosel schema validaci
 6. **Kazdy pattern ma compression_ratio > 2:1** nebo je oznacen jako "low_signal" (prevence noise)
+7. **Pattern detection podporuje TOT stav** (confidence 0.3-0.6 = kandidat, ne MATCH/NO_MATCH binary) — zachyceni novych patternu driv
+8. **Konsolidacni protokol bezi offline** (pattern library se nemeni za behu, pouze v planovanych cyklech) — stabilita + reprodukovatelnost
 
 ---
 
@@ -531,13 +589,16 @@ Phase 1 (plan):    🞄 K5.1, K4.1, K7.1, K6.1 (2-3 dny)
                    🞄 Sanity checks + schema validace
 
 Phase 2 (plan):    🞄 Rozsireni na 17 patternu
-                   🞄 Program vector generator
-                   🞄 Confidence weighting
-                   🞄 Lichess ACPL reference
+                    🞄 Program vector generator
+                    🞄 Confidence weighting
+                    🞄 Lichess ACPL reference
+                    🞄 Konsolidacni protokol (K10.1)
+                    🞄 TOT + Gated konsolidace (K11.1)
 
 Phase 3 (plan):    🞄 Backtesting 21 historickych her
-                   🞄 Trend detection
-                   🞄 Nova baseline artifactu
+                    🞄 Trend detection
+                    🞄 Reality Calibration Loop
+                    🞄 Nova baseline artifactu
 ```
 
 ### Doporuceny dalsi krok
