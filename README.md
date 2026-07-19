@@ -197,7 +197,7 @@ lichess-analyzer-mcp/
 │   ├── run\_pipeline.py      ← CLI batch pipeline  
 │   └── setup\_stockfish.ps1  ← Automaticke stazeni Stockfish  
 ├── tests/  
-│   └── test\_services.py     ← 8 unit testu  
+│   └── test\_services.py     ← 15 unit testu (Phase 1: K4.1-K8.1)  
 ├── docs/  
 │   ├── CONTEXT\_A\_ZAMER.md   ← Kompletni kontext a zamer projektu  
 │   └── PHASE2\_BUILD\_PLAN.md ← Build plan + MCP pitva pravidla  
@@ -281,7 +281,7 @@ Architektonicke vzory (tools-of-tools, KB write-back, L2 Resources, session stat
 
 ## Souvislosti
 
-- **Pattern library:** 17 vzorovych patternu (A-Q1) — analyza 21 partii, metacognition gap ~300 ELO
+- **Pattern library:** 9 definovanych (A-R), 7 s detektory — analyza 13 partii, Phase 1 hotova (commit a536845)
 
 - **Pozadi:** `docs/CONTEXT\_A\_ZAMER.md` — kompletni kontext, reserse a architektura
 
@@ -289,6 +289,21 @@ Architektonicke vzory (tools-of-tools, KB write-back, L2 Resources, session stat
 
 - **KB modul:** B2B-Knowledge-Base/02\_ANALYZY/02\_chess/ + 04\_KNOWLEDGE\_BASE/02\_chess/
 
+
+## Stav (2026-07-20)
+
+| Co | Stav |
+| - | - |
+| Tests | 15/15 pass |
+| Patterny definovane | 9 (A, B, C, G, I, O, P, Q, R) |
+| Patterny s detektorem | 7 (A, B, G, O, P, Q, R) |
+| Cached games | 13 (12W/1L, depth 12) |
+| Phase 1 | Hotova (K4.1-K8.1: hypothesis, min_games, compressibility, validator, schema) |
+| Kalibrace detectoru | Hotova (sezeni 2026-07-20: P B/G/Q bi-directional, P fix, R novy) |
+| Pipeline (13 games) | Pred kalibraci: 0 pattern matchu (prilis prisme prahy). Ceka na overeni. |
+
+Kalibracni plan: `docs/KALIBRACE_PLAN_2026-07-19.md` (v2.3, ~600 lines).
+Session state: `.ai_state.json`
 
 ## License
 

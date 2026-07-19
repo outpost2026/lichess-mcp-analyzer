@@ -116,6 +116,16 @@ class PatternLibrary:
                 severity="low",
                 mitigation="Core strength — but prevent lost positions first",
             ),
+            PatternDef(
+                id="R",
+                name="Endgame relaxation",
+                pattern_type="author_error",
+                mechanism="Losing concentration when ahead materially in endgame — passive move throws away advantage",
+                it_analogy="Deploying to prod on Friday after a perfect sprint",
+                detection_method="endgame_positional_blunder",
+                severity="high",
+                mitigation="Before every endgame move when winning: check for opponent's counterplay first, not your own plan.",
+            ),
         ]
         for p in patterns:
             self.patterns[p.id] = p

@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "last_session": "2026-07-20",
+  "session_type": "calibration_phase1",
+  "project": "lichess-analyzer-mcp",
+  "branch": "main",
+  "commit_head": "a536845",
+  "commit_messages": [
+    "[phase1] K5.1 + K4.1 + K8.1 + K7.1 + K6.1: hypothesis flag, min_games threshold, CompressibilityValidator, sanity validator, JSON schema. Test count: 8->15, all pass.",
+    "[plan] KALIBRACE_PLAN v2.3: pridan warning-devi-llm -- scope guard proti pretazeni MCP serveru epistemologii",
+    "[plan] KALIBRACE_PLAN v2.3: 3 operacni rezimy + Reality Calibration Loop + TOT stav + Konsolidacni protokol + Gated konsolidace",
+    "[plan] KALIBRACE_PLAN v2.2 + MIKOLOV_KOMPRESE: Kompresni validace patternu",
+    "[meta] Meta-analyza metodologie a workflow: 8.36/10",
+    "[plan] KALIBRACE_PLAN v2.1: pridan autoruv filozoficky princip",
+    "[plan] KALIBRACE_PLAN v2.0: 5-vrstva architektura",
+    "[plan] Kalibracni plan pipeline: 7 kategorii chyb LLM -> 11 tasku (3 phase)",
+    "[docs] LLM differential analysis",
+    "[perf] game-level cache"
+  ],
+  "modified_files": ["src/models/pattern.py", "src/services/pattern_detector.py"],
+  "test_count": 15,
+  "all_tests_pass": true,
+  "patterns_defined": ["A", "B", "C", "G", "I", "O", "P", "Q", "R"],
+  "patterns_have_detector": ["A", "B", "G", "O", "P", "Q", "R"],
+  "calibration_fixes": [
+    "Pattern B: expanded from 'blunder' to 'blunder,mistake' to capture sub-300cp errors",
+    "Pattern G: bidirectional now detects whichever color has higher error rate (was white-only)",
+    "Pattern Q: bi-color logic (was only catching white wins)",
+    "Pattern P: replaced dead motif_type detection with tactical sequence criteria (captures+major pieces, eval>0)",
+    "Pattern R: new detector for endgame relaxation (eval_before>300, cp_loss>=300, phase=endgame)"
+  ],
+  "cached_games": 13,
+  "wins": 12,
+  "losses": 1,
+  "pending_tasks": [
+    "Run full pipeline to verify calibrated detectors return non-zero matches",
+    "Phase 2: FSRS integration + personal plan generation",
+    "Phase 3: Multi-author support + KB publication"
+  ],
+  "session_progress": "Kalibrace detectoru a pridani Pattern R dokonceno. 15 testu OK. Detektory nyni pokryvaji 7/9 definovanych patternu. Pripraveno na overovaci pipeline run."
+}

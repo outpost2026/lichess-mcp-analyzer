@@ -55,7 +55,7 @@ class PatternDetector:
         affected_games = []
         for analysis in analyses:
             for m in analysis.moves:
-                if m.classification == "blunder" and m.centipawn_loss > 150:
+                if m.classification in ("blunder", "mistake") and m.centipawn_loss > 150:
                     if "x" in m.move_san:
                         total_captures += 1
                         blunder_captures += 1
@@ -80,22 +80,36 @@ class PatternDetector:
             return None
         white_blunder_rate = sum(len(g.blunders) for g in white_analyses) / len(white_analyses)
         black_blunder_rate = sum(len(g.blunders) for g in black_analyses) / len(black_analyses)
-        if black_blunder_rate > 0 and white_blunder_rate / black_blunder_rate > 1.4:
-            return PatternMatch(
-                pattern_id="G",
-                pattern_name="Color as modulator",
-                confidence=min(white_blunder_rate / black_blunder_rate / 2, 0.95),
-                evidence=[
-                    {
-                        "white_blunder_rate": white_blunder_rate,
-                        "black_blunder_rate": black_blunder_rate,
-                    }
-                ],
-                game_ids=[g.game.id for g in white_analyses],
-                frequency=len(white_analyses),
-                severity="high",
-                hypothesis="Hypothesis: player's style shifts with color — more impulsive as White (higher blunder rate).",
+        if black_blunder_rate > 0 and white_blunder_rate > 0:
+            ratio = max(white_blunder_rate, black_blunder_rate) / min(
+                white_blunder_rate, black_blunder_rate
             )
+            dominant = "White" if white_blunder_rate > black_blunder_rate else "Black"
+            if ratio > 1.4:
+                return PatternMatch(
+                    pattern_id="G",
+                    pattern_name="Color as modulator",
+                    confidence=min(ratio / 3, 0.95),
+                    evidence=[
+                        {
+                            "white_blunder_rate": white_blunder_rate,
+                            "black_blunder_rate": black_blunder_rate,
+                            "asymmetry_ratio": round(ratio, 2),
+                            "dominant_side": dominant,
+                        }
+                    ],
+                    game_ids=[
+                        g.game.id
+                        for g in (
+                            white_analyses
+                            if white_blunder_rate > black_blunder_rate
+                            else black_analyses
+                        )
+                    ],
+                    frequency=int(max(white_blunder_rate, black_blunder_rate)),
+                    severity="high",
+                    hypothesis=f"Hypothesis: player's error rate shifts with color — {dominant} side has {ratio:.1f}x more blunders.",
+                )
         return None
 
     def _detect_o(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch:
@@ -127,13 +141,11 @@ class PatternDetector:
         affected = []
         for analysis in analyses:
             for m in analysis.moves:
-                if m.classification == "blunder":
-                    if (
-                        m.motif_type == "visual_illusion"
-                        or "Nxg" in m.move_san
-                        or "Bx" in m.move_san
-                    ):
-                        affected.append(analysis.game.id)
+                if m.classification in ("blunder", "mistake") and m.centipawn_loss >= 150:
+                    if "x" in m.move_san or "Q" in m.move_san or "R" in m.move_san:
+                        if m.eval_before is not None and m.eval_before > 0:
+                            affected.append(analysis.game.id)
+                            break
         if affected:
             return PatternMatch(
                 pattern_id="P",
@@ -143,7 +155,33 @@ class PatternDetector:
                 game_ids=list(set(affected)),
                 frequency=len(set(affected)),
                 severity="high",
-                hypothesis="Hypothesis: player misreads non-forcing moves as forcing sequences, overlooking counterplay.",
+                hypothesis="Hypothesis: player misreads tactical sequences involving captures or major pieces, overlooking counterplay.",
+            )
+        return None
+
+    def _detect_r(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch:
+        affected = []
+        for analysis in analyses:
+            for m in analysis.moves:
+                eb = m.eval_before if m.eval_before is not None else 0
+                if m.centipawn_loss >= 300 and eb > 300 and m.phase == "endgame":
+                    affected.append(analysis.game.id)
+                    break
+        if affected:
+            return PatternMatch(
+                pattern_id="R",
+                pattern_name="Endgame relaxation",
+                confidence=0.7,
+                evidence=[
+                    {
+                        "affected_games": len(set(affected)),
+                        "condition": "eval_before>300 AND cp_loss>=300 AND phase=endgame",
+                    }
+                ],
+                game_ids=list(set(affected)),
+                frequency=len(set(affected)),
+                severity="high",
+                hypothesis="Hypothesis: player relaxes concentration when materially ahead in endgame, making passive moves that squander the advantage.",
             )
         return None
 
@@ -151,9 +189,13 @@ class PatternDetector:
         defensive_wins = []
         for analysis in analyses:
             big_blunders = [m for m in analysis.blunders if m.centipawn_loss > 200]
-            if big_blunders and "1-0" in analysis.game.result:
-                if analysis.game.color == "white" or "0-1" in analysis.game.result:
-                    defensive_wins.append(analysis.game.id)
+            if not big_blunders:
+                continue
+            won = (analysis.game.color == "white" and "1-0" in analysis.game.result) or (
+                analysis.game.color == "black" and "0-1" in analysis.game.result
+            )
+            if won:
+                defensive_wins.append(analysis.game.id)
         if defensive_wins:
             return PatternMatch(
                 pattern_id="Q",
