@@ -33,13 +33,6 @@ PROVIDERS = [
         "base_url": "https://api.cerebras.ai/v1",
     },
     {
-        "name": "DeepSeek Chat",
-        "api_key_var": "DEEPSEEK_API_KEY",
-        "model_var": "DEEPSEEK_MODEL",
-        "default_model": "deepseek-chat",
-        "base_url": "https://api.deepseek.com/v1",
-    },
-    {
         "name": "DeepSeek V4 Flash",
         "api_key_var": "DEEPSEEK_API_KEY",
         "model_var": "DEEPSEEK_V4_MODEL",
@@ -50,6 +43,7 @@ PROVIDERS = [
 
 LLM_MAX_TOKENS = int(os.environ.get("LLM_MAX_TOKENS", "2000"))
 LLM_TEMPERATURE = float(os.environ.get("LLM_TEMPERATURE", "0.3"))
+LLM_TIMEOUT = float(os.environ.get("LLM_TIMEOUT", "60.0"))
 
 
 def list_available_providers() -> list[dict]:
@@ -115,12 +109,12 @@ def _call_llm(
         "Content-Type": "application/json",
     }
 
-    estimated_input_tokens = (len(system_prompt) + len(user_prompt)) // 4
+    estimated_input_tokens = len((system_prompt + user_prompt).encode()) // 4
     token_log["estimated_input_tokens"] = estimated_input_tokens
 
     try:
         resp = httpx.post(
-            f"{base_url}/chat/completions", headers=headers, json=payload, timeout=60.0
+            f"{base_url}/chat/completions", headers=headers, json=payload, timeout=LLM_TIMEOUT
         )
         token_log["http_status"] = resp.status_code
 

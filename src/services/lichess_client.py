@@ -49,7 +49,10 @@ def fetch_cloud_eval(fen: str) -> Optional[dict]:
     client = get_client()
     try:
         return client.analysis.get_cloud_evaluation(fen)
-    except Exception:
+    except Exception as e:
+        import logging
+
+        logging.getLogger("lichess-mcp.lichess_client").warning("cloud_eval failed: %s", e)
         return None
 
 

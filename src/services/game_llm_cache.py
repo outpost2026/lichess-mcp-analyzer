@@ -5,7 +5,7 @@ These per-game analyses are cached and reused in aggregate coaching reports.
 New games trigger per-game LLM only for themselves, not the entire dataset.
 """
 
-import os, json, hashlib, re
+import os, json, hashlib
 from typing import Optional
 from datetime import datetime, timezone
 
@@ -25,11 +25,8 @@ RULES:
 """
 
 
-def _game_cache_path(game_id: str, color: str) -> str:
-    return os.path.join(
-        CACHE_DIR,
-        f"{game_id}_{color}_d12.json",  # TODO: handle variable depth
-    )
+def _game_cache_path(game_id: str, color: str, depth: int = 12) -> str:
+    return os.path.join(CACHE_DIR, f"{game_id}_{color}_d{depth}.json")
 
 
 def _llm_cache_path(game_id: str) -> str:
@@ -40,22 +37,33 @@ def _load_stockfish_cache(game_id: str, color: str) -> Optional[dict]:
     path = _game_cache_path(game_id, color)
     if not os.path.exists(path):
         return None
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return None
 
 
 def _load_llm_cache(game_id: str) -> Optional[dict]:
     path = _llm_cache_path(game_id)
     if not os.path.exists(path):
         return None
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return None
 
 
 def _save_llm_cache(game_id: str, data: dict) -> None:
     path = _llm_cache_path(game_id)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    tmp = path + ".tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)
+    except OSError:
+        pass
 
 
 def _build_game_prompt(game_data: dict) -> str:
@@ -159,18 +167,24 @@ def analyze_game_llm(
 
 def _validate_json_output(content: str) -> Optional[dict]:
     """Validate LLM output is parseable JSON. Extracts from ```json blocks if needed."""
-    # Direct parse attempt
     try:
         return json.loads(content)
     except json.JSONDecodeError:
         pass
-    # Try to extract JSON from markdown code block
-    match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", content)
-    if match:
-        try:
-            return json.loads(match.group(1).strip())
-        except json.JSONDecodeError:
-            pass
+    # Try to extract JSON from markdown code block — outermost ```json ... ```
+    start = content.find("```json")
+    if start == -1:
+        start = content.find("```")
+    if start != -1:
+        end = content.find("```", start + 3)
+        if end != -1:
+            block = content[start + 3 : end].strip()
+            if block.startswith("json"):
+                block = block[4:].strip()
+            try:
+                return json.loads(block)
+            except json.JSONDecodeError:
+                pass
     return None
 
 
@@ -195,12 +209,17 @@ def get_all_game_summaries(game_ids: list[str]) -> list[dict]:
     for gid in game_ids:
         cached = _load_llm_cache(gid)
         stockfish = None
-        # Find stockfish cache for this game
-        for fname in os.listdir(CACHE_DIR):
-            if fname.startswith(gid) and fname.endswith(".json") and "_llm" not in fname:
-                with open(os.path.join(CACHE_DIR, fname), "r", encoding="utf-8") as f:
-                    stockfish = json.load(f)
-                break
+        try:
+            for fname in os.listdir(CACHE_DIR):
+                if fname.startswith(gid) and fname.endswith(".json") and "_llm" not in fname:
+                    try:
+                        with open(os.path.join(CACHE_DIR, fname), "r", encoding="utf-8") as f:
+                            stockfish = json.load(f)
+                    except (json.JSONDecodeError, OSError):
+                        pass
+                    break
+        except FileNotFoundError:
+            pass
         if stockfish:
             g = stockfish.get("game", {})
             results.append(

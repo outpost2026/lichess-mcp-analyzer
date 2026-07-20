@@ -1,8 +1,9 @@
 {
-  "session_summary": "Fixed per-game LLM low SNR bug: wrong key names in _build_game_prompt() (move_number->ply, san->move_san, cp_loss->centipawn_loss). Fixed accuracy=0.0 and empty phase_stats by adding _compute_accuracy() and _compute_phase_stats() to GameAnalysis.auto_annotate(). Repaired 18 stale cache files. Created contract tests (tests/test_prompt_contract.py, 13 tests) that verify key consistency between Stockfish→JSON→LLM prompt. GT-059, P44 added to postmortem.",
-  "last_gt": "GT-059",
-  "last_p": "P44",
-  "tests_passing": "28/28",
+  "session_summary": "Portfolio audit v2: 40+ nalezu v lichess-analyzer. HIGH fixy: I/O try/except v game_llm_cache (L3), workspace_info private API fallback (L4), pattern_detector centipawn thresholds (L5), thread-safe get_engine + atexit (L7/L8). MEDIUM fixy: logger lazy init (M1), atomic write cache (M2), os.listdir guard (M3), phase_acpl KeyError guard (M4), match_patterns double sort (M6), remove emoji (M7), STOCKFISH_SEARCH_DIRS env (M8), DeepSeek Chat removal (M9), pyproject.toml ruff+dep cleanup (M10/M12/L02/L03/L04), LLM_TIMEOUT env (L08). LOW fixy: llm_client token estimate (L05), lichess_client logging (L17), _validate_json_output regex fix (L14), README test count+pattern count (L11/L12), removed tests/__init__.py (L10), engine_client ThreadPoolExecutor helper (L16). CI+generate_dummy_cache script fix already committed.",
+  "last_gt": "GT-060",
+  "last_p": "P45",
+  "tests_passing": "33/33",
   "contract_tests": "13",
+  "engine_mock_tests": "5",
   "cache_fixed": "18 files"
 }

@@ -21,9 +21,9 @@ def diagnose(analyses: list[GameAnalysis], username: str) -> WeaknessReport:
         for m in analysis.moves:
             total_acpl_sum += m.centipawn_loss
             move_count += 1
-            phase_acpl[m.phase].append(m.centipawn_loss)
+            phase_acpl.setdefault(m.phase, []).append(m.centipawn_loss)
             if m.classification in ("blunder", "mistake"):
-                phase_blunders[m.phase] += 1
+                phase_blunders[m.phase] = phase_blunders.get(m.phase, 0) + 1
         opening_name = analysis.game.opening
         if opening_name:
             if opening_name not in openings:

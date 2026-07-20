@@ -29,13 +29,17 @@ from src.tools import import_pgn
 from src.resources import analysis_resources
 from src.resources import pattern_resources
 
-# API key health check at startup
-from src.services.llm_client import verify_api_keys
+# API key health check at startup (lazy — only validates env var presence, no network call)
+from src.services.llm_client import list_available_providers
 
-_key_status = verify_api_keys()
-for ks in _key_status:
-    status = "✅" if ks["valid"] else "❌"
-    print(f"[server] API key {status} {ks['provider']}: {ks.get('error', 'ok')}", file=sys.stderr)
+_key_available = list_available_providers()
+for ka in _key_available:
+    print(f"[server] API key found: {ka['provider']}", file=sys.stderr)
+if not _key_available:
+    print(
+        "[server] WARNING: No LLM API keys configured — coaching will use fallback only",
+        file=sys.stderr,
+    )
 
 
 def main():

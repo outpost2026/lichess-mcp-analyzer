@@ -8,8 +8,6 @@ dependencies = [
     "berserk>=0.14.0",
     "chess>=1.11.0,<2",
     "httpx>=0.28.0",
-    "fsrs>=4.0.0",
-    "openai>=1.0.0",
 ]
 
 [project.scripts]
@@ -19,9 +17,17 @@ lichess-mcp = "src.server:main"
 line-length = 100
 target-version = "py312"
 
+[tool.ruff.lint]
+select = ["F", "E", "W", "I", "N", "UP", "S"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S"]
+
 [dependency-groups]
 dev = [
     "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "coverage>=7",
 ]
 
 [tool.pytest.ini_options]

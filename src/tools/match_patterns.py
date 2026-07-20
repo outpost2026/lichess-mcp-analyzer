@@ -123,8 +123,7 @@ async def lichess_match_patterns(username: str, max_games: int = 20, depth: int 
         resource_key = f"{username}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
         store_patterns(resource_key, artifact)
 
-        result.sort(key=lambda x: x["severity"] == "critical", reverse=True)
-        result.sort(key=lambda x: x["confidence"], reverse=True)
+        result.sort(key=lambda x: (x["severity"] == "critical", x["confidence"]), reverse=True)
         return artifact
     except Exception as e:
         log.exception("patterns error | user=%s", username)

@@ -327,7 +327,8 @@ lichess-analyzer-mcp/
 │   └── setup\_stockfish.ps1  ← Automaticke stazeni Stockfish  
 ├── tests/  
 │   ├── test\_services.py       ← 15 unit testu (modely, komprese, validace)  
-│   └── test\_prompt\_contract.py ← 13 contract testu (schema, mapping, noise-floor)  
+│   ├── test\_prompt\_contract.py ← 13 contract testu (schema, mapping, noise-floor)  
+│   └── test\_engine\_client.py  ← 5 unit testu s mocknutym Stockfish  
 ├── docs/  
 │   ├── CONTEXT\_A\_ZAMER.md   ← Kompletni kontext a zamer projektu  
 │   └── PHASE2\_BUILD\_PLAN.md ← Build plan + MCP pitva pravidla  
@@ -417,7 +418,7 @@ Architektonicke vzory (tools-of-tools, KB write-back, L2 Resources, session stat
 
 - **Pozadi:** `docs/CONTEXT\_A\_ZAMER.md` — kompletni kontext, reserse a architektura
 
-- **MCP pravidla:** Aplikovano P1-P44 z agregovane pitevni knihy (timeout guard, structured logging, L2 Resources, encoding triad, contract testing)
+- **MCP pravidla:** Aplikovano P1-P45 z agregovane pitevni knihy (timeout guard, structured logging, L2 Resources, encoding triad, contract testing, API key health check)
 
 - **KB modul:** B2B-Knowledge-Base/02\_ANALYZY/02\_chess/ + 04\_KNOWLEDGE\_BASE/02\_chess/
 
@@ -426,7 +427,7 @@ Architektonicke vzory (tools-of-tools, KB write-back, L2 Resources, session stat
 
 | Co | Stav |
 | - | - |
-| Tests | 28/28 pass (15 unit + 13 contract) |
+| Tests | 33/33 pass (15 unit + 13 contract + 5 engine mock) |
 | Patterny definovane | 9 (A, B, C, G, I, O, P, Q, R) |
 | Patterny s detektorem | 7 (A, B, G, O, P, Q, R) |
 | Cached games | 18 (depth 12-14) |

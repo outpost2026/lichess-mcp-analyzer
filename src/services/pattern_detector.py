@@ -157,10 +157,10 @@ class PatternDetector:
         affected = []
         for analysis in analyses:
             for i, m in enumerate(analysis.moves):
-                if m.classification == "best" and m.eval_after > 0.5:
+                if m.classification == "best" and m.eval_after is not None and m.eval_after > 50:
                     if "x" in m.move_san:
                         prev_eval = m.eval_before if m.eval_before is not None else 0
-                        if prev_eval < 0.3 and m.eval_after > 1.0:
+                        if prev_eval < 30 and m.eval_after > 100:
                             bait_count += 1
                             affected.append(analysis.game.id)
         if bait_count >= 2:
@@ -215,7 +215,7 @@ class PatternDetector:
                 eval_vals = [m.eval_after for m in analysis.moves[i : i + 3]]
                 if None in eval_vals:
                     continue
-                if max(eval_vals) - min(eval_vals) < 0.3:
+                if max(eval_vals) - min(eval_vals) < 30:
                     for j in range(i + 3, min(i + 6, len(analysis.moves))):
                         if analysis.moves[j].classification in ("blunder", "mistake"):
                             affected.append(analysis.game.id)
