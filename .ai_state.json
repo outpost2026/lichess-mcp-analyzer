@@ -4,38 +4,38 @@
   "session_type": "calibration_phase1",
   "project": "lichess-analyzer-mcp",
   "branch": "main",
-  "commit_head": "a536845",
-  "commit_messages": [
-    "[phase1] K5.1 + K4.1 + K8.1 + K7.1 + K6.1: hypothesis flag, min_games threshold, CompressibilityValidator, sanity validator, JSON schema. Test count: 8->15, all pass.",
-    "[plan] KALIBRACE_PLAN v2.3: pridan warning-devi-llm -- scope guard proti pretazeni MCP serveru epistemologii",
-    "[plan] KALIBRACE_PLAN v2.3: 3 operacni rezimy + Reality Calibration Loop + TOT stav + Konsolidacni protokol + Gated konsolidace",
-    "[plan] KALIBRACE_PLAN v2.2 + MIKOLOV_KOMPRESE: Kompresni validace patternu",
-    "[meta] Meta-analyza metodologie a workflow: 8.36/10",
-    "[plan] KALIBRACE_PLAN v2.1: pridan autoruv filozoficky princip",
-    "[plan] KALIBRACE_PLAN v2.0: 5-vrstva architektura",
-    "[plan] Kalibracni plan pipeline: 7 kategorii chyb LLM -> 11 tasku (3 phase)",
-    "[docs] LLM differential analysis",
-    "[perf] game-level cache"
+  "commit_head": "10a76c4",
+  "commits_since_init": [
+    "a536845 [phase1] K5.1 + K4.1 + K8.1 + K7.1 + K6.1",
+    "5534298 [calibr] Pattern B/G/Q/P fix + R + README + .ai_state.json",
+    "686924d [docs] README: pattern detection jako kompresni model",
+    "10a76c4 [docs] README: nova sekce o kompresnim modelu (CZ+EN)"
   ],
-  "modified_files": ["src/models/pattern.py", "src/services/pattern_detector.py"],
   "test_count": 15,
   "all_tests_pass": true,
   "patterns_defined": ["A", "B", "C", "G", "I", "O", "P", "Q", "R"],
   "patterns_have_detector": ["A", "B", "G", "O", "P", "Q", "R"],
-  "calibration_fixes": [
-    "Pattern B: expanded from 'blunder' to 'blunder,mistake' to capture sub-300cp errors",
-    "Pattern G: bidirectional now detects whichever color has higher error rate (was white-only)",
-    "Pattern Q: bi-color logic (was only catching white wins)",
-    "Pattern P: replaced dead motif_type detection with tactical sequence criteria (captures+major pieces, eval>0)",
-    "Pattern R: new detector for endgame relaxation (eval_before>300, cp_loss>=300, phase=endgame)"
-  ],
-  "cached_games": 13,
-  "wins": 12,
-  "losses": 1,
+  "pipeline_verified": true,
+  "pipeline_result": {
+    "games": 13,
+    "patterns_found": 5,
+    "matches": [
+      {"id": "B", "confidence": 0.95, "severity": "high", "description": "4 blunder captures in 3 games"},
+      {"id": "G", "confidence": 0.86, "severity": "high", "description": "Black 2.6x more blunders than White"},
+      {"id": "Q", "confidence": 0.80, "severity": "low", "description": "5 defensive wins"},
+      {"id": "R", "confidence": 0.70, "severity": "high", "description": "2 endgame relaxations (eval>300 + cp_loss>=300)"},
+      {"id": "P", "confidence": 0.50, "severity": "high", "description": "3 tactical blind spots"}
+    ]
+  },
+  "config": {
+    "opencode_mcp_added": true,
+    "landing_page_updated": true,
+    "lichess_username": "systeq"
+  },
   "pending_tasks": [
-    "Run full pipeline to verify calibrated detectors return non-zero matches",
     "Phase 2: FSRS integration + personal plan generation",
-    "Phase 3: Multi-author support + KB publication"
+    "Phase 3: Multi-author support + KB publication",
+    "Run pipeline with --kb flag to persist results to B2B-Knowledge-Base"
   ],
-  "session_progress": "Kalibrace detectoru a pridani Pattern R dokonceno. 15 testu OK. Detektory nyni pokryvaji 7/9 definovanych patternu. Pripraveno na overovaci pipeline run."
+  "session_progress": "Kalibrace potvrzena pipeline runem: 0->5 patternu. MCP config pridan do opencode. Landing page: 1 radek v Core Engineering. README: nova sekce o kompresnim modelu."
 }
