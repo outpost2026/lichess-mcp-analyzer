@@ -29,6 +29,14 @@ from src.tools import import_pgn
 from src.resources import analysis_resources
 from src.resources import pattern_resources
 
+# API key health check at startup
+from src.services.llm_client import verify_api_keys
+
+_key_status = verify_api_keys()
+for ks in _key_status:
+    status = "✅" if ks["valid"] else "❌"
+    print(f"[server] API key {status} {ks['provider']}: {ks.get('error', 'ok')}", file=sys.stderr)
+
 
 def main():
     app.run()

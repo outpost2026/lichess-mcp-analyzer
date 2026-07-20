@@ -5,7 +5,7 @@ These per-game analyses are cached and reused in aggregate coaching reports.
 New games trigger per-game LLM only for themselves, not the entire dataset.
 """
 
-import os, json, hashlib
+import os, json, hashlib, re
 from typing import Optional
 from datetime import datetime, timezone
 
@@ -138,18 +138,39 @@ def analyze_game_llm(
             continue
         content, log = _call_llm(system, user, prov_cfg)
         if content:
+            parsed = _validate_json_output(content)
+            if parsed is None:
+                continue  # malformed JSON, try next provider
             result = {
                 "game_id": game_id,
                 "color": color,
                 "model": prov_cfg["name"],
                 "generated": datetime.now(timezone.utc).isoformat(),
                 "llm_output": content,
+                "llm_parsed": parsed,
                 "token_log": log,
                 "content_tag": tag,
             }
             _save_llm_cache(game_id, result)
             return result
 
+    return None
+
+
+def _validate_json_output(content: str) -> Optional[dict]:
+    """Validate LLM output is parseable JSON. Extracts from ```json blocks if needed."""
+    # Direct parse attempt
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError:
+        pass
+    # Try to extract JSON from markdown code block
+    match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", content)
+    if match:
+        try:
+            return json.loads(match.group(1).strip())
+        except json.JSONDecodeError:
+            pass
     return None
 
 

@@ -380,6 +380,92 @@ def is_llm_available() -> bool:
     return any(os.environ.get(p["api_key_var"], "") for p in PROVIDERS)
 
 
+def verify_api_keys() -> list[dict]:
+    """Lightweight health check: verify each configured API key with a minimal API call.
+    Returns list of {provider, key_set, valid, error}."""
+    import httpx
+
+    results = []
+    for prov in PROVIDERS:
+        key = os.environ.get(prov["api_key_var"], "")
+        if not key:
+            results.append(
+                {"provider": prov["name"], "key_set": False, "valid": False, "error": "No key set"}
+            )
+            continue
+        model = os.environ.get(prov["model_var"], prov["default_model"])
+        try:
+            resp = httpx.post(
+                f"{prov['base_url']}/chat/completions",
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                json={
+                    "model": model,
+                    "messages": [{"role": "user", "content": "ping"}],
+                    "max_tokens": 1,
+                },
+                timeout=10.0,
+            )
+            if resp.status_code == 200:
+                results.append(
+                    {"provider": prov["name"], "key_set": True, "valid": True, "error": None}
+                )
+            elif resp.status_code == 401:
+                results.append(
+                    {
+                        "provider": prov["name"],
+                        "key_set": True,
+                        "valid": False,
+                        "error": "Invalid API key (401)",
+                    }
+                )
+            elif resp.status_code == 402:
+                results.append(
+                    {
+                        "provider": prov["name"],
+                        "key_set": True,
+                        "valid": False,
+                        "error": "Insufficient credits (402)",
+                    }
+                )
+            elif resp.status_code == 429:
+                results.append(
+                    {
+                        "provider": prov["name"],
+                        "key_set": True,
+                        "valid": True,
+                        "error": "Rate limited (429) — key valid but throttled",
+                    }
+                )
+            else:
+                results.append(
+                    {
+                        "provider": prov["name"],
+                        "key_set": True,
+                        "valid": False,
+                        f"error": f"HTTP {resp.status_code}",
+                    }
+                )
+        except httpx.TimeoutException:
+            results.append(
+                {
+                    "provider": prov["name"],
+                    "key_set": True,
+                    "valid": True,
+                    "error": "Timeout — provider unreachable, key assumed valid",
+                }
+            )
+        except Exception as e:
+            results.append(
+                {
+                    "provider": prov["name"],
+                    "key_set": True,
+                    "valid": False,
+                    "error": f"{type(e).__name__}: {e}",
+                }
+            )
+    return results
+
+
 def get_llm_status() -> dict:
     available = list_available_providers()
     active = None
