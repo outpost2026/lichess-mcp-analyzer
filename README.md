@@ -27,9 +27,11 @@ lichess-analyzer-mcp (Python FastMCP)
        |  
        +---\> Lichess API (berserk) -----\> lichess.org  
        +---\> Stockfish 18 (UCI) --------\> lokalni binary  
-       +---\> Pattern detector ----------\> kompresni model (Mikolov)  
-       +---\> FSRS/SM-2 engine ---------\> spaced repetition  
-       +---\> KB writer ----------------\> B2B-Knowledge-Base
+        +---\> Pattern detector ----------\> kompresni model (Mikolov)  
+        +---\> LLM reasoning (cascade) ---\> NVIDIA / Cerebras / DeepSeek V4  
+        +---\> FSRS/SM-2 engine ---------\> spaced repetition  
+        +---\> KB writer ----------------\> B2B-Knowledge-Base  
+        +---\> MD reporter ---------------\> docs/ coaching reports
 ```
 
 ## Pattern detection jako kompresni model
@@ -73,6 +75,87 @@ final_confidence = 0.5 × compression_score + 0.3 × entropy_score + 0.2 × samp
 
 Resi **small-N authority problem**: pattern je validni i pri N < 25, pokud dobre komprimuje (compression_ratio > 1.5 = signal, > 10 = silny signal, < 1.0 = noise).
 
+## LLM Reasoning Pipeline
+
+Deterministicky vystup (patterny + weakness report) je transformovan do prirozeneho treninkoveho reportu pomoci kaskady LLM provideru.
+
+### Architektura
+
+```
+Pipeline data (patterns + weakness)
+       |
+       v build_coaching_prompt()
+       |
+       v LLM cascade (prvni uspesny vyhrava)
+       |
+       +--- NVIDIA (free) ............ nemotron-3-super-120b
+       +--- Cerebras (free) .......... gpt-oss-120b
+       +--- DeepSeek V4 Flash ($) .... deepseek-v4-flash ($0.14/$0.28 per 1M tok)
+       |
+       v generate_md_report()
+       |
+       v docs/coaching_report_{user}_{ts}.md
+```
+
+Prepina se env var `DEFAULT_PROVIDER`:
+- `""` (nezadano) → NVIDIA → Cerebras → DS V4 Flash
+- `cerebras` → Cerebras → NVIDIA → DS V4 Flash
+- `deepseek` → DeepSeek V4 Flash → NVIDIA → Cerebras
+
+### Pipeline mode (monolit vs inkrementalni)
+
+`run_coaching_pipeline(mode="auto")` volí architekturu dle golden rules:
+
+| Mode | Kdy | Co dela |
+|---|---|---|
+| `auto` | default | N≤30 → monolit, N>30 → inkrementalni |
+| `mono` | rychlá analýza | 1 LLM call, raw data v promptu |
+| `incremental` | stovky her, PGN import | per-game LLM cache + agregace se summaries |
+
+Prepina se `PIPELINE_MODE` env var nebo parametrem funkce.
+Per-game LLM cache: `data/game_cache/{game_id}_llm.json`.
+
+### API klic (volitelny)
+
+Do `.env` (vsechny jsou free krome DeepSeek):
+```
+NVIDIA_API_KEY=nvapi-...
+CEREBRAS_API_KEY=csk-...
+DEEPSEEK_API_KEY=sk-...       # spolecny pro DS Chat i V4 Flash
+LLM_MAX_TOKENS=4000            # default 2000, pro plny report 4000
+```
+
+### Porovnani provideru (5 her, stejna data)
+
+| Provider | Model | Tokens | Latence | Cena/5her | SNR |
+|---|---|---|---|---|---|
+| NVIDIA | nemotron-3-super-120b-a12b | 2 597 | 17s | $0.000 | 57% |
+| Cerebras | gpt-oss-120b | 2 677 | - | $0.000 | 54% |
+| DeepSeek V4 Flash | deepseek-v4-flash | 3 876 | 31s | $0.001 | **93%** |
+
+SNR = semanticka vernost vuci vstupnim datum (konfidence %, phase ACPL, zadne inventovane patterny).
+
+### Analyza kvality
+
+| Kriterium | NVIDIA | Cerebras | DeepSeek V4 |
+|---|---|---|---|
+| Grounding k patternum | ✅ vsech 6 | ⚠️ inventuje 7. pattern | ✅ vsech 6 |
+| Konfidence % z dat | ❌ chybi | ⚠️ castecne | ✅ vsechny |
+| Phase ACPL citace | ❌ chybi | ⚠️ priblizne | ✅ presne |
+| Hallucinace | ❌ zadne | ⚠️ stredni | ✅ minimalni |
+| Koucovaci ton | formalni | stredni | **prirozeny** |
+
+**Verdikt:** DeepSeek V4 Flash = nejvyssi SNR (93%). Jediny, ktery konzistentne cituje konfidence a fázová data. NVIDIA = solidni fallback zdarma. Cerebras ma nejlepsi formatovani, ale inventuje patterny.
+
+### Cenova projekce (100 her)
+
+| Provider | Cena/100her | Pozn |
+|---|---|---|
+| NVIDIA | $0.00 | Free tier, neomezeno |
+| Cerebras | $0.00 | Free tier, neomezeno |
+| DeepSeek V4 Flash | ~$0.07 | ~1 460 her za $1 |
+| DeepSeek Chat | ~$0.24 | **ZAKAZAN** — 3.6× drazsi nez V4 Flash |
+
 ## Nastroje (8 MCP toolu)
 
 | Tool | Co dela |
@@ -85,6 +168,8 @@ Resi **small-N authority problem**: pattern je validni i pri N < 25, pokud dobre
 | `lichess\_diagnose\_player` | Diagnostikuje slabiny pres vice partii (faze, otvoreni, ACPL) |
 | `lichess\_match\_patterns` | Detekuje vzorove chyby A-Q1 z tve pattern library |
 | `lichess\_workspace\_info` | Vrati kontext pracovniho prostoru (P17) |
+| `import\_pgn` | Importuje PGN soubor jako partii |
+| `generate\_coaching\_report` | LLM reasoning nad patterny → treninkovy report |
 
 
 L2 Resources:
@@ -229,10 +314,14 @@ lichess-analyzer-mcp/
 │   ├── app.py               ← FastMCP instance  
 │   ├── server.py            ← Entry point + workspace context  
 │   ├── models/              ← Datove modely (dataclasses)  
-│   ├── services/            ← Sluzby (Lichess, Stockfish, SRS, diagnostika)  
+│   ├── services/  
+│   │   ├── llm_client.py    ← Multi-provider LLM cascade (NVIDIA/Cerebras/DeepSeek)  
+│   │   └── ...              ← Lichess, Stockfish, SRS, diagnostika  
 │   ├── tools/               ← 8 MCP toolu  
 │   ├── resources/           ← L2 Resources  
-│   └── kb/                  ← KB persistence (B2B-Knowledge-Base)  
+│   └── kb/  
+│       ├── md_reporter.py   ← Generovani MD reportu do docs/  
+│       └── ...              ← KB persistence (B2B-Knowledge-Base)  
 ├── scripts/  
 │   ├── run\_pipeline.py      ← CLI batch pipeline  
 │   └── setup\_stockfish.ps1  ← Automaticke stazeni Stockfish  
@@ -257,7 +346,9 @@ lichess-analyzer-mcp/
 | Lichess API | berserk\>=0.14.0 |
 | Sahovy engine | chess\>=1.11.0 (python-chess) + Stockfish 18 |
 | Spaced repetition | fsrs\>=4.0.0 (py-fsrs) |
-| HTTP | httpx\>=0.28.0 |
+| HTTP / LLM API | httpx\>=0.28.0 |
+| LLM providers | NVIDIA (nemotron-3-super-120b), Cerebras (gpt-oss-120b), DeepSeek (deepseek-v4-flash) |
+| LLM cascade | prvni uspesny vyhrava, prepinaci `DEFAULT_PROVIDER` env var |
 | Persistence | B2B-Knowledge-Base (JSON + Markdown) |
 
 
@@ -337,10 +428,12 @@ Architektonicke vzory (tools-of-tools, KB write-back, L2 Resources, session stat
 | Tests | 15/15 pass |
 | Patterny definovane | 9 (A, B, C, G, I, O, P, Q, R) |
 | Patterny s detektorem | 7 (A, B, G, O, P, Q, R) |
-| Cached games | 13 (12W/1L, depth 12) |
-| Phase 1 | Hotova (K4.1-K8.1: hypothesis, min_games, compressibility, validator, schema) |
-| Kalibrace detectoru | Hotova (sezeni 2026-07-20: P B/G/Q bi-directional, P fix, R novy) |
-| Pipeline (13 games) | Pred kalibraci: 0 pattern matchu (prilis prisme prahy). Ceka na overeni. |
+| Cached games | 17 (depth 12-14) |
+| Phase 1 | Hotova |
+| LLM pipeline | ✅ NVIDIA, Cerebras, DeepSeek V4 Flash funkcni |
+| LLM reporting | ✅ MD reporty do `docs/` (truncating, signal, priorita, trening) |
+| Provider switch | ✅ `DEFAULT_PROVIDER` env var (nvidia/cerebras/deepseek) |
+| DeepSeek Chat | ❌ **ZAKAZAN** — prilis drahy ($0.27/$1.10 per 1M) |
 
 Kalibracni plan: `docs/KALIBRACE_PLAN_2026-07-19.md` (v2.3, ~600 lines).
 Session state: `.ai_state.json`

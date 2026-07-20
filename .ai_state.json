@@ -1,41 +1,9 @@
 {
-  "version": 1,
-  "last_session": "2026-07-20",
-  "session_type": "calibration_phase1",
-  "project": "lichess-analyzer-mcp",
-  "branch": "main",
-  "commit_head": "10a76c4",
-  "commits_since_init": [
-    "a536845 [phase1] K5.1 + K4.1 + K8.1 + K7.1 + K6.1",
-    "5534298 [calibr] Pattern B/G/Q/P fix + R + README + .ai_state.json",
-    "686924d [docs] README: pattern detection jako kompresni model",
-    "10a76c4 [docs] README: nova sekce o kompresnim modelu (CZ+EN)"
-  ],
-  "test_count": 15,
-  "all_tests_pass": true,
-  "patterns_defined": ["A", "B", "C", "G", "I", "O", "P", "Q", "R"],
-  "patterns_have_detector": ["A", "B", "G", "O", "P", "Q", "R"],
-  "pipeline_verified": true,
-  "pipeline_result": {
-    "games": 13,
-    "patterns_found": 5,
-    "matches": [
-      {"id": "B", "confidence": 0.95, "severity": "high", "description": "4 blunder captures in 3 games"},
-      {"id": "G", "confidence": 0.86, "severity": "high", "description": "Black 2.6x more blunders than White"},
-      {"id": "Q", "confidence": 0.80, "severity": "low", "description": "5 defensive wins"},
-      {"id": "R", "confidence": 0.70, "severity": "high", "description": "2 endgame relaxations (eval>300 + cp_loss>=300)"},
-      {"id": "P", "confidence": 0.50, "severity": "high", "description": "3 tactical blind spots"}
-    ]
-  },
-  "config": {
-    "opencode_mcp_added": true,
-    "landing_page_updated": true,
-    "lichess_username": "systeq"
-  },
-  "pending_tasks": [
-    "Phase 2: FSRS integration + personal plan generation",
-    "Phase 3: Multi-author support + KB publication",
-    "Run pipeline with --kb flag to persist results to B2B-Knowledge-Base"
-  ],
-  "session_progress": "Kalibrace potvrzena pipeline runem: 0->5 patternu. MCP config pridan do opencode. Landing page: 1 radek v Core Engineering. README: nova sekce o kompresnim modelu."
+  "session_summary": "Pipeline mode monolit/inkrementalni navrzen, implementovan a otestovan. run_coaching_pipeline(mode=\"auto\") rozhoduje dle golden rules: N≤30 monolit, N>30 inkrementalni. Per-game LLM cache na disku, nulova udrzba. README a postmortem (GT-058, P43) aktualizovany. Zbyva: (1) integrovat do hlavni pipeline, (2) empiricky overit crossover point, (3) smazat docasne test soubory, (4) update README_en.md.",
+  "pipeline_mode": "auto",
+  "last_provider": "NVIDIA",
+  "games_cached": "5",
+  "gt_last": "GT-058",
+  "p_last": "P43",
+  "postmortem_version": "v2"
 }

@@ -34,9 +34,11 @@ lichess-analyzer-mcp (Python FastMCP)
        |
        +---> Lichess API (berserk) -----> lichess.org
        +---> Stockfish 18 (UCI) --------> local binary
-       +---> Pattern detector ----------> compression model (Mikolov)
-       +---> FSRS/SM-2 engine ---------> spaced repetition
-       +---> KB writer ----------------> B2B-Knowledge-Base
+        +---> Pattern detector ----------> compression model (Mikolov)
+        +---> LLM reasoning (cascade) ---> NVIDIA / Cerebras / DeepSeek V4
+        +---> FSRS/SM-2 engine ---------> spaced repetition
+        +---> KB writer ----------------> B2B-Knowledge-Base
+        +---> MD reporter ---------------> docs/ coaching reports
 ```
 
 ## Pattern detection as a compression model
@@ -82,6 +84,76 @@ Solves the **small-N authority problem**: a pattern is valid even with N < 25 if
 
 ---
 
+## LLM Reasoning Pipeline
+
+The deterministic pipeline output (patterns + weakness report) is transformed into a natural-language coaching report via a cascade of LLM providers.
+
+### Architecture
+
+```
+Pipeline data (patterns + weakness)
+       |
+       v build_coaching_prompt()
+       |
+       v LLM cascade (first success wins)
+       |
+       +--- NVIDIA (free) ............ nemotron-3-super-120b
+       +--- Cerebras (free) .......... gpt-oss-120b
+       +--- DeepSeek V4 Flash ($) .... deepseek-v4-flash ($0.14/$0.28 per 1M tok)
+       |
+       v generate_md_report()
+       |
+       v docs/coaching_report_{user}_{ts}.md
+```
+
+Switched via `DEFAULT_PROVIDER` env var:
+- `""` (unset) → NVIDIA → Cerebras → DS V4 Flash
+- `cerebras` → Cerebras → NVIDIA → DS V4 Flash
+- `deepseek` → DeepSeek V4 Flash → NVIDIA → Cerebras
+
+### API keys (optional)
+
+Add to `.env` (all providers are free except DeepSeek):
+```
+NVIDIA_API_KEY=nvapi-...
+CEREBRAS_API_KEY=csk-...
+DEEPSEEK_API_KEY=sk-...       # shared for DS Chat and V4 Flash
+LLM_MAX_TOKENS=4000            # default 2000, use 4000 for full reports
+```
+
+### Provider comparison (5 games, same data)
+
+| Provider | Model | Tokens | Latency | Cost/5games | SNR |
+|---|---|---|---|---|---|
+| NVIDIA | nemotron-3-super-120b-a12b | 2,597 | 17s | $0.000 | 57% |
+| Cerebras | gpt-oss-120b | 2,677 | - | $0.000 | 54% |
+| DeepSeek V4 Flash | deepseek-v4-flash | 3,876 | 31s | $0.001 | **93%** |
+
+SNR = semantic fidelity to input data (confidence %, phase ACPL, no hallucinated patterns).
+
+### Quality analysis
+
+| Criterion | NVIDIA | Cerebras | DeepSeek V4 |
+|---|---|---|---|
+| Pattern grounding | ✅ all 6 | ⚠️ invents 7th pattern | ✅ all 6 |
+| Confidence % from data | ❌ missing | ⚠️ partial | ✅ all present |
+| Phase ACPL citation | ❌ missing | ⚠️ approximate | ✅ exact |
+| Hallucinations | ❌ none | ⚠️ moderate | ✅ minimal |
+| Coaching tone | formal | medium | **natural** |
+
+**Verdict:** DeepSeek V4 Flash = highest SNR (93%). The only provider that consistently cites confidence and phase data. NVIDIA = solid free fallback. Cerebras has the best formatting but invents patterns.
+
+### Cost projection (100 games)
+
+| Provider | Cost/100games | Notes |
+|---|---|---|
+| NVIDIA | $0.00 | Free tier, unlimited |
+| Cerebras | $0.00 | Free tier, unlimited |
+| DeepSeek V4 Flash | ~$0.07 | ~1,460 games per $1 |
+| DeepSeek Chat | ~$0.24 | **BANNED** — 3.6× more expensive than V4 Flash |
+
+---
+
 ## Tools (8 MCP tools)
 
 | Tool | Description |
@@ -94,6 +166,8 @@ Solves the **small-N authority problem**: a pattern is valid even with N < 25 if
 | `lichess_diagnose_player` | Diagnose weaknesses across multiple games (phases, openings, ACPL) |
 | `lichess_match_patterns` | Detect A-Q1 playing patterns from your pattern library |
 | `lichess_workspace_info` | Get workspace context (P17) |
+| `import_pgn` | Import a PGN file as a game |
+| `generate_coaching_report` | LLM reasoning over patterns → coaching report |
 
 L2 Resources:
 - `lichess://analysis/{key}` — stored analysis results
@@ -236,10 +310,14 @@ lichess-analyzer-mcp/
 │   ├── app.py               ← FastMCP instance
 │   ├── server.py            ← Entry point + workspace context
 │   ├── models/              ← Data models (dataclasses)
-│   ├── services/            ← Services (Lichess, Stockfish, SRS, diagnostics)
+│   ├── services/
+│   │   ├── llm_client.py    ← Multi-provider LLM cascade (NVIDIA/Cerebras/DeepSeek)
+│   │   └── ...              ← Lichess, Stockfish, SRS, diagnostics
 │   ├── tools/               ← 8 MCP tools
 │   ├── resources/           ← L2 Resources
-│   └── kb/                  ← KB persistence (B2B-Knowledge-Base)
+│   └── kb/
+│       ├── md_reporter.py   ← MD report generation to docs/
+│       └── ...              ← KB persistence (B2B-Knowledge-Base)
 ├── scripts/
 │   ├── run_pipeline.py      ← CLI batch pipeline
 │   └── setup_stockfish.ps1  ← Automatic Stockfish download
@@ -266,7 +344,9 @@ lichess-analyzer-mcp/
 | Lichess API | berserk>=0.14.0 |
 | Chess engine | chess>=1.11.0 (python-chess) + Stockfish 18 |
 | Spaced repetition | fsrs>=4.0.0 (py-fsrs) |
-| HTTP | httpx>=0.28.0 |
+| HTTP / LLM API | httpx>=0.28.0 |
+| LLM providers | NVIDIA (nemotron-3-super-120b), Cerebras (gpt-oss-120b), DeepSeek (deepseek-v4-flash) |
+| LLM cascade | first success wins, switchable via `DEFAULT_PROVIDER` env var |
 | Persistence | B2B-Knowledge-Base (JSON + Markdown) |
 
 ---
@@ -325,7 +405,11 @@ Architectural patterns (tools-of-tools, KB write-back, L2 Resources, session sta
 
 ## References
 
-- **Pattern library:** 17 patterns (A-Q1) — analysis of 21 games, metacognition gap ~300 ELO
+- **Pattern library:** 9 patterns (A-R) — analysis of 21 games
+- **LLM pipeline:** ✅ NVIDIA, Cerebras, DeepSeek V4 Flash operational
+- **LLM reporting:** ✅ MD reports to `docs/` (summary, signal priority, training, strengths)
+- **Provider switch:** ✅ `DEFAULT_PROVIDER` env var (nvidia/cerebras/deepseek)
+- **DeepSeek Chat:** ❌ **BANNED** — too expensive ($0.27/$1.10 per 1M tokens)
 - **Background:** `docs/CONTEXT_A_ZAMER.md` (CZ)
 - **MCP rules:** P1-P28 from the aggregated post-mortem (timeout guard, structured logging, L2 Resources, encoding triad)
 - **KB module:** B2B-Knowledge-Base/02_ANALYZY/02_chess/ + 04_KNOWLEDGE_BASE/02_chess/

@@ -5,7 +5,8 @@ into human-readable coaching analysis. Never invents evidence — only
 interprets existing data. Falls back to raw data dump when LLM unavailable.
 
 Supports multiple LLM providers with cascade fallback.
-Cascade order: NVIDIA (free) -> Cerebras (free) -> DeepSeek (paid credits).
+Cascade order: NVIDIA (free) -> Cerebras (free) -> DeepSeek V4 Flash (paid).
+DeepSeek Chat je zakázán — příliš drahý ($0.27/$1.10 per 1M toků).
 Token usage is tracked per call.
 """
 
@@ -15,7 +16,6 @@ from typing import Optional
 
 # ── Provider cascade configuration ────────────────────────────────────────
 # Order matters: first provider with valid API key is tried first.
-# If it fails, cascade to next.
 
 PROVIDERS = [
     {
@@ -23,20 +23,27 @@ PROVIDERS = [
         "api_key_var": "NVIDIA_API_KEY",
         "model_var": "NVIDIA_MODEL",
         "default_model": "nvidia/nemotron-3-super-120b-a12b",
-        "base_url": "https://api.nvidia.com/v1",
+        "base_url": "https://integrate.api.nvidia.com/v1",
     },
     {
         "name": "Cerebras",
         "api_key_var": "CEREBRAS_API_KEY",
         "model_var": "CEREBRAS_MODEL",
-        "default_model": "cerebras/llama3.1-8b",
+        "default_model": "gpt-oss-120b",
         "base_url": "https://api.cerebras.ai/v1",
     },
     {
-        "name": "DeepSeek",
+        "name": "DeepSeek Chat",
         "api_key_var": "DEEPSEEK_API_KEY",
         "model_var": "DEEPSEEK_MODEL",
         "default_model": "deepseek-chat",
+        "base_url": "https://api.deepseek.com/v1",
+    },
+    {
+        "name": "DeepSeek V4 Flash",
+        "api_key_var": "DEEPSEEK_API_KEY",
+        "model_var": "DEEPSEEK_V4_MODEL",
+        "default_model": "deepseek-v4-flash",
         "base_url": "https://api.deepseek.com/v1",
     },
 ]
@@ -46,42 +53,35 @@ LLM_TEMPERATURE = float(os.environ.get("LLM_TEMPERATURE", "0.3"))
 
 
 def list_available_providers() -> list[dict]:
-    """Return list of providers that have API keys configured."""
     available = []
     for prov in PROVIDERS:
         key = os.environ.get(prov["api_key_var"], "")
         if key:
             model = os.environ.get(prov["model_var"], prov["default_model"])
-            available.append(
-                {
-                    "provider": prov["name"],
-                    "model": model,
-                    "key_set": True,
-                }
-            )
+            available.append({"provider": prov["name"], "model": model, "key_set": True})
     return available
+
+
+# Provider pricing (USD per 1M tokens) for cost estimation
+PROVIDER_PRICING = {
+    "NVIDIA": {"input": 0.0, "output": 0.0},  # free tier
+    "Cerebras": {"input": 0.0, "output": 0.0},  # free tier
+    "DeepSeek Chat": {"input": 0.27, "output": 1.10},
+    "DeepSeek V4 Flash": {"input": 0.14, "output": 0.28},
+}
+
+
+def _estimate_cost(provider_name: str, prompt_tokens: int, completion_tokens: int) -> float:
+    pricing = PROVIDER_PRICING.get(provider_name, {"input": 0, "output": 0})
+    return (prompt_tokens * pricing["input"] + completion_tokens * pricing["output"]) / 1_000_000
 
 
 # ── LLM call with token tracking ──────────────────────────────────────────
 
 
 def _call_llm(
-    system_prompt: str,
-    user_prompt: str,
-    provider_config: dict,
+    system_prompt: str, user_prompt: str, provider_config: dict
 ) -> tuple[Optional[str], dict]:
-    """Call a specific LLM provider and return (content, token_log).
-
-    token_log contains:
-      - provider: provider name
-      - model: model name
-      - prompt_tokens: input token count (from API response or estimated)
-      - completion_tokens: output token count
-      - total_tokens: sum
-      - input_chars: len(user_prompt) for debugging
-      - output_chars: len(content) for debugging
-      - error: error message if failed
-    """
     import httpx
 
     api_key = os.environ.get(provider_config["api_key_var"], "")
@@ -115,19 +115,13 @@ def _call_llm(
         "Content-Type": "application/json",
     }
 
-    # Rough token estimation (chars / 4)
     estimated_input_tokens = (len(system_prompt) + len(user_prompt)) // 4
     token_log["estimated_input_tokens"] = estimated_input_tokens
 
     try:
         resp = httpx.post(
-            f"{base_url}/chat/completions",
-            headers=headers,
-            json=payload,
-            timeout=60.0,
+            f"{base_url}/chat/completions", headers=headers, json=payload, timeout=60.0
         )
-
-        # Log HTTP status even if not 200
         token_log["http_status"] = resp.status_code
 
         if resp.status_code == 401:
@@ -143,17 +137,16 @@ def _call_llm(
         resp.raise_for_status()
         data = resp.json()
 
-        # Extract usage if available
         usage = data.get("usage", {})
         if usage:
             token_log["prompt_tokens"] = usage.get("prompt_tokens", 0)
             token_log["completion_tokens"] = usage.get("completion_tokens", 0)
             token_log["total_tokens"] = usage.get("total_tokens", 0)
 
-        # Extract content
         content = None
         if "choices" in data and len(data["choices"]) > 0:
-            content = data["choices"][0]["message"]["content"]
+            msg = data["choices"][0]["message"]
+            content = msg.get("content") or msg.get("reasoning")
         elif "content" in data and len(data.get("content", [])) > 0:
             content = data["content"][0]["text"]
         else:
@@ -166,6 +159,11 @@ def _call_llm(
                 token_log["total_tokens"] = (
                     token_log.get("estimated_input_tokens", 0) + token_log["completion_tokens"]
                 )
+
+        # Cost estimate
+        pt = token_log.get("prompt_tokens", token_log.get("estimated_input_tokens", 0))
+        ct = token_log.get("completion_tokens", 0)
+        token_log["cost_usd"] = round(_estimate_cost(provider_name, pt, ct), 6)
 
         return content, token_log
 
@@ -195,37 +193,52 @@ RULES (strict — never violate these):
 Write in Czech."""
 
 
-def _build_coaching_prompt(
+def build_coaching_prompt(
     username: str,
     games_analyzed: int,
     patterns: list[dict],
     weakness_report: Optional[dict] = None,
+    game_summaries: Optional[list[dict]] = None,
 ) -> str:
     lines = [
         f"Player: {username}",
         f"Games analyzed: {games_analyzed}",
         "",
-        "=== Pattern Detection Results ===",
     ]
+
+    # Per-game summaries (from Level 2 LLM cache) — lighter than raw data
+    if game_summaries:
+        lines.append("=== Per-Game LLM Analysis ===")
+        for gs in game_summaries:
+            gid = gs.get("game_id", "?")
+            color = gs.get("color", "?")
+            acpl = gs.get("acpl", "?")
+            blunders = gs.get("blunders", "?")
+            summary = gs.get("llm_summary", "")
+            lines.append(f"- {gid} ({color}): ACPL={acpl}, blunders={blunders}")
+            if summary:
+                lines.append(f"  Analysis: {summary}")
+            lines.append("")
+
+    lines.append("=== Pattern Detection Results ===")
     if patterns:
         for p in patterns:
-            severity = p.get("severity", "?").upper()
+            s = p.get("severity", "?").upper()
             pid = p.get("pattern_id", "?")
             name = p.get("pattern_name", "?")
             conf = p.get("confidence", "?")
             freq = p.get("frequency", "?")
-            lines.append(f"- [{severity}] {pid}: {name} (confidence: {conf}%, frequency: {freq})")
-            hypothesis = p.get("hypothesis")
-            if hypothesis:
-                lines.append(f"  Hypothesis: {hypothesis}")
-            mitigation = p.get("mitigation")
-            if mitigation:
-                lines.append(f"  Mitigation: {mitigation}")
+            lines.append(f"- [{s}] {pid}: {name} (confidence: {conf}%, frequency: {freq})")
+            h = p.get("hypothesis")
+            if h:
+                lines.append(f"  Hypothesis: {h}")
+            m = p.get("mitigation")
+            if m:
+                lines.append(f"  Mitigation: {m}")
             lines.append("")
     else:
         lines.append("(no patterns detected)")
         lines.append("")
-
     if weakness_report:
         lines.append("=== Weakness Report ===")
         wr = weakness_report
@@ -233,49 +246,33 @@ def _build_coaching_prompt(
         lines.append(f"Blunders: {wr.get('blunder_count', '?')}")
         lines.append(f"Mistakes: {wr.get('mistake_count', '?')}")
         lines.append(f"Inaccuracies: {wr.get('inaccuracy_count', '?')}")
-        phase_w = wr.get("phase_weaknesses")
-        if phase_w:
+        pw = wr.get("phase_weaknesses")
+        if pw:
             lines.append("Phase breakdown:")
-            for phase, stats in phase_w.items():
+            for phase, stats in pw.items():
                 lines.append(
-                    f"  {phase}: ACPL {stats.get('acpl', '?')}, "
-                    f"blunders {stats.get('blunders', '?')}"
+                    f"  {phase}: ACPL {stats.get('acpl', '?')}, blunders {stats.get('blunders', '?')}"
                 )
         leaky = wr.get("leaky_openings")
         if leaky:
             lines.append("Leaky openings:")
             for o in leaky:
                 lines.append(
-                    f"  {o.get('name', '?')}: {o.get('games', '?')} games, "
-                    f"{o.get('blunders', '?')} blunders"
+                    f"  {o.get('name', '?')}: {o.get('games', '?')} games, {o.get('blunders', '?')} blunders"
                 )
-        top_w = wr.get("top_weaknesses")
-        if top_w:
+        tw = wr.get("top_weaknesses")
+        if tw:
             lines.append("Top weaknesses:")
-            for w in top_w:
+            for w in tw:
                 lines.append(f"  - {w}")
-
     lines.append("")
     lines.append("=== INSTRUCTIONS ===")
     lines.append("Produce a coaching report with these sections:")
-    lines.append(
-        "1. **Summary** (2-3 sentences — overall player profile "
-        "based strictly on detected patterns)"
-    )
-    lines.append(
-        "2. **Priority Issues** (ranked by severity x frequency — "
-        "bullet points with explanation tied to specific patterns)"
-    )
-    lines.append(
-        "3. **Training Recommendations** (concrete, actionable — "
-        "openings to study, tactics focus, endgame drills)"
-    )
-    lines.append("4. **Strengths** (patterns that show good play, or absence of negative patterns)")
-    lines.append(
-        "5. **Next Session Focus** (single most important thing "
-        "to work on before next play session)"
-    )
-
+    lines.append("1. **Summary** (2-3 sentences)")
+    lines.append("2. **Priority Issues** (ranked by severity x frequency)")
+    lines.append("3. **Training Recommendations** (concrete, actionable)")
+    lines.append("4. **Strengths** (patterns that show good play)")
+    lines.append("5. **Next Session Focus**")
     return "\n".join(lines)
 
 
@@ -283,10 +280,7 @@ def _build_coaching_prompt(
 
 
 def _fallback_report(
-    username: str,
-    games_analyzed: int,
-    patterns: list[dict],
-    weakness_report: Optional[dict] = None,
+    username: str, games_analyzed: int, patterns: list[dict], weakness_report: Optional[dict] = None
 ) -> str:
     lines = [
         f"# Coaching Report: {username}",
@@ -301,14 +295,14 @@ def _fallback_report(
     if patterns:
         lines.append("### Detected Patterns")
         for p in patterns:
-            severity = p.get("severity", "?").upper()
+            s = p.get("severity", "?").upper()
             pid = p.get("pattern_id", "?")
             name = p.get("pattern_name", "?")
             conf = p.get("confidence", "?")
-            lines.append(f"- **[{severity}] {pid}: {name}** — confidence {conf}%")
-            hypothesis = p.get("hypothesis")
-            if hypothesis:
-                lines.append(f"  -> {hypothesis}")
+            lines.append(f"- **[{s}] {pid}: {name}** — confidence {conf}%")
+            h = p.get("hypothesis")
+            if h:
+                lines.append(f"  -> {h}")
         lines.append("")
     if weakness_report:
         lines.append("### Weakness Report")
@@ -329,57 +323,38 @@ def generate_coaching_report_with_logs(
     patterns: list[dict],
     weakness_report: Optional[dict] = None,
     cascade_order: Optional[list[str]] = None,
+    game_summaries: Optional[list[dict]] = None,
 ) -> tuple[str, list[dict]]:
-    """Generate coaching report with token logging and provider cascade.
-
-    Tries providers in cascade_order (default: NVIDIA -> Cerebras -> DeepSeek).
-    Returns (report_text, cascade_log) where cascade_log is a list of
-    per-provider attempt logs with token usage.
-
-    Args:
-        username: Player's Lichess username
-        games_analyzed: Number of games analyzed
-        patterns: List of PatternMatch dicts from pipeline
-        weakness_report: Optional WeaknessReport dict
-        cascade_order: List of provider names to try (e.g. ["NVIDIA", "Cerebras", "DeepSeek"])
-                       If None, uses all configured providers in defined order.
-    """
     if cascade_order is None:
-        cascade_order = ["NVIDIA", "Cerebras", "DeepSeek"]
+        default = os.environ.get("DEFAULT_PROVIDER", "").strip().lower()
+        if default == "cerebras":
+            cascade_order = ["Cerebras", "NVIDIA", "DeepSeek V4 Flash"]
+        elif default == "deepseek":
+            cascade_order = ["DeepSeek V4 Flash", "NVIDIA", "Cerebras"]
+        else:
+            cascade_order = ["NVIDIA", "Cerebras", "DeepSeek V4 Flash"]
 
-    user_prompt = _build_coaching_prompt(username, games_analyzed, patterns, weakness_report)
+    user_prompt = build_coaching_prompt(
+        username, games_analyzed, patterns, weakness_report, game_summaries
+    )
     cascade_log = []
 
     for order_name in cascade_order:
         provider_config = next((p for p in PROVIDERS if p["name"] == order_name), None)
         if not provider_config:
             cascade_log.append(
-                {
-                    "provider": order_name,
-                    "skipped": True,
-                    "error": f"Unknown provider in config",
-                }
+                {"provider": order_name, "skipped": True, "error": "Unknown provider"}
             )
             continue
-
         api_key = os.environ.get(provider_config["api_key_var"], "")
         if not api_key:
-            cascade_log.append(
-                {
-                    "provider": order_name,
-                    "skipped": True,
-                    "error": "No API key configured",
-                }
-            )
+            cascade_log.append({"provider": order_name, "skipped": True, "error": "No API key"})
             continue
-
         content, token_log = _call_llm(COACHING_SYSTEM_PROMPT, user_prompt, provider_config)
         cascade_log.append(token_log)
-
         if content is not None:
             return content, cascade_log
 
-    # All providers failed
     fallback = _fallback_report(username, games_analyzed, patterns, weakness_report)
     return fallback, cascade_log
 
@@ -389,29 +364,99 @@ def generate_coaching_report(
     games_analyzed: int,
     patterns: list[dict],
     weakness_report: Optional[dict] = None,
+    game_summaries: Optional[list[dict]] = None,
 ) -> str:
-    """Simple wrapper — returns just the report text (no logs)."""
     report, _ = generate_coaching_report_with_logs(
-        username, games_analyzed, patterns, weakness_report
+        username,
+        games_analyzed,
+        patterns,
+        weakness_report,
+        game_summaries=game_summaries,
     )
     return report
 
 
 def is_llm_available() -> bool:
-    """Check if any LLM provider is configured."""
     return any(os.environ.get(p["api_key_var"], "") for p in PROVIDERS)
 
 
 def get_llm_status() -> dict:
-    """Return status info about all configured LLM providers."""
     available = list_available_providers()
     active = None
     for p in PROVIDERS:
         if os.environ.get(p["api_key_var"], ""):
             active = p["name"]
             break
+    mode = os.environ.get("PIPELINE_MODE", "auto")
     return {
         "available": available,
         "total_configured": len(available),
         "active_provider": active,
+        "pipeline_mode": mode,
     }
+
+
+# ── Pipeline orchestrator ──────────────────────────────────────────────────
+
+
+def run_coaching_pipeline(
+    username: str,
+    game_ids: list[str],
+    game_colors: Optional[list[str]] = None,
+    patterns: Optional[list[dict]] = None,
+    weakness_report: Optional[dict] = None,
+    cascade_order: Optional[list[str]] = None,
+    mode: str = "auto",
+    force_llm_cache: bool = False,
+) -> tuple[str, list[dict], dict]:
+    """Orchestruje LLM cast pipeline dle zvoleneho rezimu.
+
+    Mode:
+      "auto"        — N≤30 → mono, N>30 → incremental
+      "mono"        — jeden LLM call s raw daty (monolit)
+      "incremental" — per-game LLM cache + aggregate se summaries
+
+    Returns: (report, cascade_log, meta)
+      meta = {"mode": str, "games_analyzed": int, "per_game_calls": int, "per_game_tokens": int}
+    """
+    from src.services.game_llm_cache import analyze_game_llm, get_all_game_summaries
+
+    n = len(game_ids)
+    env_mode = os.environ.get("PIPELINE_MODE", "").strip().lower()
+    effective_mode = (
+        mode if mode != "auto" else (env_mode or ("mono" if n <= 30 else "incremental"))
+    )
+
+    meta = {"mode": effective_mode, "games_analyzed": n, "per_game_calls": 0, "per_game_tokens": 0}
+
+    if effective_mode == "mono":
+        report, log = generate_coaching_report_with_logs(
+            username=username,
+            games_analyzed=n,
+            patterns=patterns or [],
+            weakness_report=weakness_report,
+            cascade_order=cascade_order,
+            game_summaries=None,
+        )
+        return report, log, meta
+
+    # incremental
+    colors = game_colors or ["white"] * n
+    per_game_tokens = 0
+    for i, gid in enumerate(game_ids):
+        result = analyze_game_llm(gid, colors[i], force=force_llm_cache)
+        if result and result.get("token_log"):
+            per_game_tokens += result["token_log"].get("total_tokens", 0)
+        meta["per_game_calls"] += 1
+
+    summaries = get_all_game_summaries(game_ids)
+    report, log = generate_coaching_report_with_logs(
+        username=username,
+        games_analyzed=n,
+        patterns=patterns or [],
+        weakness_report=weakness_report,
+        cascade_order=cascade_order,
+        game_summaries=summaries,
+    )
+    meta["per_game_tokens"] = per_game_tokens
+    return report, log, meta
