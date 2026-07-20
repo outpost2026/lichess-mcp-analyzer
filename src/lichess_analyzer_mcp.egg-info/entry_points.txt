@@ -1,0 +1,2 @@
+[console_scripts]
+lichess-mcp = src.server:main

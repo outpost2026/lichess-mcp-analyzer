@@ -29,11 +29,9 @@ from src.resources import analysis_resources
 from src.resources import pattern_resources
 
 
-async def main():
-    await app.run()
+def main():
+    app.run()
 
 
 if __name__ == "__main__":
-    import asyncio
-
-    asyncio.run(main())
+    main()
