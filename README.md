@@ -32,8 +32,46 @@ lichess-analyzer-mcp (Python FastMCP)
        +---\> KB writer ----------------\> B2B-Knowledge-Base
 ```
 
-> **Pattern detection = kompresni model.** Transformuje ~5000 tahu surovych her na ~50 tokenu strukturovaneho profilu (99% komprese). Kazdy pattern ma `compression_ratio` = raw_cost / pattern_cost; pomer > 1.5 = signal, > 10 = silny signal. Confidence se pocita jako `0.5 × compression + 0.3 × entropy + 0.2 × sample` (Mikolov, 2026). Resi small-N authority problem: pattern je validni i pri N < 25, pokud dobre komprimuje.
+## Pattern detection jako kompresni model
 
+> "Reprezentace reality minimalizujici komplexitu, predikcni chybu a vypocetni naklady."
+
+Chess pattern artifact je **kompresni model hrace**: minimalizuje komplexitu (9 patternu namisto 1000+ tahu), predikcni chybu (Stochastic cp_loss jako ground truth) a vypocetni naklady (2s cached runtime).
+
+### Overeni validity
+
+- MSE zprava: predikce tahu na zaklade patternu vs realita
+- Pokud **MSE(pattern) < MSE(prumer)**, model je validni
+- Pokud **MSE(pattern) ≈ MSE(prumer)**, pattern je noise
+
+### Ztratova komprese
+
+> "Odstraneni informace s nizkou prediktivni hodnotou."
+
+Pattern library ignoruje jednotlive tahy (sum) a extrahuje behavioralni vzory (signal). Ztratova komprese = minut detaily (presna hodnota cp_loss) kvuli zachyceni vzoru (hra preferuje X).
+
+**Pravidlo:** Pattern je dobry, pokud:
+- zachycuje chovani (signal)
+- odstranuje jednotlive chyby (sum)
+- neodstranuje strukturu (trendy, fazove slabiny)
+
+### Occamova britva
+
+> "Preferovani nejjednodussiho dostatecne presneho modelu."
+
+Kompresni pomer (`compression_ratio` = raw_cost / pattern_cost) je meritko Occamovy britvy. Ze dvou patternu, ktere stejne dobre vysvetluji data, je ten s **vyssim kompresnim pomerem spravnejsi**.
+
+Prakticky problem: Pattern H (Matematicka neznalost) a Pattern I (Material before initiative) se mohou prekryvat. Occam pres kompresi rekne:
+- Ktery ma vyssi kompresni pomer?
+- Ktery vyzaduje mene vyjimek pro stejne vysvetleni?
+
+### Confidence vzorec (Mikolov)
+
+```
+final_confidence = 0.5 × compression_score + 0.3 × entropy_score + 0.2 × sample_score
+```
+
+Resi **small-N authority problem**: pattern je validni i pri N < 25, pokud dobre komprimuje (compression_ratio > 1.5 = signal, > 10 = silny signal, < 1.0 = noise).
 
 ## Nastroje (8 MCP toolu)
 
@@ -251,7 +289,7 @@ Pri navrhu architektury jsme zkoumali 10+ existujicich chess MCP serveru na GitH
 | [chess-com-lichess-org-mcp](https://github.com/) | ~120 | Siroky Lichess API wrapper (54 toolu) — inspirace pro tool design |
 
 
-**Co nasi architekturu odlisuje:** kombinace pattern detection library jako **kompresniho modelu hrace** (Mikolov: patterns komprimuji 5000 tahu na ~50 tokenu, confidence pres compression_ratio), FSRS spaced repetition na osobni chyby, cross-game diagnostiky a KB persistence v jednom MCP serveru.
+**Co nasi architekturu odlisuje:** kombinace pattern detection library jako **kompresniho modelu hrace** (viz sekce "Pattern detection jako kompresni model" — MSE overeni, ztratova komprese, Occamova britva, confidence pres compression_ratio), FSRS spaced repetition na osobni chyby, cross-game diagnostiky a KB persistence v jednom MCP serveru.
 
 ### Stavba a debug engine integrace
 

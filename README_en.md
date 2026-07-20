@@ -34,10 +34,51 @@ lichess-analyzer-mcp (Python FastMCP)
        |
        +---> Lichess API (berserk) -----> lichess.org
        +---> Stockfish 18 (UCI) --------> local binary
-       +---> Pattern detector ----------> 17 patterns A-Q1
+       +---> Pattern detector ----------> compression model (Mikolov)
        +---> FSRS/SM-2 engine ---------> spaced repetition
        +---> KB writer ----------------> B2B-Knowledge-Base
 ```
+
+## Pattern detection as a compression model
+
+> "A representation of reality that minimizes complexity, prediction error, and computational cost."
+
+The chess pattern artifact is a **compression model of the player**: it minimizes complexity (9 patterns instead of 1000+ moves), prediction error (Stockfish cp_loss as ground truth), and computational cost (2s cached runtime).
+
+### Validation
+
+- MSE feedback: predict moves based on patterns vs. reality
+- If **MSE(pattern) < MSE(average)**, the model is valid
+- If **MSE(pattern) ≈ MSE(average)**, the pattern is noise
+
+### Lossy compression
+
+> "Removing information with low predictive value."
+
+The pattern library discards individual moves (noise) and extracts behavioral patterns (signal). Lossy compression in chess = lose details (exact cp_loss value) to capture the pattern (the player prefers X).
+
+**Rule:** A pattern is good if it:
+- captures behavior (signal)
+- removes individual errors (noise)
+- preserves structure (trends, phase weaknesses)
+
+### Occam's razor
+
+> "Prefer the simplest sufficiently accurate model."
+
+Compression ratio (`compression_ratio` = raw_cost / pattern_cost) is the measure of Occam's razor. Given two patterns that explain the data equally well, the one with the **higher compression ratio is more correct**.
+
+Practical problem: Pattern H (Mathematical naivete) and Pattern I (Material before initiative) may overlap. Occam via compression asks:
+- Which has the higher compression ratio?
+- Which requires fewer exceptions for the same explanation?
+
+### Confidence formula (Mikolov)
+
+```
+final_confidence = 0.5 × compression_score + 0.3 × entropy_score + 0.2 × sample_score
+```
+
+Solves the **small-N authority problem**: a pattern is valid even with N < 25 if it compresses well (compression_ratio > 1.5 = signal, > 10 = strong signal, < 1.0 = noise).
 
 ---
 
@@ -256,7 +297,7 @@ Lessons from TOP 4:
 | [chess-rocket](https://github.com/) | ~80 | Spaced repetition on chess mistakes (SM-2) |
 | [chess-com-lichess-org-mcp](https://github.com/) | ~120 | Broad Lichess API wrapper (54 tools) — tool design inspiration |
 
-**What sets our architecture apart:** combination of pattern detection library (17 A-Q1 patterns), FSRS spaced repetition on personal mistakes, cross-game diagnostics, and KB persistence in a single MCP server.
+**What sets our architecture apart:** combination of pattern detection library as a **compression model of the player** (see "Pattern detection as a compression model" — MSE validation, lossy compression, Occam's razor, confidence via compression_ratio), FSRS spaced repetition on personal mistakes, cross-game diagnostics, and KB persistence in a single MCP server.
 
 ### Engine integration debugging
 
