@@ -30,15 +30,15 @@ Your question (in opencode)
        |
        v JSON-RPC 2.0 (stdio)
        |
-lichess-analyzer-mcp (Python FastMCP)
-       |
-       +---> Lichess API (berserk) -----> lichess.org
-       +---> Stockfish 18 (UCI) --------> local binary
-        +---> Pattern detector ----------> compression model (Mikolov)
-        +---> LLM reasoning (cascade) ---> NVIDIA / Cerebras / DeepSeek V4
-        +---> FSRS/SM-2 engine ---------> spaced repetition
-        +---> KB writer ----------------> B2B-Knowledge-Base
-        +---> MD reporter ---------------> docs/ coaching reports
+lichess-analyzer-mcp (Python FastMCP)  
+       |  
+       +--- Lichess API (berserk) -------- lichess.org  
+       +--- Stockfish 18 (UCI) ----------- local binary  
+       +--- Pattern detector ------------- compression model (Mikolov)  
+       +--- LLM reasoning (cascade) ------ NVIDIA / Cerebras / DeepSeek V4  
+       +--- FSRS/SM-2 engine ------------- spaced repetition  
+       +--- KB writer -------------------- B2B-Knowledge-Base  
+       +--- MD reporter ------------------ docs/ coaching reports
 ```
 
 ## Pattern detection as a compression model
@@ -111,6 +111,20 @@ Switched via `DEFAULT_PROVIDER` env var:
 - `cerebras` → Cerebras → NVIDIA → DS V4 Flash
 - `deepseek` → DeepSeek V4 Flash → NVIDIA → Cerebras
 
+### Pipeline mode (monolithic vs incremental)
+
+`run_coaching_pipeline(mode="auto")` selects architecture by golden rules:
+
+| Mode | When | What it does |
+|---|---|---|
+| `auto` | default | N≤30 → monolithic, N>30 → incremental |
+| `mono` | quick analysis | 1 LLM call, raw data in prompt |
+| `incremental` | hundreds of games, PGN import | per-game LLM cache + aggregate with summaries |
+
+Switched via `PIPELINE_MODE` env var or function parameter.
+Per-game LLM cache: `data/game_cache/{game_id}_llm.json`.
+Per-game analysis (incremental) validated by contract tests (`tests/test_prompt_contract.py`).
+
 ### API keys (optional)
 
 Add to `.env` (all providers are free except DeepSeek):
@@ -154,7 +168,7 @@ SNR = semantic fidelity to input data (confidence %, phase ACPL, no hallucinated
 
 ---
 
-## Tools (8 MCP tools)
+## Tools (9 MCP tools)
 
 | Tool | Description |
 |------|-------------|
@@ -166,8 +180,7 @@ SNR = semantic fidelity to input data (confidence %, phase ACPL, no hallucinated
 | `lichess_diagnose_player` | Diagnose weaknesses across multiple games (phases, openings, ACPL) |
 | `lichess_match_patterns` | Detect A-Q1 playing patterns from your pattern library |
 | `lichess_workspace_info` | Get workspace context (P17) |
-| `import_pgn` | Import a PGN file as a game |
-| `generate_coaching_report` | LLM reasoning over patterns → coaching report |
+| `lichess_import_pgn` | Import a PGN file as a game |
 
 L2 Resources:
 - `lichess://analysis/{key}` — stored analysis results
@@ -313,7 +326,7 @@ lichess-analyzer-mcp/
 │   ├── services/
 │   │   ├── llm_client.py    ← Multi-provider LLM cascade (NVIDIA/Cerebras/DeepSeek)
 │   │   └── ...              ← Lichess, Stockfish, SRS, diagnostics
-│   ├── tools/               ← 8 MCP tools
+│   ├── tools/               ← 9 MCP tools
 │   ├── resources/           ← L2 Resources
 │   └── kb/
 │       ├── md_reporter.py   ← MD report generation to docs/
@@ -322,7 +335,8 @@ lichess-analyzer-mcp/
 │   ├── run_pipeline.py      ← CLI batch pipeline
 │   └── setup_stockfish.ps1  ← Automatic Stockfish download
 ├── tests/
-│   └── test_services.py     ← 8 unit tests
+│   ├── test_services.py       ← 15 unit tests (models, compression, validation)
+│   └── test_prompt_contract.py ← 13 contract tests (schema, mapping, noise-floor)
 ├── docs/
 │   ├── CONTEXT_A_ZAMER.md   ← Full project context (CZ)
 │   └── PHASE2_BUILD_PLAN.md ← Build plan + MCP post-mortem rules
@@ -406,12 +420,16 @@ Architectural patterns (tools-of-tools, KB write-back, L2 Resources, session sta
 ## References
 
 - **Pattern library:** 9 patterns (A-R) — analysis of 21 games
+- **Tests:** 28/28 pass (15 unit + 13 contract)
 - **LLM pipeline:** ✅ NVIDIA, Cerebras, DeepSeek V4 Flash operational
 - **LLM reporting:** ✅ MD reports to `docs/` (summary, signal priority, training, strengths)
 - **Provider switch:** ✅ `DEFAULT_PROVIDER` env var (nvidia/cerebras/deepseek)
+- **Pipeline mode:** ✅ `PIPELINE_MODE` env var (mono/incremental/auto)
+- **Contract tests:** ✅ 13 tests — Stockfish→LLM mapping, schema, noise-floor
+- **Low SNR fix:** ✅ GT-059 — accuracy, phase_stats, key mapping fixed
 - **DeepSeek Chat:** ❌ **BANNED** — too expensive ($0.27/$1.10 per 1M tokens)
 - **Background:** `docs/CONTEXT_A_ZAMER.md` (CZ)
-- **MCP rules:** P1-P28 from the aggregated post-mortem (timeout guard, structured logging, L2 Resources, encoding triad)
+- **MCP rules:** P1-P44 from the aggregated post-mortem (timeout guard, structured logging, L2 Resources, encoding triad, contract testing)
 - **KB module:** B2B-Knowledge-Base/02_ANALYZY/02_chess/ + 04_KNOWLEDGE_BASE/02_chess/
 
 ---
