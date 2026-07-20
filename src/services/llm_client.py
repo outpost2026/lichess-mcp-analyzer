@@ -3,16 +3,181 @@
 Transforms deterministic pipeline output (PatternMatch[], WeaknessReport)
 into human-readable coaching analysis. Never invents evidence — only
 interprets existing data. Falls back to raw data dump when LLM unavailable.
+
+Supports multiple LLM providers with cascade fallback.
+Cascade order: NVIDIA (free) -> Cerebras (free) -> DeepSeek (paid credits).
+Token usage is tracked per call.
 """
 
 import os
+import json
 from typing import Optional
 
-LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
-LLM_MODEL = os.environ.get("LLM_MODEL", "gpt-4o")
-LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "https://api.openai.com/v1")
+# ── Provider cascade configuration ────────────────────────────────────────
+# Order matters: first provider with valid API key is tried first.
+# If it fails, cascade to next.
+
+PROVIDERS = [
+    {
+        "name": "NVIDIA",
+        "api_key_var": "NVIDIA_API_KEY",
+        "model_var": "NVIDIA_MODEL",
+        "default_model": "nvidia/nemotron-3-super-120b-a12b",
+        "base_url": "https://api.nvidia.com/v1",
+    },
+    {
+        "name": "Cerebras",
+        "api_key_var": "CEREBRAS_API_KEY",
+        "model_var": "CEREBRAS_MODEL",
+        "default_model": "cerebras/llama3.1-8b",
+        "base_url": "https://api.cerebras.ai/v1",
+    },
+    {
+        "name": "DeepSeek",
+        "api_key_var": "DEEPSEEK_API_KEY",
+        "model_var": "DEEPSEEK_MODEL",
+        "default_model": "deepseek-chat",
+        "base_url": "https://api.deepseek.com/v1",
+    },
+]
+
 LLM_MAX_TOKENS = int(os.environ.get("LLM_MAX_TOKENS", "2000"))
 LLM_TEMPERATURE = float(os.environ.get("LLM_TEMPERATURE", "0.3"))
+
+
+def list_available_providers() -> list[dict]:
+    """Return list of providers that have API keys configured."""
+    available = []
+    for prov in PROVIDERS:
+        key = os.environ.get(prov["api_key_var"], "")
+        if key:
+            model = os.environ.get(prov["model_var"], prov["default_model"])
+            available.append(
+                {
+                    "provider": prov["name"],
+                    "model": model,
+                    "key_set": True,
+                }
+            )
+    return available
+
+
+# ── LLM call with token tracking ──────────────────────────────────────────
+
+
+def _call_llm(
+    system_prompt: str,
+    user_prompt: str,
+    provider_config: dict,
+) -> tuple[Optional[str], dict]:
+    """Call a specific LLM provider and return (content, token_log).
+
+    token_log contains:
+      - provider: provider name
+      - model: model name
+      - prompt_tokens: input token count (from API response or estimated)
+      - completion_tokens: output token count
+      - total_tokens: sum
+      - input_chars: len(user_prompt) for debugging
+      - output_chars: len(content) for debugging
+      - error: error message if failed
+    """
+    import httpx
+
+    api_key = os.environ.get(provider_config["api_key_var"], "")
+    model = os.environ.get(provider_config["model_var"], provider_config["default_model"])
+    base_url = provider_config["base_url"]
+    provider_name = provider_config["name"]
+
+    token_log = {
+        "provider": provider_name,
+        "model": model,
+        "input_chars": len(user_prompt) + len(system_prompt),
+        "error": None,
+    }
+
+    if not api_key:
+        token_log["error"] = "No API key configured"
+        return None, token_log
+
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        "max_tokens": LLM_MAX_TOKENS,
+        "temperature": LLM_TEMPERATURE,
+    }
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    # Rough token estimation (chars / 4)
+    estimated_input_tokens = (len(system_prompt) + len(user_prompt)) // 4
+    token_log["estimated_input_tokens"] = estimated_input_tokens
+
+    try:
+        resp = httpx.post(
+            f"{base_url}/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=60.0,
+        )
+
+        # Log HTTP status even if not 200
+        token_log["http_status"] = resp.status_code
+
+        if resp.status_code == 401:
+            token_log["error"] = f"Unauthorized (401) — check API key for {provider_name}"
+            return None, token_log
+        if resp.status_code == 402:
+            token_log["error"] = f"Payment required (402) — {provider_name} credits exhausted"
+            return None, token_log
+        if resp.status_code == 429:
+            token_log["error"] = f"Rate limited (429) — {provider_name} quota exceeded"
+            return None, token_log
+
+        resp.raise_for_status()
+        data = resp.json()
+
+        # Extract usage if available
+        usage = data.get("usage", {})
+        if usage:
+            token_log["prompt_tokens"] = usage.get("prompt_tokens", 0)
+            token_log["completion_tokens"] = usage.get("completion_tokens", 0)
+            token_log["total_tokens"] = usage.get("total_tokens", 0)
+
+        # Extract content
+        content = None
+        if "choices" in data and len(data["choices"]) > 0:
+            content = data["choices"][0]["message"]["content"]
+        elif "content" in data and len(data.get("content", [])) > 0:
+            content = data["content"][0]["text"]
+        else:
+            content = str(data)
+
+        if content:
+            token_log["output_chars"] = len(content)
+            if not token_log.get("completion_tokens"):
+                token_log["completion_tokens"] = len(content) // 4
+                token_log["total_tokens"] = (
+                    token_log.get("estimated_input_tokens", 0) + token_log["completion_tokens"]
+                )
+
+        return content, token_log
+
+    except httpx.TimeoutException as e:
+        token_log["error"] = f"Timeout: {e}"
+        return None, token_log
+    except Exception as e:
+        token_log["error"] = f"{type(e).__name__}: {e}"
+        return None, token_log
+
+
+# ── Coaching prompt ────────────────────────────────────────────────────────
 
 COACHING_SYSTEM_PROMPT = """You are a chess coach analyzing a player's game data.
 You are given DETERMINISTIC data from Stockfish analysis + pattern detection.
@@ -28,37 +193,6 @@ RULES (strict — never violate these):
 7. NEVER say "you always" or "you never" — patterns are tendencies, not absolutes
 
 Write in Czech."""
-
-
-def _call_llm(system_prompt: str, user_prompt: str) -> Optional[str]:
-    """Call an OpenAI-compatible chat completion API."""
-    if not LLM_API_KEY:
-        return None
-    import httpx
-
-    try:
-        resp = httpx.post(
-            f"{LLM_BASE_URL}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {LLM_API_KEY}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": LLM_MODEL,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                "max_tokens": LLM_MAX_TOKENS,
-                "temperature": LLM_TEMPERATURE,
-            },
-            timeout=30.0,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        return data["choices"][0]["message"]["content"]
-    except Exception as e:
-        return f"[LLM error: {e}]"
 
 
 def _build_coaching_prompt(
@@ -145,17 +279,19 @@ def _build_coaching_prompt(
     return "\n".join(lines)
 
 
+# ── Fallback ───────────────────────────────────────────────────────────────
+
+
 def _fallback_report(
     username: str,
     games_analyzed: int,
     patterns: list[dict],
     weakness_report: Optional[dict] = None,
 ) -> str:
-    """Fallback report when LLM is not configured or fails."""
     lines = [
         f"# Coaching Report: {username}",
         "",
-        "_LLM coaching unavailable — set LLM_API_KEY in .env for AI-generated analysis._",
+        "_LLM coaching unavailable after cascade fallback._",
         "",
         "## Raw Pipeline Data",
         "",
@@ -181,8 +317,71 @@ def _fallback_report(
             lines.append(f"- ACPL: {acpl}")
         lines.append("")
     lines.append("---")
-    lines.append("*To enable LLM coaching: add LLM_API_KEY to .env*")
     return "\n".join(lines)
+
+
+# ── Public API ─────────────────────────────────────────────────────────────
+
+
+def generate_coaching_report_with_logs(
+    username: str,
+    games_analyzed: int,
+    patterns: list[dict],
+    weakness_report: Optional[dict] = None,
+    cascade_order: Optional[list[str]] = None,
+) -> tuple[str, list[dict]]:
+    """Generate coaching report with token logging and provider cascade.
+
+    Tries providers in cascade_order (default: NVIDIA -> Cerebras -> DeepSeek).
+    Returns (report_text, cascade_log) where cascade_log is a list of
+    per-provider attempt logs with token usage.
+
+    Args:
+        username: Player's Lichess username
+        games_analyzed: Number of games analyzed
+        patterns: List of PatternMatch dicts from pipeline
+        weakness_report: Optional WeaknessReport dict
+        cascade_order: List of provider names to try (e.g. ["NVIDIA", "Cerebras", "DeepSeek"])
+                       If None, uses all configured providers in defined order.
+    """
+    if cascade_order is None:
+        cascade_order = ["NVIDIA", "Cerebras", "DeepSeek"]
+
+    user_prompt = _build_coaching_prompt(username, games_analyzed, patterns, weakness_report)
+    cascade_log = []
+
+    for order_name in cascade_order:
+        provider_config = next((p for p in PROVIDERS if p["name"] == order_name), None)
+        if not provider_config:
+            cascade_log.append(
+                {
+                    "provider": order_name,
+                    "skipped": True,
+                    "error": f"Unknown provider in config",
+                }
+            )
+            continue
+
+        api_key = os.environ.get(provider_config["api_key_var"], "")
+        if not api_key:
+            cascade_log.append(
+                {
+                    "provider": order_name,
+                    "skipped": True,
+                    "error": "No API key configured",
+                }
+            )
+            continue
+
+        content, token_log = _call_llm(COACHING_SYSTEM_PROMPT, user_prompt, provider_config)
+        cascade_log.append(token_log)
+
+        if content is not None:
+            return content, cascade_log
+
+    # All providers failed
+    fallback = _fallback_report(username, games_analyzed, patterns, weakness_report)
+    return fallback, cascade_log
 
 
 def generate_coaching_report(
@@ -191,21 +390,28 @@ def generate_coaching_report(
     patterns: list[dict],
     weakness_report: Optional[dict] = None,
 ) -> str:
-    """Generate a human-readable coaching report from deterministic pipeline data.
-
-    Uses LLM if configured (LLM_API_KEY env var), otherwise returns
-    a formatted dump of the raw pipeline data.
-    """
-    if not LLM_API_KEY:
-        return _fallback_report(username, games_analyzed, patterns, weakness_report)
-
-    user_prompt = _build_coaching_prompt(username, games_analyzed, patterns, weakness_report)
-    result = _call_llm(COACHING_SYSTEM_PROMPT, user_prompt)
-    if result and result.startswith("[LLM error"):
-        return _fallback_report(username, games_analyzed, patterns, weakness_report)
-    return result or _fallback_report(username, games_analyzed, patterns, weakness_report)
+    """Simple wrapper — returns just the report text (no logs)."""
+    report, _ = generate_coaching_report_with_logs(
+        username, games_analyzed, patterns, weakness_report
+    )
+    return report
 
 
 def is_llm_available() -> bool:
-    """Check if LLM API key is configured."""
-    return bool(LLM_API_KEY)
+    """Check if any LLM provider is configured."""
+    return any(os.environ.get(p["api_key_var"], "") for p in PROVIDERS)
+
+
+def get_llm_status() -> dict:
+    """Return status info about all configured LLM providers."""
+    available = list_available_providers()
+    active = None
+    for p in PROVIDERS:
+        if os.environ.get(p["api_key_var"], ""):
+            active = p["name"]
+            break
+    return {
+        "available": available,
+        "total_configured": len(available),
+        "active_provider": active,
+    }
