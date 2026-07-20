@@ -2,7 +2,7 @@
 
 # Lichess MCP Analyzer
 
-**MCP server pro analyzu sachovych partii, detekci vzorovych chyb (pattern library) a spaced repetition trening.**
+**MCP server pro analyzu sachovych partii, detekci vzorovych chyb (pattern library jako kompresni model dle Mikolova) a spaced repetition trening.**
 
 
 ## Proc?
@@ -27,10 +27,12 @@ lichess-analyzer-mcp (Python FastMCP)
        |  
        +---\> Lichess API (berserk) -----\> lichess.org  
        +---\> Stockfish 18 (UCI) --------\> lokalni binary  
-       +---\> Pattern detector ----------\> 17 patternu A-Q1  
+       +---\> Pattern detector ----------\> kompresni model (Mikolov)  
        +---\> FSRS/SM-2 engine ---------\> spaced repetition  
        +---\> KB writer ----------------\> B2B-Knowledge-Base
 ```
+
+> **Pattern detection = kompresni model.** Transformuje ~5000 tahu surovych her na ~50 tokenu strukturovaneho profilu (99% komprese). Kazdy pattern ma `compression_ratio` = raw_cost / pattern_cost; pomer > 1.5 = signal, > 10 = silny signal. Confidence se pocita jako `0.5 × compression + 0.3 × entropy + 0.2 × sample` (Mikolov, 2026). Resi small-N authority problem: pattern je validni i pri N < 25, pokud dobre komprimuje.
 
 
 ## Nastroje (8 MCP toolu)
@@ -249,7 +251,7 @@ Pri navrhu architektury jsme zkoumali 10+ existujicich chess MCP serveru na GitH
 | [chess-com-lichess-org-mcp](https://github.com/) | ~120 | Siroky Lichess API wrapper (54 toolu) — inspirace pro tool design |
 
 
-**Co nasi architekturu odlisuje:** kombinace pattern detection library (17 A-Q1 patternu), FSRS spaced repetition na osobni chyby, cross-game diagnostiky a KB persistence v jednom MCP serveru.
+**Co nasi architekturu odlisuje:** kombinace pattern detection library jako **kompresniho modelu hrace** (Mikolov: patterns komprimuji 5000 tahu na ~50 tokenu, confidence pres compression_ratio), FSRS spaced repetition na osobni chyby, cross-game diagnostiky a KB persistence v jednom MCP serveru.
 
 ### Stavba a debug engine integrace
 
