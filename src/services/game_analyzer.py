@@ -10,13 +10,13 @@ from src.services.lichess_client import fetch_game_pgn
 CACHE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data", "game_cache")
 
 
-def _cache_path(game_id: str, depth: int) -> str:
-    d = os.path.join(CACHE_DIR, f"{game_id}_d{depth}.json")
+def _cache_path(game_id: str, depth: int, color: str = "white") -> str:
+    d = os.path.join(CACHE_DIR, f"{game_id}_{color}_d{depth}.json")
     return d
 
 
-def _load_cached_analysis(game_id: str, depth: int) -> GameAnalysis | None:
-    path = _cache_path(game_id, depth)
+def _load_cached_analysis(game_id: str, depth: int, color: str = "white") -> GameAnalysis | None:
+    path = _cache_path(game_id, depth, color)
     if not os.path.isfile(path):
         return None
     try:
@@ -28,7 +28,8 @@ def _load_cached_analysis(game_id: str, depth: int) -> GameAnalysis | None:
 
 def _save_cached_analysis(game_id: str, depth: int, analysis: GameAnalysis) -> None:
     os.makedirs(CACHE_DIR, exist_ok=True)
-    path = _cache_path(game_id, depth)
+    color = analysis.game.color
+    path = _cache_path(game_id, depth, color)
     try:
         with open(path, "w", encoding="utf-8") as f:
             json.dump(analysis.to_dict(), f, ensure_ascii=False)
@@ -54,7 +55,7 @@ def analyze_pgn(
                 if "/" in site:
                     game_id = site.split("/")[-1]
         if game_id:
-            cached = _load_cached_analysis(game_id, depth)
+            cached = _load_cached_analysis(game_id, depth, player_color)
             if cached is not None:
                 return cached
 
