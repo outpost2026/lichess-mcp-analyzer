@@ -16,13 +16,18 @@ class GameSummary:
     time_control: str
     date: str
     url: str
+    automatic_grab: bool = False
+    bait_trap: bool = False
+    metacognition: str = ""
+    elo_estimate: int = 0
 
     def to_dict(self) -> dict:
         return asdict(self)
 
     @staticmethod
     def from_dict(d: dict) -> "GameSummary":
-        return GameSummary(**d)
+        valid = {k: v for k, v in d.items() if k in GameSummary.__dataclass_fields__}
+        return GameSummary(**valid)
 
 
 @dataclass
@@ -72,6 +77,24 @@ class GameAnalysis:
             "inaccuracies": [m.to_dict() for m in self.inaccuracies],
             "phase_stats": self.phase_stats,
         }
+
+    def auto_annotate(self) -> None:
+        capture_blunders = [
+            m
+            for m in self.moves
+            if m.classification in ("blunder", "mistake")
+            and "x" in m.move_san
+            and m.centipawn_loss >= 100
+        ]
+        self.game.automatic_grab = len(capture_blunders) > 0
+        if self.game.opponent_rating and self.game.opponent_rating > 0:
+            self.game.elo_estimate = min(
+                max(
+                    int(self.game.opponent_rating - self.total_acpl * 0.8),
+                    800,
+                ),
+                2800,
+            )
 
     @staticmethod
     def from_dict(d: dict) -> "GameAnalysis":

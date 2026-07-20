@@ -76,6 +76,13 @@ def _run_analyze_pgn(pgn: str, player_color: str = "white", depth: int = 14) -> 
     headers = game_node.headers
     result = headers.get("Result", "*")
     site = headers.get("Site", "")
+
+    def _safe_elo(val: str) -> int:
+        try:
+            return int(val)
+        except (ValueError, TypeError):
+            return 0
+
     game_summary = GameSummary(
         id=site.split("/")[-1] if "/" in site else "",
         platform="lichess" if "lichess" in site else "chesscom",
@@ -86,12 +93,12 @@ def _run_analyze_pgn(pgn: str, player_color: str = "white", depth: int = 14) -> 
         opponent_name=headers.get("Black", "")
         if player_color == "white"
         else headers.get("White", ""),
-        opponent_rating=int(headers.get("BlackElo", 0))
+        opponent_rating=_safe_elo(headers.get("BlackElo", "0"))
         if player_color == "white"
-        else int(headers.get("WhiteElo", 0)),
-        player_rating=int(headers.get("WhiteElo", 0))
+        else _safe_elo(headers.get("WhiteElo", "0")),
+        player_rating=_safe_elo(headers.get("WhiteElo", "0"))
         if player_color == "white"
-        else int(headers.get("BlackElo", 0)),
+        else _safe_elo(headers.get("BlackElo", "0")),
         time_control=headers.get("TimeControl", ""),
         date=headers.get("Date", ""),
         url=site,
@@ -146,6 +153,7 @@ def _run_analyze_pgn(pgn: str, player_color: str = "white", depth: int = 14) -> 
         board.push(move)
     if move_count > 0:
         analysis.total_acpl = total_cp / move_count
+    analysis.auto_annotate()
     return analysis
 
 

@@ -55,7 +55,7 @@ class PatternDetector:
         affected_games = []
         for analysis in analyses:
             for m in analysis.moves:
-                if m.classification in ("blunder", "mistake") and m.centipawn_loss > 150:
+                if m.classification in ("blunder", "mistake") and m.centipawn_loss >= 100:
                     if "x" in m.move_san:
                         total_captures += 1
                         blunder_captures += 1
@@ -65,11 +65,51 @@ class PatternDetector:
                 pattern_id="B",
                 pattern_name="Automatic grab",
                 confidence=min(blunder_captures / max(total_captures, 1), 0.95),
-                evidence=[{"blunder_captures": blunder_captures, "total_captures": total_captures}],
+                evidence=[
+                    {
+                        "blunder_captures": blunder_captures,
+                        "total_captures": total_captures,
+                        "affected_games": list(set(affected_games)),
+                    }
+                ],
                 game_ids=list(set(affected_games)),
                 frequency=blunder_captures,
                 severity="high",
                 hypothesis="Hypothesis: player captures automatically without evaluating opponent's counterplay — analogous to git push --force.",
+            )
+        return None
+
+    def _detect_c(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch:
+        affected = []
+        total_tunneling = 0
+        for analysis in analyses:
+            consecutive_zone = 0
+            max_consecutive = 0
+            for m in analysis.moves:
+                if m.classification in ("blunder", "mistake") and m.centipawn_loss >= 100:
+                    consecutive_zone += 1
+                    max_consecutive = max(max_consecutive, consecutive_zone)
+                else:
+                    consecutive_zone = 0
+            if max_consecutive >= 2:
+                affected.append(analysis.game.id)
+                total_tunneling += max_consecutive
+        if affected:
+            return PatternMatch(
+                pattern_id="C",
+                pattern_name="Attention tunneling",
+                confidence=min(len(affected) / 5, 0.85),
+                evidence=[
+                    {
+                        "affected_games": len(set(affected)),
+                        "max_consecutive_blunders": total_tunneling,
+                        "detail": "Multiple consecutive errors suggest local focus overriding global evaluation",
+                    }
+                ],
+                game_ids=list(set(affected)),
+                frequency=len(set(affected)),
+                severity="medium",
+                hypothesis="Hypothesis: player fixates on one area of the board, missing counterplay elsewhere — fixing one bug while creating another.",
             )
         return None
 
@@ -110,6 +150,62 @@ class PatternDetector:
                     severity="high",
                     hypothesis=f"Hypothesis: player's error rate shifts with color — {dominant} side has {ratio:.1f}x more blunders.",
                 )
+        return None
+
+    def _detect_i(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch:
+        bait_count = 0
+        affected = []
+        for analysis in analyses:
+            for i, m in enumerate(analysis.moves):
+                if m.classification == "best" and m.eval_after > 0.5:
+                    if "x" in m.move_san:
+                        prev_eval = m.eval_before if m.eval_before is not None else 0
+                        if prev_eval < 0.3 and m.eval_after > 1.0:
+                            bait_count += 1
+                            affected.append(analysis.game.id)
+        if bait_count >= 2:
+            return PatternMatch(
+                pattern_id="I",
+                pattern_name="Bait trap",
+                confidence=min(bait_count / 5, 0.9),
+                evidence=[
+                    {
+                        "bait_captures": bait_count,
+                        "detail": "Captures that turned a slightly worse position into clear advantage — opponent likely took a poisoned pawn",
+                    }
+                ],
+                game_ids=list(set(affected)),
+                frequency=bait_count,
+                severity="low",
+                hypothesis="Hypothesis: player deliberately leaves seemingly hanging pieces to punish opponent's automatic grab — honeypot strategy.",
+            )
+        return None
+
+    def _detect_j(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch:
+        affected = []
+        block_count = 0
+        for analysis in analyses:
+            for i, m in enumerate(analysis.moves):
+                if m.classification in ("blunder", "mistake") and m.centipawn_loss >= 150:
+                    if "+" in m.move_san or "#" in m.move_san:
+                        block_count += 1
+                        affected.append(analysis.game.id)
+        if block_count >= 1:
+            return PatternMatch(
+                pattern_id="J",
+                pattern_name="Impulsive check block",
+                confidence=min(block_count / 3, 0.85),
+                evidence=[
+                    {
+                        "impulsive_blocks": block_count,
+                        "detail": "Player blocked a check with a piece instead of moving the king, leading to material loss or positional collapse",
+                    }
+                ],
+                game_ids=list(set(affected)),
+                frequency=block_count,
+                severity="high",
+                hypothesis="Hypothesis: when in check, player reflexively blocks with a piece without evaluating king safety — silencing an alert instead of fixing the root cause.",
+            )
         return None
 
     def _detect_o(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch:
@@ -159,6 +255,69 @@ class PatternDetector:
             )
         return None
 
+    def _detect_q(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch:
+        defensive_wins = []
+        for analysis in analyses:
+            big_blunders = [m for m in analysis.blunders if m.centipawn_loss > 200]
+            if not big_blunders:
+                continue
+            won = (analysis.game.color == "white" and "1-0" in analysis.game.result) or (
+                analysis.game.color == "black" and "0-1" in analysis.game.result
+            )
+            if won:
+                defensive_wins.append(analysis.game.id)
+        if defensive_wins:
+            return PatternMatch(
+                pattern_id="Q",
+                pattern_name="Active defense",
+                confidence=0.8,
+                evidence=[{"defensive_wins": len(defensive_wins)}],
+                game_ids=defensive_wins,
+                frequency=len(defensive_wins),
+                severity="low",
+                hypothesis="Hypothesis: player prefers active counterplay over passive defense, creating winning chances even in lost positions.",
+            )
+        return None
+
+    def _detect_q1(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch:
+        affected = []
+        for analysis in analyses:
+            big_blunders = [m for m in analysis.blunders if m.centipawn_loss > 300]
+            if not big_blunders:
+                continue
+            last_blunder_ply = max(m.ply for m in big_blunders)
+            subsequent_moves = [m for m in analysis.moves if m.ply > last_blunder_ply]
+            queen_exchanges = [
+                m
+                for m in subsequent_moves
+                if "Q" in m.move_san and "x" in m.move_san and "Q" in m.move_san.split("x")[-1]
+            ]
+            rejected_queen_trades = len(queen_exchanges) <= 1
+            total_subsequent = len(subsequent_moves)
+            has_checks = any("+" in m.move_san for m in subsequent_moves)
+            won_lost = (analysis.game.color == "white" and "1-0" in analysis.game.result) or (
+                analysis.game.color == "black" and "0-1" in analysis.game.result
+            )
+            if rejected_queen_trades and total_subsequent >= 10 and has_checks and won_lost:
+                affected.append(analysis.game.id)
+        if affected:
+            return PatternMatch(
+                pattern_id="Q1",
+                pattern_name="Desperate Gambit Mode",
+                confidence=0.7,
+                evidence=[
+                    {
+                        "affected_games": len(set(affected)),
+                        "detail": "After losing position, player rejected queen exchanges, kept pieces active, created checks/threats, and won",
+                    }
+                ],
+                game_ids=list(set(affected)),
+                frequency=len(set(affected)),
+                severity="low",
+                hypothesis="Hypothesis: when objectively lost, player switches to chaos mode — reject trades, create threats, exploit opponent's time pressure and automatic grabs.",
+            )
+        return None
+
     def _detect_r(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch:
         affected = []
         for analysis in analyses:
@@ -182,29 +341,5 @@ class PatternDetector:
                 frequency=len(set(affected)),
                 severity="high",
                 hypothesis="Hypothesis: player relaxes concentration when materially ahead in endgame, making passive moves that squander the advantage.",
-            )
-        return None
-
-    def _detect_q(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch:
-        defensive_wins = []
-        for analysis in analyses:
-            big_blunders = [m for m in analysis.blunders if m.centipawn_loss > 200]
-            if not big_blunders:
-                continue
-            won = (analysis.game.color == "white" and "1-0" in analysis.game.result) or (
-                analysis.game.color == "black" and "0-1" in analysis.game.result
-            )
-            if won:
-                defensive_wins.append(analysis.game.id)
-        if defensive_wins:
-            return PatternMatch(
-                pattern_id="Q",
-                pattern_name="Active defense",
-                confidence=0.8,
-                evidence=[{"defensive_wins": len(defensive_wins)}],
-                game_ids=defensive_wins,
-                frequency=len(defensive_wins),
-                severity="low",
-                hypothesis="Hypothesis: player prefers active counterplay over passive defense, creating winning chances even in lost positions.",
             )
         return None

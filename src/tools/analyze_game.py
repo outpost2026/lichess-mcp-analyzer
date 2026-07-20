@@ -31,6 +31,8 @@ async def lichess_analyze_game(
                 "result": result.game.result,
                 "opponent": result.game.opponent_name,
                 "date": result.game.date,
+                "automatic_grab": result.game.automatic_grab,
+                "elo_estimate": result.game.elo_estimate,
             },
             "stats": {
                 "total_acpl": round(result.total_acpl, 1),
@@ -40,7 +42,7 @@ async def lichess_analyze_game(
                 "total_moves": len(result.moves),
             },
             "blunders": [
-                f"Move {m.ply}: {m.move_san} (loss {m.centipawn_loss:.0f}cp)"
+                f"Move {m.ply}: {m.move_san} (loss {m.centipawn_loss:.0f}cp, phase={m.phase})"
                 for m in result.blunders[:10]
             ],
         }
