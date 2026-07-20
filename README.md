@@ -25,13 +25,13 @@ Tvoje otazka (v opencode)
        |  
 lichess-analyzer-mcp (Python FastMCP)  
        |  
-       +---\> Lichess API (berserk) -----\> lichess.org  
-       +---\> Stockfish 18 (UCI) --------\> lokalni binary  
-        +---\> Pattern detector ----------\> kompresni model (Mikolov)  
-        +---\> LLM reasoning (cascade) ---\> NVIDIA / Cerebras / DeepSeek V4  
-        +---\> FSRS/SM-2 engine ---------\> spaced repetition  
-        +---\> KB writer ----------------\> B2B-Knowledge-Base  
-        +---\> MD reporter ---------------\> docs/ coaching reports
+       +--- Lichess API (berserk) -------- lichess.org  
+       +--- Stockfish 18 (UCI) ----------- lokalni binary  
+       +--- Pattern detector ------------- kompresni model (Mikolov)  
+       +--- LLM reasoning (cascade) ------ NVIDIA / Cerebras / DeepSeek V4  
+       +--- FSRS/SM-2 engine ------------- spaced repetition  
+       +--- KB writer -------------------- B2B-Knowledge-Base  
+       +--- MD reporter ------------------ docs/ coaching reports
 ```
 
 ## Pattern detection jako kompresni model
@@ -107,13 +107,14 @@ Prepina se env var `DEFAULT_PROVIDER`:
 `run_coaching_pipeline(mode="auto")` volí architekturu dle golden rules:
 
 | Mode | Kdy | Co dela |
-|---|---|---|
+|---|---|---|---|
 | `auto` | default | N≤30 → monolit, N>30 → inkrementalni |
 | `mono` | rychlá analýza | 1 LLM call, raw data v promptu |
 | `incremental` | stovky her, PGN import | per-game LLM cache + agregace se summaries |
 
 Prepina se `PIPELINE_MODE` env var nebo parametrem funkce.
 Per-game LLM cache: `data/game_cache/{game_id}_llm.json`.
+Per-game analyza (incepční) resi Stockfish → LLM mapping pres contract testy (`tests/test_prompt_contract.py`).
 
 ### API klic (volitelny)
 
@@ -156,7 +157,7 @@ SNR = semanticka vernost vuci vstupnim datum (konfidence %, phase ACPL, zadne in
 | DeepSeek V4 Flash | ~$0.07 | ~1 460 her za $1 |
 | DeepSeek Chat | ~$0.24 | **ZAKAZAN** — 3.6× drazsi nez V4 Flash |
 
-## Nastroje (8 MCP toolu)
+## Nastroje (9 MCP toolu)
 
 | Tool | Co dela |
 | - | - |
@@ -168,8 +169,7 @@ SNR = semanticka vernost vuci vstupnim datum (konfidence %, phase ACPL, zadne in
 | `lichess\_diagnose\_player` | Diagnostikuje slabiny pres vice partii (faze, otvoreni, ACPL) |
 | `lichess\_match\_patterns` | Detekuje vzorove chyby A-Q1 z tve pattern library |
 | `lichess\_workspace\_info` | Vrati kontext pracovniho prostoru (P17) |
-| `import\_pgn` | Importuje PGN soubor jako partii |
-| `generate\_coaching\_report` | LLM reasoning nad patterny → treninkovy report |
+| `lichess\_import\_pgn` | Importuje PGN soubor jako partii |
 
 
 L2 Resources:
@@ -317,7 +317,7 @@ lichess-analyzer-mcp/
 │   ├── services/  
 │   │   ├── llm_client.py    ← Multi-provider LLM cascade (NVIDIA/Cerebras/DeepSeek)  
 │   │   └── ...              ← Lichess, Stockfish, SRS, diagnostika  
-│   ├── tools/               ← 8 MCP toolu  
+│   ├── tools/               ← 9 MCP toolu  
 │   ├── resources/           ← L2 Resources  
 │   └── kb/  
 │       ├── md_reporter.py   ← Generovani MD reportu do docs/  
@@ -326,7 +326,8 @@ lichess-analyzer-mcp/
 │   ├── run\_pipeline.py      ← CLI batch pipeline  
 │   └── setup\_stockfish.ps1  ← Automaticke stazeni Stockfish  
 ├── tests/  
-│   └── test\_services.py     ← 15 unit testu (Phase 1: K4.1-K8.1)  
+│   ├── test\_services.py       ← 15 unit testu (modely, komprese, validace)  
+│   └── test\_prompt\_contract.py ← 13 contract testu (schema, mapping, noise-floor)  
 ├── docs/  
 │   ├── CONTEXT\_A\_ZAMER.md   ← Kompletni kontext a zamer projektu  
 │   └── PHASE2\_BUILD\_PLAN.md ← Build plan + MCP pitva pravidla  
@@ -425,7 +426,7 @@ Architektonicke vzory (tools-of-tools, KB write-back, L2 Resources, session stat
 
 | Co | Stav |
 | - | - |
-| Tests | 15/15 pass |
+| Tests | 28/28 pass (15 unit + 13 contract) |
 | Patterny definovane | 9 (A, B, C, G, I, O, P, Q, R) |
 | Patterny s detektorem | 7 (A, B, G, O, P, Q, R) |
 | Cached games | 17 (depth 12-14) |
@@ -433,6 +434,9 @@ Architektonicke vzory (tools-of-tools, KB write-back, L2 Resources, session stat
 | LLM pipeline | ✅ NVIDIA, Cerebras, DeepSeek V4 Flash funkcni |
 | LLM reporting | ✅ MD reporty do `docs/` (truncating, signal, priorita, trening) |
 | Provider switch | ✅ `DEFAULT_PROVIDER` env var (nvidia/cerebras/deepseek) |
+| Pipeline mode | ✅ `PIPELINE_MODE` env var (mono/incremental/auto) |
+| Contract tests | ✅ 13 testu — Stockfish→LLM mapping, schema, noise-floor |
+| Low SNR fix | ✅ GT-059 — accuracy, phase_stats, key mapping opraveny |
 | DeepSeek Chat | ❌ **ZAKAZAN** — prilis drahy ($0.27/$1.10 per 1M) |
 
 Kalibracni plan: `docs/KALIBRACE_PLAN_2026-07-19.md` (v2.3, ~600 lines).
