@@ -2,7 +2,7 @@
 
 # Lichess MCP Analyzer
 
-**MCP server pro analyzu sachovych partii, detekci vzorovych chyb (pattern library jako kompresni model dle Mikolova) a spaced repetition trening.**
+**MCP server pro analyzu sachovych partii, detekci vzorovych chyb (pattern library jako kompresni model dle Mikolova) a spaced repetition trening (FSRS/SM-2 — algoritmy pro optimalni casovani opakovani uceni).**
 
 
 ## Proc?
@@ -40,9 +40,9 @@ lichess-analyzer-mcp (Python FastMCP)
 
 Chess pattern artifact je **kompresni model hrace**: minimalizuje komplexitu (9 patternu namisto 1000+ tahu), predikcni chybu (Stochastic cp_loss jako ground truth) a vypocetni naklady (2s cached runtime).
 
-### Overeni validity
+### Overeni validity (MSE — Mean Squared Error, stredni kvadraticka chyba)
 
-- MSE zprava: predikce tahu na zaklade patternu vs realita
+- MSE zprava: predikce tahu na zaklade patternu vs realita (Stockfish hodnoceni)
 - Pokud **MSE(pattern) < MSE(prumer)**, model je validni
 - Pokud **MSE(pattern) ≈ MSE(prumer)**, pattern je noise
 
@@ -50,7 +50,7 @@ Chess pattern artifact je **kompresni model hrace**: minimalizuje komplexitu (9 
 
 > "Odstraneni informace s nizkou prediktivni hodnotou."
 
-Pattern library ignoruje jednotlive tahy (sum) a extrahuje behavioralni vzory (signal). Ztratova komprese = minout detaily (presna hodnota cp_loss) kvuli zachyceni vzoru (hra preferuje X).
+Pattern library ignoruje jednotlive tahy (sum) a extrahuje behavioralni vzory (signal). Ztratova komprese = ztratit detaily (presna hodnota cp_loss) kvuli zachyceni vzoru (hra preferuje X).
 
 **Pravidlo:** Pattern je dobry, pokud:
 - zachycuje chovani (signal)
@@ -134,7 +134,7 @@ LLM_MAX_TOKENS=4000            # default 2000, pro plny report 4000
 | Cerebras | gpt-oss-120b | 2 677 | - | $0.000 | 54% |
 | DeepSeek V4 Flash | deepseek-v4-flash | 3 876 | 31s | $0.001 | **93%** |
 
-SNR = semanticka vernost vuci vstupnim datum (konfidence %, phase ACPL, zadne inventovane patterny).
+SNR = semanticka vernost vuci vstupnim datum (konfidence %, phase ACPL, zadne inventovane patterny). ACPL = Average Centipawn Loss — prumerna ztrata v centipawnech (setinach pesce) na tah.
 
 ### Analyza kvality
 
@@ -391,7 +391,7 @@ Behem vyvoje byly identifikovany a opraveny dve kriticke chyby v `engine\_client
 
 - **Best-move porovnani** — cp\_loss pocitan jako delta before/after, nikoliv best/actual
 
-Po oprave probehla **diferencialni analyza** proti Lichess GUI (Stockfish dev-20260609-415ff793, depth 18-22). Vysledek: ACPL MAE 3.9 oproti lichess referenci — engine je po fixu funkcne ekvivalentni.
+Po oprave probehla **diferencialni analyza** proti Lichess GUI (Stockfish dev-20260609-415ff793, depth 18-22). Vysledek: ACPL MAE (Mean Absolute Error — stredni absolutni chyba) 3.9 oproti lichess referenci — engine je po fixu funkcne ekvivalentni.
 
 Dalsi zdroje pouzite pri debugu:
 
