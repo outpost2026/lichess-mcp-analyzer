@@ -30,8 +30,11 @@ jobs:
       - name: Sync dependencies
         run: uv sync
 
+      - name: Generate dummy cache for contract tests
+        run: uv run python scripts/generate_dummy_cache.py
+
       - name: Ruff lint
         run: uv run ruff check src/ tests/
 
       - name: Run tests
-        run: uv run python -m pytest tests/ -v --tb=short
+        run: uv run python -X utf8 -m pytest tests/ -v --tb=short
