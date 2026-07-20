@@ -1,0 +1,41 @@
+{
+  "timestamp": "2026-07-20T16:33:47.675555+00:00",
+  "games": [
+    "MtEGzuvx",
+    "qmodxzNF",
+    "BAEXAHoW",
+    "AczKbLug",
+    "9PSKkXvK"
+  ],
+  "n_games": 5,
+  "monolithic": {
+    "provider": "NVIDIA",
+    "tokens": 2781,
+    "cost": 0,
+    "time_s": 25.2,
+    "lines": 34
+  },
+  "incremental": {
+    "provider": "NVIDIA",
+    "aggregate_tokens": 3800,
+    "per_game_tokens": 6323,
+    "total_tokens": 10123,
+    "cost": 0,
+    "time_s": 32.1,
+    "lines": 30,
+    "per_game_calls": 5
+  },
+  "comparison": {
+    "token_diff": 7342,
+    "token_ratio": 3.64,
+    "time_diff": 6.9,
+    "recommendation": "MONOLITHIC",
+    "reason": "N=5 je pod crossover pointem (~30). Monolit je 3.6x méne tokenů a 6.9s rychlejsí."
+  },
+  "projection_n100": {
+    "mono_tokens": 240100,
+    "incr_tokens": 133800,
+    "savings": 106300,
+    "savings_pct": 44.0
+  }
+}

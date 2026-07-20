@@ -89,15 +89,15 @@ def _build_game_prompt(game_data: dict) -> str:
     errors = []
     for b in blunders:
         errors.append(
-            f"BLUNDER: move {b.get('move_number', '?')} {b.get('san', '?')} — loss {b.get('cp_loss', '?')}cp — {b.get('phase', '?')}"
+            f"BLUNDER: move {b.get('ply', '?')} {b.get('move_san', '?')} — loss {b.get('centipawn_loss', '?')}cp — {b.get('phase', '?')}"
         )
     for m in mistakes:
         errors.append(
-            f"MISTAKE: move {m.get('move_number', '?')} {m.get('san', '?')} — loss {m.get('cp_loss', '?')}cp — {m.get('phase', '?')}"
+            f"MISTAKE: move {m.get('ply', '?')} {m.get('move_san', '?')} — loss {m.get('centipawn_loss', '?')}cp — {m.get('phase', '?')}"
         )
     for i in inaccuracies:
         errors.append(
-            f"INACC: move {i.get('move_number', '?')} {i.get('san', '?')} — loss {i.get('cp_loss', '?')}cp — {i.get('phase', '?')}"
+            f"INACC: move {i.get('ply', '?')} {i.get('move_san', '?')} — loss {i.get('centipawn_loss', '?')}cp — {i.get('phase', '?')}"
         )
 
     if errors:

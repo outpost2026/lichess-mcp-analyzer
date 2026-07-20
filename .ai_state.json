@@ -1,9 +1,8 @@
 {
-  "session_summary": "Pipeline mode monolit/inkrementalni navrzen, implementovan a otestovan. run_coaching_pipeline(mode=\"auto\") rozhoduje dle golden rules: N≤30 monolit, N>30 inkrementalni. Per-game LLM cache na disku, nulova udrzba. README a postmortem (GT-058, P43) aktualizovany. Zbyva: (1) integrovat do hlavni pipeline, (2) empiricky overit crossover point, (3) smazat docasne test soubory, (4) update README_en.md.",
-  "pipeline_mode": "auto",
-  "last_provider": "NVIDIA",
-  "games_cached": "5",
-  "gt_last": "GT-058",
-  "p_last": "P43",
-  "postmortem_version": "v2"
+  "session_summary": "Fixed per-game LLM low SNR bug: wrong key names in _build_game_prompt() (move_number->ply, san->move_san, cp_loss->centipawn_loss). Fixed accuracy=0.0 and empty phase_stats by adding _compute_accuracy() and _compute_phase_stats() to GameAnalysis.auto_annotate(). Repaired 18 stale cache files. Created contract tests (tests/test_prompt_contract.py, 13 tests) that verify key consistency between Stockfish→JSON→LLM prompt. GT-059, P44 added to postmortem.",
+  "last_gt": "GT-059",
+  "last_p": "P44",
+  "tests_passing": "28/28",
+  "contract_tests": "13",
+  "cache_fixed": "18 files"
 }

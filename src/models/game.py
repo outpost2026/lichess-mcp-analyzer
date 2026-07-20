@@ -95,6 +95,33 @@ class GameAnalysis:
                 ),
                 2800,
             )
+        self.accuracy = self._compute_accuracy()
+        self.phase_stats = self._compute_phase_stats()
+
+    def _compute_accuracy(self) -> float:
+        if not self.moves:
+            return 0.0
+        total = sum(max(0, 100 - m.centipawn_loss * 0.15) for m in self.moves)
+        return round(max(0, min(100, total / len(self.moves))), 1)
+
+    def _compute_phase_stats(self) -> dict:
+        stats = {}
+        for phase in ("opening", "middlegame", "endgame"):
+            phase_moves = [m for m in self.moves if m.phase == phase]
+            if not phase_moves:
+                continue
+            acpl = sum(m.centipawn_loss for m in phase_moves) / len(phase_moves)
+            acc = sum(max(0, 100 - m.centipawn_loss * 0.15) for m in phase_moves) / len(phase_moves)
+            errors = [
+                m for m in phase_moves if m.classification in ("blunder", "mistake", "inaccuracy")
+            ]
+            stats[phase] = {
+                "acpl": round(acpl, 1),
+                "accuracy": round(acc, 1),
+                "move_count": len(phase_moves),
+                "errors": len(errors),
+            }
+        return stats
 
     @staticmethod
     def from_dict(d: dict) -> "GameAnalysis":
