@@ -23,6 +23,7 @@ from src.tools import player_profile
 from src.tools import diagnose_player
 from src.tools import match_patterns
 from src.tools import workspace_info
+from src.tools import import_pgn
 
 # P21: L2 Resources
 from src.resources import analysis_resources
