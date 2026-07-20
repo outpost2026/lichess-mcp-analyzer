@@ -50,7 +50,7 @@ Chess pattern artifact je **kompresni model hrace**: minimalizuje komplexitu (9 
 
 > "Odstraneni informace s nizkou prediktivni hodnotou."
 
-Pattern library ignoruje jednotlive tahy (sum) a extrahuje behavioralni vzory (signal). Ztratova komprese = minut detaily (presna hodnota cp_loss) kvuli zachyceni vzoru (hra preferuje X).
+Pattern library ignoruje jednotlive tahy (sum) a extrahuje behavioralni vzory (signal). Ztratova komprese = minout detaily (presna hodnota cp_loss) kvuli zachyceni vzoru (hra preferuje X).
 
 **Pravidlo:** Pattern je dobry, pokud:
 - zachycuje chovani (signal)
@@ -114,7 +114,7 @@ Prepina se env var `DEFAULT_PROVIDER`:
 
 Prepina se `PIPELINE_MODE` env var nebo parametrem funkce.
 Per-game LLM cache: `data/game_cache/{game_id}_llm.json`.
-Per-game analyza (incepční) resi Stockfish → LLM mapping pres contract testy (`tests/test_prompt_contract.py`).
+Per-game analyza (inkrementalni) resi Stockfish → LLM mapping pres contract testy (`tests/test_prompt_contract.py`).
 
 ### API klic (volitelny)
 
@@ -143,7 +143,7 @@ SNR = semanticka vernost vuci vstupnim datum (konfidence %, phase ACPL, zadne in
 | Grounding k patternum | ✅ vsech 6 | ⚠️ inventuje 7. pattern | ✅ vsech 6 |
 | Konfidence % z dat | ❌ chybi | ⚠️ castecne | ✅ vsechny |
 | Phase ACPL citace | ❌ chybi | ⚠️ priblizne | ✅ presne |
-| Hallucinace | ❌ zadne | ⚠️ stredni | ✅ minimalni |
+| Halucinace | ❌ zadne | ⚠️ stredni | ✅ minimalni |
 | Koucovaci ton | formalni | stredni | **prirozeny** |
 
 **Verdikt:** DeepSeek V4 Flash = nejvyssi SNR (93%). Jediny, ktery konzistentne cituje konfidence a fázová data. NVIDIA = solidni fallback zdarma. Cerebras ma nejlepsi formatovani, ale inventuje patterny.
@@ -195,7 +195,7 @@ cd lichess-mcp-analyzer
 ### 2. Stahnout Stockfish
 
 ```
-powershell -File scripts\\setup\_stockfish.ps1
+powershell -File scripts\setup_stockfish.ps1
 ```
 
 Nebo stahni rucne z [official-stockfish/Stockfish](https://github.com/official-stockfish/Stockfish/releases) a vloz `stockfish.exe` do `stockfish/` adresare.
@@ -220,22 +220,22 @@ uv run python -m src.server
 Server se pripoji pres stdio. Pro opencode ho registruj v `opencode.jsonc`:
 
 ```
-"lichess-analyzer": \{  
-    "type": "local",  
-    "command": \["cesta\\\\k\\\\repo\\\\.venv\\\\Scripts\\\\python.exe", "-X", "utf8", "-m", "src.server"\],  
-    "enabled": true,  
-    "timeout": 60000  
-\}
+"lichess-analyzer": {
+    "type": "local",
+    "command": ["cesta\\k\\repo\\.venv\\Scripts\\python.exe", "-X", "utf8", "-m", "src.server"],
+    "enabled": true,
+    "timeout": 60000
+}
 ```
 
 ### 5. Nebo pouzit CLI pipeline
 
 ```
-\# Analyzuj vlastni profil (poslednich 20 partii)  
-uv run python scripts\\run\_pipeline.py outpost2026 --games 20 --depth 12  
-  
-\# Analyzuj + zapis do KB (bez --no-kb)  
-uv run python scripts\\run\_pipeline.py outpost2026 --games 10
+# Analyzuj vlastni profil (poslednich 20 partii)  
+uv run python scripts\run_pipeline.py outpost2026 --games 20 --depth 12  
+   
+# Analyzuj + zapis do KB (bez --no-kb)  
+uv run python scripts\run_pipeline.py outpost2026 --games 10
 ```
 
 
@@ -244,64 +244,64 @@ uv run python scripts\\run\_pipeline.py outpost2026 --games 10
 ### "Co je za hrace?"
 
 ```
-\> lichess\_player\_profile("outpost2026")  
+> lichess_player_profile("outpost2026")
   
-\{  
-  "username": "outpost2026",  
-  "ratings": \{  
-    "blitz": \{"rating": 1950, "games": 342\},  
-    "rapid": \{"rating": 1880, "games": 156\}  
-  \},  
-  "total\_games": 523  
-\}
+{
+  "username": "outpost2026",
+  "ratings": {
+    "blitz": {"rating": 1950, "games": 342},
+    "rapid": {"rating": 1880, "games": 156}
+  },
+  "total_games": 523
+}
 ```
 
 ### "Analyza posledni partie"
 
 ```
-\> lichess\_analyze\_game("abc12345")  
+> lichess_analyze_game("abc12345")
   
-\{  
-  "game": \{"opening": "Sicilian Defense", "result": "1-0"\},  
-  "stats": \{"total\_acpl": 45.2, "blunders": 1, "total\_moves": 42\},  
-  "blunders": \["Move 28: Nxe5 (loss 450cp)"\]  
-\}
+{
+  "game": {"opening": "Sicilian Defense", "result": "1-0"},
+  "stats": {"total_acpl": 45.2, "blunders": 1, "total_moves": 42},
+  "blunders": ["Move 28: Nxe5 (loss 450cp)"]
+}
 ```
 
 ### "Diagnoza slabin"
 
 ```
-\> lichess\_diagnose\_player("outpost2026", max\_games=15)  
+> lichess_diagnose_player("outpost2026", max_games=15)
   
-\{  
-  "total\_acpl": 62.3,  
-  "phase\_weaknesses": \{  
-    "middlegame": \{"acpl": 78.1, "blunders": 4\},  
-    "endgame": \{"acpl": 45.0, "blunders": 1\}  
-  \},  
-  "top\_weaknesses": \[  
-    "Tactical awareness in middlegame transitions",  
-    "Opening preparation: Sicilian Defense"  
-  \]  
-\}
+{
+  "total_acpl": 62.3,
+  "phase_weaknesses": {
+    "middlegame": {"acpl": 78.1, "blunders": 4},
+    "endgame": {"acpl": 45.0, "blunders": 1}
+  },
+  "top_weaknesses": [
+    "Tactical awareness in middlegame transitions",
+    "Opening preparation: Sicilian Defense"
+  ]
+}
 ```
 
 ### "Najdi vzorove chyby"
 
 ```
-\> lichess\_match\_patterns("outpost2026")  
+> lichess_match_patterns("outpost2026")
   
-\{  
-  "patterns\_detected": \[  
-    \{  
-      "pattern\_id": "B",  
-      "pattern\_name": "Automatic grab",  
-      "confidence": 85,  
-      "severity": "high",  
-      "mitigation": "3-sec pause + 'A CO ON?' before every capture"  
-    \}  
-  \]  
-\}
+{
+  "patterns_detected": [
+    {
+      "pattern_id": "B",
+      "pattern_name": "Automatic grab",
+      "confidence": 85,
+      "severity": "high",
+      "mitigation": "3-sec pause + 'A CO ON?' before every capture"
+    }
+  ]
+}
 ```
 
 
@@ -387,7 +387,7 @@ Pri navrhu architektury jsme zkoumali 10+ existujicich chess MCP serveru na GitH
 
 Behem vyvoje byly identifikovany a opraveny dve kriticke chyby v `engine\_client.py`:
 
-- **Perspektivni inverze** — cp\_loss pocitan z opacne strany (board.push() meni side-to-move)
+- **Inverze perspektivy** — cp\_loss pocitan z opacne strany (board.push() meni side-to-move)
 
 - **Best-move porovnani** — cp\_loss pocitan jako delta before/after, nikoliv best/actual
 
@@ -417,7 +417,7 @@ Architektonicke vzory (tools-of-tools, KB write-back, L2 Resources, session stat
 
 - **Pozadi:** `docs/CONTEXT\_A\_ZAMER.md` — kompletni kontext, reserse a architektura
 
-- **MCP pravidla:** Aplikovano P1-P28 z agregovane pitevni knihy (timeout guard, structured logging, L2 Resources, encoding triad)
+- **MCP pravidla:** Aplikovano P1-P44 z agregovane pitevni knihy (timeout guard, structured logging, L2 Resources, encoding triad, contract testing)
 
 - **KB modul:** B2B-Knowledge-Base/02\_ANALYZY/02\_chess/ + 04\_KNOWLEDGE\_BASE/02\_chess/
 
@@ -429,7 +429,7 @@ Architektonicke vzory (tools-of-tools, KB write-back, L2 Resources, session stat
 | Tests | 28/28 pass (15 unit + 13 contract) |
 | Patterny definovane | 9 (A, B, C, G, I, O, P, Q, R) |
 | Patterny s detektorem | 7 (A, B, G, O, P, Q, R) |
-| Cached games | 17 (depth 12-14) |
+| Cached games | 18 (depth 12-14) |
 | Phase 1 | Hotova |
 | LLM pipeline | ✅ NVIDIA, Cerebras, DeepSeek V4 Flash funkcni |
 | LLM reporting | ✅ MD reporty do `docs/` (truncating, signal, priorita, trening) |
