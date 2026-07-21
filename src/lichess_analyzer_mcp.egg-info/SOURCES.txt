@@ -5,6 +5,7 @@ src/__init__.py
 src/app.py
 src/server.py
 src/kb/__init__.py
+src/kb/md_reporter.py
 src/kb/schemas.py
 src/kb/writer.py
 src/lichess_analyzer_mcp.egg-info/PKG-INFO
@@ -28,7 +29,9 @@ src/services/compressibility_validator.py
 src/services/diagnostician.py
 src/services/engine_client.py
 src/services/game_analyzer.py
+src/services/game_llm_cache.py
 src/services/lichess_client.py
+src/services/llm_client.py
 src/services/logger.py
 src/services/pattern_detector.py
 src/services/srs_engine.py
@@ -38,8 +41,11 @@ src/tools/analyze_game.py
 src/tools/analyze_position.py
 src/tools/diagnose_player.py
 src/tools/fetch_games.py
+src/tools/import_pgn.py
 src/tools/match_patterns.py
 src/tools/opening_explorer.py
 src/tools/player_profile.py
 src/tools/workspace_info.py
+tests/test_engine_client.py
+tests/test_prompt_contract.py
 tests/test_services.py

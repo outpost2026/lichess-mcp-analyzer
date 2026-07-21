@@ -8,5 +8,4 @@ Requires-Dist: mcp>=1.0.0
 Requires-Dist: berserk>=0.14.0
 Requires-Dist: chess<2,>=1.11.0
 Requires-Dist: httpx>=0.28.0
-Requires-Dist: fsrs>=4.0.0
 Dynamic: license-file
