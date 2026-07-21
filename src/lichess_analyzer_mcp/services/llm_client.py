@@ -1,4 +1,4 @@
-"""LLM reasoning layer for coaching report generation.
+﻿"""LLM reasoning layer for coaching report generation.
 
 Transforms deterministic pipeline output (PatternMatch[], WeaknessReport)
 into human-readable coaching analysis. Never invents evidence — only
@@ -499,7 +499,7 @@ def run_coaching_pipeline(
     Returns: (report, cascade_log, meta)
       meta = {"mode": str, "games_analyzed": int, "per_game_calls": int, "per_game_tokens": int}
     """
-    from src.services.game_llm_cache import analyze_game_llm, get_all_game_summaries
+    from lichess_analyzer_mcp.services.game_llm_cache import analyze_game_llm, get_all_game_summaries
 
     n = len(game_ids)
     env_mode = os.environ.get("PIPELINE_MODE", "").strip().lower()

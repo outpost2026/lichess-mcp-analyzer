@@ -1,8 +1,8 @@
-"""Cross-game weakness diagnosis."""
+﻿"""Cross-game weakness diagnosis."""
 
-from src.models.analysis import WeaknessReport
-from src.models.game import GameAnalysis
-from src.models.pattern import PatternMatch
+from lichess_analyzer_mcp.models.analysis import WeaknessReport
+from lichess_analyzer_mcp.models.game import GameAnalysis
+from lichess_analyzer_mcp.models.pattern import PatternMatch
 
 
 def diagnose(analyses: list[GameAnalysis], username: str) -> WeaknessReport:

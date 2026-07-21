@@ -1,5 +1,5 @@
-from src.app import app
-from src.services.lichess_client import fetch_user_profile
+﻿from lichess_analyzer_mcp.app import app
+from lichess_analyzer_mcp.services.lichess_client import fetch_user_profile
 
 
 @app.tool("lichess_player_profile")

@@ -1,4 +1,4 @@
-"""FSRS spaced repetition engine wrapper.
+﻿"""FSRS spaced repetition engine wrapper.
 
 FSRS (Free Spaced Repetition Scheduler) uses a 3-parameter memory model:
 stability, difficulty, retrievability. Adapts per-user via gradient descent.
@@ -10,9 +10,9 @@ import os
 from datetime import datetime, timedelta
 from typing import Optional
 
-from src.models.srs_card import SRSCard, FSRSState
+from lichess_analyzer_mcp.models.srs_card import SRSCard, FSRSState
 
-DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data")
+DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "data")
 SRS_FILE = os.path.join(DATA_DIR, "srs_cards.json")
 
 

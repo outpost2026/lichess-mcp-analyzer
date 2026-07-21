@@ -1,4 +1,4 @@
-"""Verify all 3 free providers work end-to-end from cache."""
+﻿"""Verify all 3 free providers work end-to-end from cache."""
 
 import os, sys, json
 
@@ -14,7 +14,7 @@ patterns = data.get("patterns_detected", [])
 weakness = data.get("weakness_report", None)
 games_count = len(data.get("games_analyzed", []))
 
-from src.services.llm_client import generate_coaching_report_with_logs
+from lichess_analyzer_mcp.services.llm_client import generate_coaching_report_with_logs
 
 results = {}
 for provider_name, env_var, model_var, model_val in [

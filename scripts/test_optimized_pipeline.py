@@ -1,4 +1,4 @@
-"""
+﻿"""
 Optimized pipeline test: 5 games, cache-first, LLM cascade, MD output.
 
 Key mitigations for slow 5G (2mb DL):
@@ -78,7 +78,7 @@ tic("total")
 
 # ── Step 1: LLM status ────────────────────────────────────────────────────
 section("[1/6] LLM provider check")
-from src.services.llm_client import get_llm_status, generate_coaching_report_with_logs
+from lichess_analyzer_mcp.services.llm_client import get_llm_status, generate_coaching_report_with_logs
 
 status = get_llm_status()
 print(f"  Configured: {status['total_configured']}")
@@ -90,7 +90,7 @@ if not status["active_provider"]:
 # ── Step 2: Fetch game list ──────────────────────────────────────────────
 section("[2/6] Fetch game list from Lichess")
 tic("fetch_list")
-from src.services.lichess_client import fetch_user_games
+from lichess_analyzer_mcp.services.lichess_client import fetch_user_games
 
 try:
     games_data = fetch_user_games("systeq", max_games=5)
@@ -104,9 +104,9 @@ print(f"  Time: {t_fetch_list:.1f}s")
 # ── Step 3: Cache-first analysis ─────────────────────────────────────────
 section("[3/6] Cache-first analysis")
 tic("analysis")
-from src.services.game_analyzer import analyze_pgn, _load_cached_analysis
-from src.services.lichess_client import fetch_game_pgn
-from src.models.game import GameAnalysis
+from lichess_analyzer_mcp.services.game_analyzer import analyze_pgn, _load_cached_analysis
+from lichess_analyzer_mcp.services.lichess_client import fetch_game_pgn
+from lichess_analyzer_mcp.models.game import GameAnalysis
 
 analyses = []
 game_cache_status = {"total": len(games_data), "new": 0, "cached": 0}
@@ -183,9 +183,9 @@ if len(analyses) < 2:
 # ── Step 4: Pattern detection ──────────────────────────────────────────────
 section("[4/6] Pattern detection")
 tic("patterns")
-from src.services.pattern_detector import PatternDetector
-from src.services.diagnostician import diagnose
-from src.services.compressibility_validator import compute_compression
+from lichess_analyzer_mcp.services.pattern_detector import PatternDetector
+from lichess_analyzer_mcp.services.diagnostician import diagnose
+from lichess_analyzer_mcp.services.compressibility_validator import compute_compression
 
 metadata = {"username": "systeq", "total_games": len(analyses)}
 detector = PatternDetector()
@@ -283,7 +283,7 @@ print(f"\n{report}")
 # ── Step 6: Write MD report ────────────────────────────────────────────────
 section("[6/6] Write MD report to ./docs")
 tic("md_write")
-from src.kb.md_reporter import generate_md_report, write_md_report
+from lichess_analyzer_mcp.kb.md_reporter import generate_md_report, write_md_report
 
 timing = {
     "total": {"duration": toc("total"), "label": "Total"},

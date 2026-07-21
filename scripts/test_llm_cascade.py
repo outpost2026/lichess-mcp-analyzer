@@ -1,4 +1,4 @@
-"""
+﻿"""
 Test LLM reasoning layer: 2-game cascade test with token logging.
 
 1. Load .env for LICHESS_TOKEN
@@ -101,7 +101,7 @@ print(f"  Started: {datetime.now(timezone.utc).isoformat()}")
 
 # ── Step 1: LLM status ────────────────────────────────────────────────────
 section("[1/6] LLM provider check")
-from src.services.llm_client import get_llm_status, generate_coaching_report_with_logs
+from lichess_analyzer_mcp.services.llm_client import get_llm_status, generate_coaching_report_with_logs
 
 status = get_llm_status()
 print(f"  Configured: {status['total_configured']}")
@@ -112,8 +112,8 @@ if not status["active_provider"]:
 
 # ── Step 2: Fetch last 2 games ─────────────────────────────────────────────
 section("[2/6] Fetch games")
-from src.services.lichess_client import fetch_user_games, fetch_game_pgn
-from src.services.game_analyzer import analyze_pgn
+from lichess_analyzer_mcp.services.lichess_client import fetch_user_games, fetch_game_pgn
+from lichess_analyzer_mcp.services.game_analyzer import analyze_pgn
 
 try:
     games_data = fetch_user_games("systeq", max_games=2)
@@ -161,9 +161,9 @@ if len(analyses) == 0:
 
 # ── Step 4: Pattern detection ──────────────────────────────────────────────
 section("[4/6] Pattern detection")
-from src.services.pattern_detector import PatternDetector
-from src.services.diagnostician import diagnose
-from src.services.compressibility_validator import compute_compression
+from lichess_analyzer_mcp.services.pattern_detector import PatternDetector
+from lichess_analyzer_mcp.services.diagnostician import diagnose
+from lichess_analyzer_mcp.services.compressibility_validator import compute_compression
 
 metadata = {"username": "systeq", "total_games": len(analyses)}
 detector = PatternDetector()
@@ -217,7 +217,7 @@ except Exception as e:
 
 # ── Step 5: Build LLM input prompt (log it!) ──────────────────────────────
 section("[5/6] LLM prompt (deterministic pipeline output)")
-from src.services.llm_client import _build_coaching_prompt
+from lichess_analyzer_mcp.services.llm_client import _build_coaching_prompt
 
 prompt_text = _build_coaching_prompt("systeq", len(analyses), pattern_results, wr_dict)
 print(f"  System prompt: {len(SYSPROMPT_DISPLAY)} chars")

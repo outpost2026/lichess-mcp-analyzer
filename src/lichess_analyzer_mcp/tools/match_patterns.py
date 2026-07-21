@@ -1,11 +1,11 @@
-from src.app import app
-from src.services.lichess_client import fetch_user_games, fetch_game_pgn
-from src.services.game_analyzer import analyze_pgn, _load_cached_analysis
-from src.services.pattern_detector import PatternDetector
-from src.services.compressibility_validator import compute_compression
-from src.services.validator import validate_pattern_artifact, ValidationError
-from src.kb.schemas import validate_against_schema
-from src.services.logger import get_logger
+﻿from lichess_analyzer_mcp.app import app
+from lichess_analyzer_mcp.services.lichess_client import fetch_user_games, fetch_game_pgn
+from lichess_analyzer_mcp.services.game_analyzer import analyze_pgn, _load_cached_analysis
+from lichess_analyzer_mcp.services.pattern_detector import PatternDetector
+from lichess_analyzer_mcp.services.compressibility_validator import compute_compression
+from lichess_analyzer_mcp.services.validator import validate_pattern_artifact, ValidationError
+from lichess_analyzer_mcp.kb.schemas import validate_against_schema
+from lichess_analyzer_mcp.services.logger import get_logger
 
 log = get_logger("match_patterns")
 
@@ -118,7 +118,7 @@ async def lichess_match_patterns(username: str, max_games: int = 20, depth: int 
             artifact["_sanity_warnings"] = sanity_issues
 
         from datetime import datetime
-        from src.resources.pattern_resources import store_patterns
+        from lichess_analyzer_mcp.resources.pattern_resources import store_patterns
 
         resource_key = f"{username}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
         store_patterns(resource_key, artifact)

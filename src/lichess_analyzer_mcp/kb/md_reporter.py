@@ -1,4 +1,4 @@
-"""MD report generator for coaching pipeline output."""
+﻿"""MD report generator for coaching pipeline output."""
 
 import os
 from datetime import datetime, timezone
@@ -191,7 +191,7 @@ def generate_md_report(
 def write_md_report(report: str, username: str, docs_dir: Optional[str] = None) -> str:
     """Write MD report to ./docs and return file path."""
     if docs_dir is None:
-        docs_dir = os.path.join(os.path.dirname(__file__), "..", "..", "docs")
+        docs_dir = os.path.join(os.path.dirname(__file__), "..", "..", "..", "docs")
 
     os.makedirs(docs_dir, exist_ok=True)
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")

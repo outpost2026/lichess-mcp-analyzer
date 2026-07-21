@@ -1,7 +1,7 @@
-"""Pattern detection engine for patterns A-Q1."""
+﻿"""Pattern detection engine for patterns A-Q1."""
 
-from src.models.pattern import PatternDef, PatternMatch, PatternLibrary
-from src.models.game import GameAnalysis
+from lichess_analyzer_mcp.models.pattern import PatternDef, PatternMatch, PatternLibrary
+from lichess_analyzer_mcp.models.game import GameAnalysis
 
 
 class PatternDetector:

@@ -1,4 +1,4 @@
-"""P19: Structured logging for MCP tools."""
+﻿"""P19: Structured logging for MCP tools."""
 
 import logging
 import os
@@ -10,7 +10,7 @@ _logger = None
 def get_logger(name: str) -> logging.Logger:
     global _logger
     if _logger is None:
-        LOG_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "logs")
+        LOG_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "logs")
         os.makedirs(LOG_DIR, exist_ok=True)
         LOG_FILE = os.path.join(LOG_DIR, f"lichess_mcp_{datetime.utcnow().strftime('%Y%m')}.log")
         _handler = logging.FileHandler(LOG_FILE, encoding="utf-8")

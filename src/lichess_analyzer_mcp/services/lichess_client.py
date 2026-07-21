@@ -1,4 +1,4 @@
-"""Lichess API client wrapper using berserk."""
+﻿"""Lichess API client wrapper using berserk."""
 
 import json
 import os
@@ -9,8 +9,8 @@ import berserk
 _token: Optional[str] = None
 _client: Optional[berserk.Client] = None
 
-PGN_CACHE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data", "pgn_cache")
-GAMES_CACHE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data", "game_cache")
+PGN_CACHE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "pgn_cache")
+GAMES_CACHE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "game_cache")
 USER_GAMES_TTL = 300  # 5 minutes
 
 
@@ -62,7 +62,7 @@ def _save_pgn_cache(game_id: str, pgn: str) -> None:
 
 def _user_games_cache_path(username: str) -> str:
     return os.path.join(
-        os.path.dirname(__file__), "..", "..", "data", "game_cache", f"{username}_games.json"
+        os.path.dirname(__file__), "..", "..", "..", "data", "game_cache", f"{username}_games.json"
     )
 
 

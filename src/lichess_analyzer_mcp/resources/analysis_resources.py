@@ -1,11 +1,11 @@
-"""P21: L2 Resources for analysis results."""
+﻿"""P21: L2 Resources for analysis results."""
 
 import json
 import os
 from datetime import datetime
-from src.app import app
+from lichess_analyzer_mcp.app import app
 
-STORE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data", "resource_store")
+STORE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "resource_store")
 STORE_FILE = os.path.join(STORE_DIR, "analysis_store.json")
 
 _analysis_store: dict = {}

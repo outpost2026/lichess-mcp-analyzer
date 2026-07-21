@@ -1,9 +1,1 @@
-__init__
-app
-kb
-models
-patterns
-resources
-server
-services
-tools
+lichess_analyzer_mcp

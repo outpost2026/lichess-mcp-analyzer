@@ -1,4 +1,4 @@
-"""Per-game LLM analysis cache — Level 2 cache.
+﻿"""Per-game LLM analysis cache — Level 2 cache.
 
 Each game gets a deep LLM analysis (blunders, phase, opening, critical moments).
 These per-game analyses are cached and reused in aggregate coaching reports.
@@ -9,7 +9,7 @@ import os, json, hashlib
 from typing import Optional
 from datetime import datetime, timezone
 
-CACHE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data", "game_cache")
+CACHE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "game_cache")
 
 PER_GAME_SYSTEM_PROMPT = """You are a chess coach analyzing a single game.
 You are given deterministic Stockfish data for ONE game.
@@ -133,13 +133,13 @@ def analyze_game_llm(
             return cached
 
     # Import here to avoid circular imports
-    from src.services.llm_client import PROVIDERS, COACHING_SYSTEM_PROMPT, _call_llm
+    from lichess_analyzer_mcp.services.llm_client import PROVIDERS, COACHING_SYSTEM_PROMPT, _call_llm
 
     system = PER_GAME_SYSTEM_PROMPT
     user = _build_game_prompt(game_data)
 
     # Try providers in cascade
-    from src.services.llm_client import list_available_providers
+    from lichess_analyzer_mcp.services.llm_client import list_available_providers
 
     tag = _compute_content_tag(game_data)
     for prov_cfg in PROVIDERS:

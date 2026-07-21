@@ -1,6 +1,6 @@
-from src.app import app
-from src.services.game_analyzer import analyze_pgn
-from src.services.lichess_client import fetch_game_pgn
+﻿from lichess_analyzer_mcp.app import app
+from lichess_analyzer_mcp.services.game_analyzer import analyze_pgn
+from lichess_analyzer_mcp.services.lichess_client import fetch_game_pgn
 
 
 @app.tool("lichess_analyze_game")

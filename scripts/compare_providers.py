@@ -1,4 +1,4 @@
-"""Compare NVIDIA vs DeepSeek V4 Flash coaching report quality on same data."""
+﻿"""Compare NVIDIA vs DeepSeek V4 Flash coaching report quality on same data."""
 
 import os, sys, json, time, traceback
 from datetime import datetime, timezone
@@ -27,9 +27,9 @@ if os.path.exists(dump_path):
     games_summary = data.get("games_summary", {})
     print(f"  Loaded from: {dump_path}")
 else:
-    from src.services.pattern_detector import PatternDetector
-    from src.services.diagnostician import diagnose
-    from src.services.analyzer import analyze_game
+    from lichess_analyzer_mcp.services.pattern_detector import PatternDetector
+    from lichess_analyzer_mcp.services.diagnostician import diagnose
+    from lichess_analyzer_mcp.services.analyzer import analyze_game
     import glob as glob_mod
 
     cache_dir = os.path.join(os.path.dirname(__file__), "..", "data", "game_cache")
@@ -63,7 +63,7 @@ else:
     metadata = {"username": "systeq", "total_games": len(analyses)}
     detector = PatternDetector()
     matches = detector.detect_all(analyses, metadata)
-    from src.services.compressibility_validator import compute_compression
+    from lichess_analyzer_mcp.services.compressibility_validator import compute_compression
 
     patterns = []
     for m in matches:
@@ -100,7 +100,7 @@ print(f"  Patterns: {len(patterns)}")
 print(f"  Weakness ACPL: {weakness.get('total_acpl', '?') if weakness else 'N/A'}")
 
 # Step 2: Build prompt (same for both)
-from src.services.llm_client import (
+from lichess_analyzer_mcp.services.llm_client import (
     build_coaching_prompt,
     COACHING_SYSTEM_PROMPT,
     _call_llm,

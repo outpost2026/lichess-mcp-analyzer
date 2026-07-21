@@ -1,4 +1,4 @@
-"""Full-scale comparison: monolithic vs incremental pipeline."""
+﻿"""Full-scale comparison: monolithic vs incremental pipeline."""
 
 import os, sys, json, time
 from datetime import datetime, timezone
@@ -36,7 +36,7 @@ print(
 )
 
 # ── Import pipeline ──────────────────────────────────────────────────────
-from src.services.llm_client import run_coaching_pipeline
+from lichess_analyzer_mcp.services.llm_client import run_coaching_pipeline
 
 # ── 1. MONOLITHIC ─────────────────────────────────────────────────────────
 print(f"\n{'=' * 60}")

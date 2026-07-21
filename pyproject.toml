@@ -11,7 +11,11 @@ dependencies = [
 ]
 
 [project.scripts]
-lichess-mcp = "src.server:main"
+lichess-mcp = "lichess_analyzer_mcp.server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["lichess_analyzer_mcp*"]
 
 [tool.ruff]
 line-length = 100

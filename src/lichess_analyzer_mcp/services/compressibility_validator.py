@@ -1,11 +1,11 @@
-"""CompressibilityValidator: computes compression_ratio for pattern matches.
+﻿"""CompressibilityValidator: computes compression_ratio for pattern matches.
 
 Based on Mikolov compression philosophy — a pattern is valid if it compresses
 game data better than raw data. Maps to KALIBRACE_PLAN v2.3 section 2.5.
 """
 
-from src.models.game import GameAnalysis
-from src.models.pattern import PatternMatch
+from lichess_analyzer_mcp.models.game import GameAnalysis
+from lichess_analyzer_mcp.models.pattern import PatternMatch
 
 PATTERN_BASE_COST = 10
 

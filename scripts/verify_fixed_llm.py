@@ -1,4 +1,4 @@
-"""Verify fixed per-game LLM output quality."""
+﻿"""Verify fixed per-game LLM output quality."""
 
 import os, sys, json
 
@@ -12,8 +12,8 @@ for fname in os.listdir(cache_dir):
         os.remove(os.path.join(cache_dir, fname))
         print(f"  Removed old: {fname}")
 
-from src.services.game_llm_cache import analyze_game_llm
-from src.services.llm_client import run_coaching_pipeline
+from lichess_analyzer_mcp.services.game_llm_cache import analyze_game_llm
+from lichess_analyzer_mcp.services.llm_client import run_coaching_pipeline
 
 game_ids = ["MtEGzuvx", "qmodxzNF", "BAEXAHoW", "AczKbLug", "9PSKkXvK"]
 game_colors = ["white", "black", "black", "white", "black"]

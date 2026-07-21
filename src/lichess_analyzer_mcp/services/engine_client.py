@@ -20,7 +20,7 @@ def _cleanup_engine():
 
 def _find_stockfish() -> str:
     project_stockfish = os.path.join(
-        os.path.dirname(__file__), "..", "..", "stockfish", "stockfish.exe"
+        os.path.dirname(__file__), "..", "..", "..", "stockfish", "stockfish.exe"
     )
     search_dirs = os.environ.get("STOCKFISH_SEARCH_DIRS", "")
     extra = search_dirs.split(";") if search_dirs else []

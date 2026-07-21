@@ -1,5 +1,5 @@
-from src.app import app
-from src.services.lichess_client import fetch_user_games
+﻿from lichess_analyzer_mcp.app import app
+from lichess_analyzer_mcp.services.lichess_client import fetch_user_games
 
 
 @app.tool("lichess_fetch_games")

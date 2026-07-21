@@ -1,14 +1,14 @@
-"""Game analysis: per-move Stockfish classification."""
+﻿"""Game analysis: per-move Stockfish classification."""
 
 import glob
 import json
 import os
 
-from src.models.game import GameSummary, MoveAnalysis, GameAnalysis
-from src.services import engine_client
-from src.services.lichess_client import fetch_game_pgn
+from lichess_analyzer_mcp.models.game import GameSummary, MoveAnalysis, GameAnalysis
+from lichess_analyzer_mcp.services import engine_client
+from lichess_analyzer_mcp.services.lichess_client import fetch_game_pgn
 
-CACHE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data", "game_cache")
+CACHE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "game_cache")
 
 
 def _cache_path(game_id: str, depth: int, color: str = "white") -> str:

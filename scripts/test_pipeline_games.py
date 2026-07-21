@@ -1,11 +1,11 @@
-"""Full pipeline test: analyze all 6 reference games from pitevni kniha."""
+﻿"""Full pipeline test: analyze all 6 reference games from pitevni kniha."""
 
 import sys, os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from src.services.lichess_client import fetch_game_pgn
-from src.services.game_analyzer import analyze_pgn
+from lichess_analyzer_mcp.services.lichess_client import fetch_game_pgn
+from lichess_analyzer_mcp.services.game_analyzer import analyze_pgn
 
 GAMES = [
     ("rnoxbE5l", "white"),

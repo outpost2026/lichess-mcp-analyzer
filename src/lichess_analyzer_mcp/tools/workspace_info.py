@@ -1,8 +1,8 @@
-"""P17: Workspace context export for LLM agents."""
+﻿"""P17: Workspace context export for LLM agents."""
 
 import os
 import sys
-from src.app import app
+from lichess_analyzer_mcp.app import app
 
 _KNOWN_TOOLS = [
     "lichess_fetch_games",

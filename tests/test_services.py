@@ -1,17 +1,17 @@
-"""Unit tests for services."""
+﻿"""Unit tests for services."""
 
 import sys
 
 sys.path.insert(0, "src")
 
-from src.models.game import GameSummary, MoveAnalysis, GameAnalysis
-from src.models.analysis import WeaknessReport
-from src.models.pattern import PatternDef, PatternMatch, PatternLibrary
-from src.models.srs_card import SRSCard, FSRSState
-from src.models.player_profile import PlayerProfile, OpeningStats
-from src.services.compressibility_validator import compute_compression, compression_score
-from src.services.validator import validate_pattern_artifact, ValidationError
-from src.kb.schemas import validate_against_schema
+from lichess_analyzer_mcp.models.game import GameSummary, MoveAnalysis, GameAnalysis
+from lichess_analyzer_mcp.models.analysis import WeaknessReport
+from lichess_analyzer_mcp.models.pattern import PatternDef, PatternMatch, PatternLibrary
+from lichess_analyzer_mcp.models.srs_card import SRSCard, FSRSState
+from lichess_analyzer_mcp.models.player_profile import PlayerProfile, OpeningStats
+from lichess_analyzer_mcp.services.compressibility_validator import compute_compression, compression_score
+from lichess_analyzer_mcp.services.validator import validate_pattern_artifact, ValidationError
+from lichess_analyzer_mcp.kb.schemas import validate_against_schema
 
 
 class TestModels:

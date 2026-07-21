@@ -1,10 +1,10 @@
-"""PGN import tool — analyze any PGN through the same Stockfish pipeline."""
+﻿"""PGN import tool — analyze any PGN through the same Stockfish pipeline."""
 
 from datetime import datetime
 
-from src.app import app
-from src.services.game_analyzer import analyze_pgn
-from src.resources.analysis_resources import store_analysis
+from lichess_analyzer_mcp.app import app
+from lichess_analyzer_mcp.services.game_analyzer import analyze_pgn
+from lichess_analyzer_mcp.resources.analysis_resources import store_analysis
 
 
 @app.tool("lichess_import_pgn")

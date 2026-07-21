@@ -1,6 +1,6 @@
-from src.app import app
-from src.services.engine_client import analyze_position
-from src.services.lichess_client import fetch_cloud_eval
+﻿from lichess_analyzer_mcp.app import app
+from lichess_analyzer_mcp.services.engine_client import analyze_position
+from lichess_analyzer_mcp.services.lichess_client import fetch_cloud_eval
 
 
 @app.tool("lichess_analyze_position")

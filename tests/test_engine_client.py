@@ -1,4 +1,4 @@
-"""Unit tests for engine_client with mocked Stockfish."""
+﻿"""Unit tests for engine_client with mocked Stockfish."""
 
 import sys, os
 
@@ -6,7 +6,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from unittest.mock import patch, MagicMock
 import chess
-from src.services.engine_client import (
+from lichess_analyzer_mcp.services.engine_client import (
     _find_stockfish,
     analyze_position,
     evaluate_move,

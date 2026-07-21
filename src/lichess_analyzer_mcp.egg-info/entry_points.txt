@@ -1,2 +1,2 @@
 [console_scripts]
-lichess-mcp = src.server:main
+lichess-mcp = lichess_analyzer_mcp.server:main

@@ -1,4 +1,4 @@
-"""CLI pipeline: analyze user, detect patterns, write to KB.
+﻿"""CLI pipeline: analyze user, detect patterns, write to KB.
 
 Usage:
     uv run python scripts/run_pipeline.py <username> [--games N] [--depth D]
@@ -26,10 +26,10 @@ def main():
         print("CHYBA: LICHESS_TOKEN env var is not set")
         sys.exit(1)
 
-    from src.services.lichess_client import fetch_user_games, fetch_game_pgn
-    from src.services.game_analyzer import analyze_pgn
-    from src.services.diagnostician import diagnose
-    from src.services.pattern_detector import PatternDetector
+    from lichess_analyzer_mcp.services.lichess_client import fetch_user_games, fetch_game_pgn
+    from lichess_analyzer_mcp.services.game_analyzer import analyze_pgn
+    from lichess_analyzer_mcp.services.diagnostician import diagnose
+    from lichess_analyzer_mcp.services.pattern_detector import PatternDetector
 
     username = args.username
     max_games = max(5, min(50, args.games))
@@ -83,7 +83,7 @@ def main():
         )
 
     if not args.no_kb:
-        from src.kb.writer import write_analysis_report, write_pattern_report
+        from lichess_analyzer_mcp.kb.writer import write_analysis_report, write_pattern_report
 
         analysis_path = write_analysis_report(
             username,

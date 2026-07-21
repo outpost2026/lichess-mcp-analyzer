@@ -1,8 +1,8 @@
-from src.app import app
-from src.services.lichess_client import fetch_user_games, fetch_game_pgn
-from src.services.game_analyzer import analyze_pgn, _load_cached_analysis
-from src.services.diagnostician import diagnose
-from src.services.logger import get_logger
+﻿from lichess_analyzer_mcp.app import app
+from lichess_analyzer_mcp.services.lichess_client import fetch_user_games, fetch_game_pgn
+from lichess_analyzer_mcp.services.game_analyzer import analyze_pgn, _load_cached_analysis
+from lichess_analyzer_mcp.services.diagnostician import diagnose
+from lichess_analyzer_mcp.services.logger import get_logger
 
 log = get_logger("diagnose_player")
 
@@ -71,7 +71,7 @@ async def lichess_diagnose_player(username: str, max_games: int = 20, depth: int
         )
         report = diagnose(analyses, username)
         from datetime import datetime
-        from src.resources.analysis_resources import store_analysis
+        from lichess_analyzer_mcp.resources.analysis_resources import store_analysis
 
         resource_key = f"{username}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
         store_analysis(
