@@ -1,12 +1,11 @@
 from src.app import app
 from src.services.lichess_client import fetch_user_games, fetch_game_pgn
-from src.services.game_analyzer import analyze_pgn
+from src.services.game_analyzer import analyze_pgn, _load_cached_analysis
 from src.services.pattern_detector import PatternDetector
 from src.services.compressibility_validator import compute_compression
 from src.services.validator import validate_pattern_artifact, ValidationError
 from src.kb.schemas import validate_against_schema
 from src.services.logger import get_logger
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 log = get_logger("match_patterns")
 
@@ -18,6 +17,7 @@ async def lichess_match_patterns(username: str, max_games: int = 20, depth: int 
     Analyzes recent games and matches them against the pattern library
     imported from chess_pattern_v5.json. Returns detected patterns with
     confidence scores, evidence, mitigation advice, and compression validation.
+    Uses cache-first — pre-analyze games via lichess_analyze_game first.
 
     Args:
         username: Lichess username
@@ -40,29 +40,29 @@ async def lichess_match_patterns(username: str, max_games: int = 20, depth: int 
         analyses = []
         skipped = 0
 
-        def analyze_one(g):
+        for g in games_data[:max_games]:
             game_id = g.get("id", "")
             try:
-                pgn = fetch_game_pgn(game_id)
                 color = "white"
                 if (
                     g.get("players", {}).get("black", {}).get("user", {}).get("name", "").lower()
                     == username.lower()
                 ):
                     color = "black"
-                return analyze_pgn(pgn, player_color=color, depth=depth, game_id=game_id)
-            except Exception as e:
-                log.warning("skip game %s: %s", game_id, e)
-                return None
-
-        with ThreadPoolExecutor(max_workers=min(4, max_games)) as pool:
-            futures = [pool.submit(analyze_one, g) for g in games_data[:max_games]]
-            for f in as_completed(futures):
-                a = f.result()
+                cached = _load_cached_analysis(game_id, depth, color)
+                if cached is not None:
+                    analyses.append(cached)
+                    continue
+                pgn = fetch_game_pgn(game_id)
+                a = analyze_pgn(pgn, player_color=color, depth=depth, game_id=game_id)
                 if a:
                     analyses.append(a)
                 else:
                     skipped += 1
+                    log.warning("empty analysis for %s", game_id)
+            except Exception as e:
+                log.warning("skip game %s: %s", game_id, e)
+                skipped += 1
 
         if not analyses:
             log.error("0 games analyzed | user=%s", username)

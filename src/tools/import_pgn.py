@@ -40,7 +40,7 @@ async def lichess_import_pgn(
             player_color=color,
             depth=depth,
             game_id=game_id or None,
-            use_cache=False,
+            use_cache=True,
         )
 
         key = f"import_{result.game.id or 'custom'}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"

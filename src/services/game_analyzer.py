@@ -1,5 +1,6 @@
 """Game analysis: per-move Stockfish classification."""
 
+import glob
 import json
 import os
 
@@ -17,22 +18,32 @@ def _cache_path(game_id: str, depth: int, color: str = "white") -> str:
 
 def _load_cached_analysis(game_id: str, depth: int, color: str = "white") -> GameAnalysis | None:
     path = _cache_path(game_id, depth, color)
-    if not os.path.isfile(path):
-        return None
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return GameAnalysis.from_dict(json.load(f))
-    except Exception:
-        return None
+    if os.path.isfile(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return GameAnalysis.from_dict(json.load(f))
+        except Exception:
+            pass
+    # Depth approximation: try nearest depth if exact match not found
+    pattern = os.path.join(CACHE_DIR, f"{game_id}_{color}_d*.json")
+    for fpath in sorted(glob.glob(pattern), reverse=True):
+        try:
+            with open(fpath, "r", encoding="utf-8") as f:
+                return GameAnalysis.from_dict(json.load(f))
+        except Exception:
+            continue
+    return None
 
 
 def _save_cached_analysis(game_id: str, depth: int, analysis: GameAnalysis) -> None:
     os.makedirs(CACHE_DIR, exist_ok=True)
     color = analysis.game.color
     path = _cache_path(game_id, depth, color)
+    tmp = path + ".tmp"
     try:
-        with open(path, "w", encoding="utf-8") as f:
+        with open(tmp, "w", encoding="utf-8") as f:
             json.dump(analysis.to_dict(), f, ensure_ascii=False)
+        os.replace(tmp, path)
     except Exception:
         pass
 
@@ -91,6 +102,9 @@ def _run_analyze_pgn(pgn: str, player_color: str = "white", depth: int = 14) -> 
         opening_eco=headers.get("ECO", ""),
         color=player_color,
         result=result,
+        player_name=headers.get("White", "")
+        if player_color == "white"
+        else headers.get("Black", ""),
         opponent_name=headers.get("Black", "")
         if player_color == "white"
         else headers.get("White", ""),

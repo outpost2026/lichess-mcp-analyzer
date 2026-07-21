@@ -121,14 +121,16 @@ def analyze_game_llm(
     force: bool = False,
 ) -> Optional[dict]:
     """Run (or load cached) per-game LLM analysis."""
-    if not force:
-        cached = _load_llm_cache(game_id)
-        if cached:
-            return cached
-
     game_data = _load_stockfish_cache(game_id, color)
     if not game_data:
         return None
+
+    current_tag = _compute_content_tag(game_data)
+
+    if not force:
+        cached = _load_llm_cache(game_id)
+        if cached and cached.get("content_tag") == current_tag:
+            return cached
 
     # Import here to avoid circular imports
     from src.services.llm_client import PROVIDERS, COACHING_SYSTEM_PROMPT, _call_llm
@@ -161,8 +163,6 @@ def analyze_game_llm(
             }
             _save_llm_cache(game_id, result)
             return result
-
-    return None
 
 
 def _validate_json_output(content: str) -> Optional[dict]:

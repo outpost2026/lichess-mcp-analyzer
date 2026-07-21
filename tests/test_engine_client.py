@@ -11,7 +11,7 @@ from src.services.engine_client import (
     analyze_position,
     evaluate_move,
     close_engine,
-    ENGINE_TIMEOUT,
+    _ENGINE_LOCK_TIMEOUT,
 )
 
 

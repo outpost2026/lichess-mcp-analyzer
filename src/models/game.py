@@ -10,12 +10,13 @@ class GameSummary:
     opening_eco: str
     color: str
     result: str
-    opponent_name: str
-    opponent_rating: Optional[int]
-    player_rating: Optional[int]
-    time_control: str
-    date: str
-    url: str
+    player_name: str = ""
+    opponent_name: str = ""
+    player_rating: Optional[int] = None
+    opponent_rating: Optional[int] = None
+    time_control: str = ""
+    date: str = ""
+    url: str = ""
     automatic_grab: bool = False
     bait_trap: bool = False
     metacognition: str = ""

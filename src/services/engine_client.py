@@ -8,8 +8,9 @@ import chess.engine
 from typing import Optional
 
 _engine: Optional[chess.engine.SimpleEngine] = None
-_engine_lock = threading.Lock()
-ENGINE_TIMEOUT = 30.0
+_engine_init_lock = threading.Lock()
+_analysis_lock = threading.Lock()
+_ENGINE_LOCK_TIMEOUT = 120.0  # seconds — recovery from zombie lock
 
 
 @atexit.register
@@ -43,7 +44,7 @@ def _find_stockfish() -> str:
 def get_engine() -> chess.engine.SimpleEngine:
     global _engine
     if _engine is None:
-        with _engine_lock:
+        with _engine_init_lock:
             if _engine is None:
                 sf_path = _find_stockfish()
                 _engine = chess.engine.SimpleEngine.popen_uci(sf_path)
@@ -51,22 +52,30 @@ def get_engine() -> chess.engine.SimpleEngine:
     return _engine
 
 
-def _run_with_timeout(fn, timeout: float = ENGINE_TIMEOUT):
-    import concurrent.futures
+def _acquire_analysis_lock() -> bool:
+    """Acquire analysis lock with zombie recovery.
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        try:
-            fut = pool.submit(fn)
-            return fut.result(timeout=timeout)
-        except concurrent.futures.TimeoutError:
-            return None
+    Returns True if lock acquired, False if zombie recovery was needed.
+    In both cases the caller holds the lock on return.
+    """
+    global _engine
+    locked = _analysis_lock.acquire(timeout=_ENGINE_LOCK_TIMEOUT)
+    if not locked:
+        # Zombie detection: lock held >120s → restart engine
+        if _engine is not None:
+            _engine.quit()
+            _engine = None
+        get_engine()  # fresh engine
+        _analysis_lock.acquire()  # clean lock (no prior holder)
+        return False  # recovered from zombie
+    return True
 
 
 def analyze_position(fen: str, depth: int = 18, multipv: int = 3) -> list[dict]:
     engine = get_engine()
     board = chess.Board(fen)
-
-    def _run():
+    _acquire_analysis_lock()
+    try:
         items = []
         with engine.analysis(board) as analysis:
             for line in analysis:
@@ -86,19 +95,17 @@ def analyze_position(fen: str, depth: int = 18, multipv: int = 3) -> list[dict]:
                 if len(items) >= multipv:
                     break
         return items
-
-    result = _run_with_timeout(_run)
-    if result is None:
-        return [{"error": f"Stockfish timeout after {ENGINE_TIMEOUT}s", "depth": depth}]
-    return result
+    finally:
+        _analysis_lock.release()
 
 
 def evaluate_move(fen: str, move_uci: str, depth: int = 16) -> dict:
     engine = get_engine()
     board = chess.Board(fen)
+    move = chess.Move.from_uci(move_uci)
 
-    def _run():
-        move = chess.Move.from_uci(move_uci)
+    _acquire_analysis_lock()
+    try:
         info_before = engine.analyse(board, chess.engine.Limit(depth=depth))
         eval_before = info_before["score"].relative.score()
         best_move = info_before["pv"][0] if "pv" in info_before else None
@@ -116,36 +123,27 @@ def evaluate_move(fen: str, move_uci: str, depth: int = 16) -> dict:
         actual_res = engine.analyse(board, chess.engine.Limit(depth=depth))
         actual_score = actual_res["score"].relative.score()
         actual_player = -actual_score if actual_score is not None else None
+    finally:
+        _analysis_lock.release()
 
-        if best_player is not None and actual_player is not None:
-            cp_loss = max(0, best_player - actual_player)
-        else:
-            cp_loss = 0
+    if best_player is not None and actual_player is not None:
+        cp_loss = max(0, best_player - actual_player)
+    else:
+        cp_loss = 0
 
-        return {
-            "eval_before": eval_before,
-            "eval_after": actual_player if actual_player is not None else 0,
-            "centipawn_loss": cp_loss,
-            "best_move_uci": best_move.uci() if best_move else None,
-        }
-
-    result = _run_with_timeout(_run)
-    if result is None:
-        return {
-            "eval_before": 0,
-            "eval_after": 0,
-            "centipawn_loss": 0,
-            "best_move_uci": None,
-            "error": f"Stockfish timeout after {ENGINE_TIMEOUT}s",
-        }
-    return result
+    return {
+        "eval_before": eval_before,
+        "eval_after": actual_player if actual_player is not None else 0,
+        "centipawn_loss": cp_loss,
+        "best_move_uci": best_move.uci() if best_move else None,
+    }
 
 
 def get_best_move(fen: str, depth: int = 18) -> dict:
     engine = get_engine()
     board = chess.Board(fen)
-
-    def _run():
+    _acquire_analysis_lock()
+    try:
         info = engine.analyse(board, chess.engine.Limit(depth=depth))
         score = info["score"].relative
         best_move = info["pv"][0] if "pv" in info else None
@@ -154,16 +152,8 @@ def get_best_move(fen: str, depth: int = 18) -> dict:
             "score_cp": score.score() if score.score() is not None else None,
             "mate": score.mate() if score.mate() is not None else None,
         }
-
-    result = _run_with_timeout(_run)
-    if result is None:
-        return {
-            "best_move_uci": None,
-            "score_cp": None,
-            "mate": None,
-            "error": f"Stockfish timeout after {ENGINE_TIMEOUT}s",
-        }
-    return result
+    finally:
+        _analysis_lock.release()
 
 
 def close_engine():
