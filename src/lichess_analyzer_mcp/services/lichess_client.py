@@ -86,7 +86,9 @@ def _save_user_games_cache(username: str, games: list[dict]) -> None:
     tmp = path + ".tmp"
     try:
         with open(tmp, "w", encoding="utf-8") as f:
-            json.dump({"_cached_at": time.time(), "games": games}, f, ensure_ascii=False)
+            json.dump(
+                {"_cached_at": time.time(), "games": games}, f, ensure_ascii=False, default=str
+            )
         os.replace(tmp, path)
     except OSError:
         pass
@@ -97,6 +99,16 @@ def fetch_user_profile(username: str) -> dict:
     return client.users.get(username)
 
 
+def _json_safe(obj):
+    if isinstance(obj, dict):
+        return {k: _json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_json_safe(v) for v in obj]
+    if hasattr(obj, "isoformat"):
+        return obj.isoformat()
+    return obj
+
+
 def fetch_user_games(username: str, max_games: int = 10) -> list[dict]:
     cached = _load_user_games_cache(username)
     if cached is not None:
@@ -104,7 +116,7 @@ def fetch_user_games(username: str, max_games: int = 10) -> list[dict]:
     client = get_client()
     games = []
     for game in client.games.export_by_player(username, max=max_games):
-        games.append(game)
+        games.append(_json_safe(game))
     _save_user_games_cache(username, games)
     return games
 

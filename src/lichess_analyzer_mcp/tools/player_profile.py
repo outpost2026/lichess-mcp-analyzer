@@ -25,8 +25,8 @@ async def lichess_player_profile(username: str):
             "title": profile.get("title"),
             "ratings": ratings,
             "total_games": sum(p.get("games", 0) for p in perfs.values()),
-            "created_at": profile.get("createdAt"),
-            "seen_at": profile.get("seenAt"),
+            "created_at": str(profile.get("createdAt", "")),
+            "seen_at": str(profile.get("seenAt", "")),
             "url": f"https://lichess.org/@/{username}",
         }
     except Exception as e:
