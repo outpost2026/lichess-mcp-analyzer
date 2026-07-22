@@ -11,7 +11,7 @@ _client: Optional[berserk.Client] = None
 
 PGN_CACHE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "pgn_cache")
 GAMES_CACHE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "game_cache")
-USER_GAMES_TTL = 300  # 5 minutes
+USER_GAMES_TTL = 3600  # 1 hour
 
 
 def get_token() -> Optional[str]:
@@ -96,7 +96,7 @@ def _save_user_games_cache(username: str, games: list[dict]) -> None:
 
 def fetch_user_profile(username: str) -> dict:
     client = get_client()
-    return client.users.get(username)
+    return client.users.get_by_id(username)
 
 
 def _json_safe(obj):
@@ -143,12 +143,7 @@ def fetch_cloud_eval(fen: str) -> Optional[dict]:
 
 
 def fetch_opening_explorer(fen: str, source: str = "lichess") -> dict:
-    import httpx
-
+    client = get_client()
     if source == "masters":
-        url = f"https://explorer.lichess.ovh/masters?fen={fen}"
-    else:
-        url = f"https://explorer.lichess.ovh/lichess?fen={fen}"
-    resp = httpx.get(url, timeout=10)
-    resp.raise_for_status()
-    return resp.json()
+        return client.opening_explorer.get_masters_games(fen=fen)  # type: ignore
+    return client.opening_explorer.get_lichess_games(fen=fen)  # type: ignore
