@@ -96,7 +96,10 @@ def _save_user_games_cache(username: str, games: list[dict]) -> None:
 
 def fetch_user_profile(username: str) -> dict:
     client = get_client()
-    return client.users.get_by_id(username)
+    data = client.users.get_by_id(username)
+    if isinstance(data, list) and len(data) > 0:
+        return data[0]
+    return data
 
 
 def _json_safe(obj):
@@ -145,5 +148,5 @@ def fetch_cloud_eval(fen: str) -> Optional[dict]:
 def fetch_opening_explorer(fen: str, source: str = "lichess") -> dict:
     client = get_client()
     if source == "masters":
-        return client.opening_explorer.get_masters_games(fen=fen)  # type: ignore
-    return client.opening_explorer.get_lichess_games(fen=fen)  # type: ignore
+        return client.opening_explorer.get_masters_games(position=fen)  # type: ignore
+    return client.opening_explorer.get_lichess_games(position=fen)  # type: ignore
