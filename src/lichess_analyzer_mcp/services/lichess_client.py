@@ -6,7 +6,6 @@ import time
 from typing import Optional
 
 import berserk
-import httpx
 
 _token: Optional[str] = None
 _client: Optional[berserk.Client] = None
@@ -124,48 +123,36 @@ def _json_safe(obj):
     return obj
 
 
-_USER_GAMES_ENDPOINTS = [
-    "/api/games/user/{username}",  # original berserk endpoint (OpenAPI-documented)
-    "/games/export/{username}",  # replacement in lila routes (master branch)
-    "/api/user/{username}/games",  # alternative path in some client libs
-]
-
-
 def _export_by_player(username: str, max_games: int = 10) -> list[dict]:
-    """Fetch user games, trying multiple known Lichess endpoints.
-
-    As of 2026-07, all known endpoints return 404 on production.
-    Per-game export via fetch_game_pgn(game_id) still works.
-    """
-    token = get_token()
-    headers = {"Accept": "application/x-ndjson"}
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-    params = {"max": max_games}
-    last_error = None
-    for path_tpl in _USER_GAMES_ENDPOINTS:
-        path = path_tpl.format(username=username)
-        url = f"https://lichess.org{path}"
+    """Fetch user games via berserk export_by_player with retry on 429."""
+    client = get_client()
+    for attempt in range(3):
         try:
-            with httpx.Client() as client:
-                response = client.get(url, headers=headers, params=params, timeout=15)
-                if response.status_code == 200:
-                    games = []
-                    for line in response.iter_lines():
-                        line = line.strip()
-                        if line:
-                            games.append(json.loads(line))
-                    return games
-                last_error = f"{response.status_code} {url}"
+            games = list(
+                client.games.export_by_player(
+                    username,
+                    max=max_games,
+                    as_pgn=False,
+                    opening=True,
+                    analysed=True,
+                    evals=True,
+                )
+            )
+            return games
         except Exception as e:
-            last_error = f"{e} {url}"
-    raise RuntimeError(
-        f"Nepodařilo se stáhnout hry uživatele '{username}' — "
-        f"Lichess API endpoint pro výpis her uživatele je na produkci nedostupný "
-        f"(všechny známé endpointy vrací 404). "
-        f"Per-game export přes fetch_game_pgn(game_id) stále funguje. "
-        f"Poslední pokus: {last_error}"
-    )
+            err_str = str(e)
+            if "429" in err_str or "rate limit" in err_str.lower():
+                wait = 2 ** (attempt + 1)
+                print(
+                    f"[lichess_client] Rate limited, retry in {wait}s",
+                    file=__import__("sys").stderr,
+                )
+                time.sleep(wait)
+                continue
+            if "404" in err_str or "not found" in err_str.lower():
+                return []
+            raise
+    return []
 
 
 def fetch_user_games(username: str, max_games: int = 10) -> list[dict]:

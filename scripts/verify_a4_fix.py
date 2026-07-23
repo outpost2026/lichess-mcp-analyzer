@@ -51,11 +51,20 @@ except Exception as e:
 # --- A4 fetch_user_games ---
 print("\n[A4] fetch_user_games...")
 try:
-    games = fetch_user_games("hikaru", max_games=2)
+    games = fetch_user_games("systeq", max_games=2)
     assert len(games) > 0, f"got {len(games)} games"
-    log("A4 fetch_user_games hikaru(2)", "OK", f"{len(games)} her")
+    log("A4 fetch_user_games systeq(2)", "OK", f"{len(games)} games via berserk export_by_player")
 except Exception as e:
-    log("A4 fetch_user_games hikaru(2)", "BLOCKED", str(e)[:200])
+    log("A4 fetch_user_games systeq(2)", "FAIL", str(e)[:200])
+try:
+    games = fetch_user_games("hikaru", max_games=2)
+    log(
+        "A4 fetch_user_games hikaru(2)",
+        "OK",
+        f"{len(games)} games (streamer account — 404 expected, graceful empty)",
+    )
+except Exception as e:
+    log("A4 fetch_user_games hikaru(2)", "FAIL", str(e)[:200])
 
 # --- A5 opening_explorer ---
 print("\n[A5] opening_explorer...")
