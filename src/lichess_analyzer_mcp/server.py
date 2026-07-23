@@ -8,6 +8,22 @@ from lichess_analyzer_mcp.app import app
 # P17: Workspace context at startup
 _workspace_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 print(f"[server] Workspace root: {_workspace_root}", file=sys.stderr)
+
+# Load .env from project root into os.environ
+_env_path = os.path.join(_workspace_root, ".env")
+if os.path.isfile(_env_path):
+    with open(_env_path, encoding="utf-8-sig") as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _k, _, _v = _line.partition("=")
+                _k = _k.strip()
+                if _k and _k not in os.environ:
+                    os.environ[_k] = _v.strip()
+    print(
+        f"[server] .env loaded ({sum(1 for k in os.environ if k.endswith('_API_KEY') or k.endswith('_TOKEN'))} keys)",
+        file=sys.stderr,
+    )
 print(
     f"[server] Stockfish: {os.path.join(_workspace_root, 'stockfish', 'stockfish.exe')}",
     file=sys.stderr,

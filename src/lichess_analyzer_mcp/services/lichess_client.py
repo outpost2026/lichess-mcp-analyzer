@@ -20,6 +20,16 @@ def get_token() -> Optional[str]:
     global _token
     if _token is None:
         _token = os.environ.get("LICHESS_TOKEN")
+    if _token is None:
+        _dotenv = os.path.join(os.path.dirname(__file__), "..", "..", "..", ".env")
+        if os.path.isfile(_dotenv):
+            with open(_dotenv, encoding="utf-8-sig") as _f:
+                for _line in _f:
+                    _line = _line.strip()
+                    if _line.startswith("LICHESS_TOKEN="):
+                        _token = _line.split("=", 1)[1].strip()
+                        os.environ["LICHESS_TOKEN"] = _token
+                        break
     return _token
 
 

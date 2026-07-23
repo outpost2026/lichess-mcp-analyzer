@@ -24,7 +24,7 @@ async def lichess_workspace_info():
     Provides root path, stockfish status, Python version,
     and registered tools count.
     """
-    root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
     sf_path = os.path.join(root, "stockfish", "stockfish.exe")
     stockfish_ok = os.path.isfile(sf_path)
     token_set = bool(os.environ.get("LICHESS_TOKEN")) or bool(os.environ.get("LICHESS_TOKEN_FILE"))
