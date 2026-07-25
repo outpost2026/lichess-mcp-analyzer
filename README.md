@@ -38,7 +38,7 @@ lichess-analyzer-mcp (Python FastMCP)
 
 > "Reprezentace reality minimalizujici komplexitu, predikcni chybu a vypocetni naklady."
 
-Chess pattern artifact je **kompresni model hrace**: minimalizuje komplexitu (9 patternu namisto 1000+ tahu), predikcni chybu (Stochastic cp_loss jako ground truth) a vypocetni naklady (2s cached runtime).
+Chess pattern artifact je **kompresni model hrace**: minimalizuje komplexitu (11 patternu namisto 1000+ tahu), predikcni chybu (Stochastic cp_loss jako ground truth) a vypocetni naklady (2s cached runtime).
 
 ### Overeni validity (MSE — Mean Squared Error, stredni kvadraticka chyba)
 
@@ -162,14 +162,15 @@ SNR = semanticka vernost vuci vstupnim datum (konfidence %, phase ACPL, zadne in
 | Tool | Co dela |
 | - | - |
 | `lichess\_fetch\_games` | Stahne recent partie hrace z Lichess |
-| `lichess\_analyze\_game` | Analyzuje jednu partii Stockfishem (kazdy tah, centipawn loss) |
-| `lichess\_analyze\_position` | Analyzuje FEN pozici (depth 8-24, multipv 3) |
-| `lichess\_opening\_explorer` | Prozkuma zahajeni v Lichess databazi |
+| `lichess\_analyze\_game` | Analyzuje jednu partii Stockfishem (depth 8-24, kazdy tah, cp_loss) |
+| `lichess\_analyze\_position` | Analyzuje FEN pozici (depth 8-24, cloud eval optional) |
+| `lichess\_opening\_explorer` | Prozkuma zahajeni v Lichess/Masters databazi |
 | `lichess\_player\_profile` | Vrati profil, ratingy a statistiky hrace |
-| `lichess\_diagnose\_player` | Diagnostikuje slabiny pres vice partii (faze, otvoreni, ACPL) |
+| `lichess\_diagnose\_player` | Diagnostikuje slabiny pres vice partii (faze, otvoreni, ACPL, result filtr) |
 | `lichess\_match\_patterns` | Detekuje vzorove chyby A-Q1 z tve pattern library |
-| `lichess\_workspace\_info` | Vrati kontext pracovniho prostoru (P17) |
-| `lichess\_import\_pgn` | Importuje PGN soubor jako partii |
+| `lichess\_workspace\_info` | Vrati kontext pracovniho prostoru |
+| `lichess\_import\_pgn` | Importuje PGN (libovolny zdroj) do analyzy |
+| `lichess\_games\_index` | Vrati cache index her dle resultu |
 
 
 L2 Resources:
@@ -214,7 +215,7 @@ Token vytvoris na [lichess.org/settings/oauth](https://lichess.org/settings/oaut
 
 ```
 uv sync  
-uv run python -m src.server
+uv run python -m lichess_analyzer_mcp.server
 ```
 
 Server se pripoji pres stdio. Pro opencode ho registruj v `opencode.jsonc`:
@@ -222,7 +223,7 @@ Server se pripoji pres stdio. Pro opencode ho registruj v `opencode.jsonc`:
 ```
 "lichess-analyzer": {
     "type": "local",
-    "command": ["cesta\\k\\repo\\.venv\\Scripts\\python.exe", "-X", "utf8", "-m", "src.server"],
+    "command": ["cesta\\k\\repo\\.venv\\Scripts\\python.exe", "-X", "utf8", "-m", "lichess_analyzer_mcp.server"],
     "enabled": true,
     "timeout": 60000
 }
@@ -311,17 +312,18 @@ uv run python scripts\run_pipeline.py outpost2026 --games 10
 lichess-analyzer-mcp/  
 ├── stockfish/               ← Stockfish 18 binary (necommitovano)  
 ├── src/  
-│   ├── app.py               ← FastMCP instance  
-│   ├── server.py            ← Entry point + workspace context  
-│   ├── models/              ← Datove modely (dataclasses)  
-│   ├── services/  
-│   │   ├── llm_client.py    ← Multi-provider LLM cascade (NVIDIA/Cerebras/DeepSeek)  
-│   │   └── ...              ← Lichess, Stockfish, SRS, diagnostika  
-│   ├── tools/               ← 9 MCP toolu  
-│   ├── resources/           ← L2 Resources  
-│   └── kb/  
-│       ├── md_reporter.py   ← Generovani MD reportu do docs/  
-│       └── ...              ← KB persistence (B2B-Knowledge-Base)  
+│   └── lichess_analyzer_mcp/  
+│       ├── app.py               ← FastMCP instance  
+│       ├── server.py            ← Entry point + workspace context  
+│       ├── models/              ← Datove modely (dataclasses)  
+│       ├── services/  
+│       │   ├── llm_client.py    ← Multi-provider LLM cascade  
+│       │   └── ...              ← Lichess, Stockfish, SRS, diagnostika  
+│       ├── tools/               ← 10 MCP toolu  
+│       ├── resources/           ← L2 Resources  
+│       └── kb/  
+│           ├── md_reporter.py   ← Generovani MD reportu do docs/  
+│           └── ...              ← KB persistence (B2B-Knowledge-Base)  
 ├── scripts/  
 │   ├── run\_pipeline.py      ← CLI batch pipeline  
 │   └── setup\_stockfish.ps1  ← Automaticke stazeni Stockfish  
@@ -331,7 +333,11 @@ lichess-analyzer-mcp/
 │   └── test\_engine\_client.py  ← 5 unit testu s mocknutym Stockfish  
 ├── docs/  
 │   ├── CONTEXT\_A\_ZAMER.md   ← Kompletni kontext a zamer projektu  
-│   └── PHASE2\_BUILD\_PLAN.md ← Build plan + MCP pitva pravidla  
+│   ├── PHASE2\_BUILD\_PLAN.md ← Build plan + MCP pitva pravidla  
+│   └── coaching\_reports/    ← Generovane treninkove reporty  
+├── data/  
+│   ├── game\_cache/          ← Cache analyz (JSON, Stockfish + LLM)  
+│   └── patterns/            ← Pattern library (chess\_patterns\_v5.json)  
 ├── lichess-mcp.bat          ← Cross-shell launcher (Windows)  
 ├── .env                     ← LICHESS\_TOKEN (necommitovat)  
 ├── README.md                ← Tento soubor  
@@ -414,34 +420,46 @@ Architektonicke vzory (tools-of-tools, KB write-back, L2 Resources, session stat
 
 ## Souvislosti
 
-- **Pattern library:** 9 definovanych (A-R), 7 s detektory — analyza 13 partii, Phase 1 hotova (commit a536845)
+- **Pattern library:** 10 definovanych (A-R), 10 s detektory + 1 kandidat (S) — analyza 22 partii, Phase 1 hotova
 
 - **Pozadi:** `docs/CONTEXT\_A\_ZAMER.md` — kompletni kontext, reserse a architektura
+
+- **DBCL vrstva:** navrzena + cross-auditovana (Claude, PASS WITH CONCERNS, 21 nalezu). Implementacni plan v `docs/PHASE2_BUILD_PLAN.md` v2.0: P0 (pattern J fix, FEN propagace) → P1 (DBCL core) → P2 (schema doplneni)
 
 - **MCP pravidla:** Aplikovano P1-P45 z agregovane pitevni knihy (timeout guard, structured logging, L2 Resources, encoding triad, contract testing, API key health check)
 
 - **KB modul:** B2B-Knowledge-Base/02\_ANALYZY/02\_chess/ + 04\_KNOWLEDGE\_BASE/02\_chess/
 
 
-## Stav (2026-07-20)
+## Stav (2026-07-25)
 
 | Co | Stav |
 | - | - |
-| Tests | 33/33 pass (15 unit + 13 contract + 5 engine mock) |
-| Patterny definovane | 9 (A, B, C, G, I, O, P, Q, R) |
-| Patterny s detektorem | 7 (A, B, G, O, P, Q, R) |
-| Cached games | 18 (depth 12-14) |
-| Phase 1 | Hotova |
-| LLM pipeline | ✅ NVIDIA, Cerebras, DeepSeek V4 Flash funkcni |
-| LLM reporting | ✅ MD reporty do `docs/` (truncating, signal, priorita, trening) |
-| Provider switch | ✅ `DEFAULT_PROVIDER` env var (nvidia/cerebras/deepseek) |
+| Tests | 35/35 pass (15 unit + 13 contract + 5 engine mock + 2 new) |
+| Patterny definovane | 11 (A, B, C, G, I, J, O, P, Q, Q1, R) + S candidate |
+| Patterny s detektorem | 11 + S candidate |
+| Pattern J semantika | ✅ **FIXED (P0/F-007)** — m.was_in_check + "x" not in m.move_san |
+| Analyzovane partie | 22 (depth 12-14, RUN\_001 + RUN\_002) |
+| Engine | Stockfish BMI2 dev-20260609 (depth 14), ACPL MAE 3.9 vs Lichess |
+| Phase 1 | ✅ Hotova |
+| DBCL architektura | ✅ Navrzena + cross-auditovan (Claude, PASS WITH CONCERNS, 21 nalezu) |
+| DBCL implementace | ⏳ P0-P3 plan v docs/PHASE2_BUILD_PLAN.md v2.0 |
+| Pattern S (capture aversion) | Kandidat — ceka na P3 |
+| Transfer learning | Take3, VeNRA, Compiled AI, Blunder Tutor, Lichess lila |
+| LLM pipeline | ✅ NVIDIA, Cerebras, DeepSeek V4 Flash |
+| LLM reporting | ✅ MD reporty do `docs/` + `00_STRATEGIE/` |
+| Provider switch | ✅ `DEFAULT_PROVIDER` env var |
 | Pipeline mode | ✅ `PIPELINE_MODE` env var (mono/incremental/auto) |
-| Contract tests | ✅ 13 testu — Stockfish→LLM mapping, schema, noise-floor |
-| Low SNR fix | ✅ GT-059 — accuracy, phase_stats, key mapping opraveny |
-| DeepSeek Chat | ❌ **ZAKAZAN** — prilis drahy ($0.27/$1.10 per 1M) |
+| Contract tests | ✅ 13 testu |
+| Low SNR fix | ✅ GT-059 |
+| kNAMNYUF hallucinace | ✅ detekovana + DBCL guard clause navrzen |
+| DeepSeek Chat | ❌ **ZAKAZAN** |
 
-Kalibracni plan: `docs/KALIBRACE_PLAN_2026-07-19.md` (v2.3, ~600 lines).
-Session state: `.ai_state.json`
+Session state: `.ai_state.json` (klic `2026-07-25_baseline`)
+Kalibracni plan: `docs/KALIBRACE_PLAN_2026-07-19.md`
+Build plan: `docs/PHASE2_BUILD_PLAN.md` (v2.0, 2026-07-25)
+DBCL audit: `00_STRATEGIE/DBCL_Cross_Audit_Report.docx` (Claude, 21 findings)
+Coaching: `00_STRATEGIE/evening_coaching_2026-07-24.md` (v2 + audit korekce)
 
 ## License
 
