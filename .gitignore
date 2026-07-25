@@ -8,3 +8,26 @@ __pycache__/
 .ruff_cache/
 .~lock.*
 ~$*
+
+# Python build artifacts
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# OS
+.DS_Store
+*.swp
+*.swo
+
+# Local AI state
+.ai_state.json
+
+# Generated logs
+logs/
+
+# Binary documents
+*.docx

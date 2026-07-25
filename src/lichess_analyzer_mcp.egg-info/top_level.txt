@@ -1,1 +1,0 @@
-lichess_analyzer_mcp

@@ -8,6 +8,7 @@ dependencies = [
     "berserk>=0.14.0",
     "chess>=1.11.0,<2",
     "httpx>=0.28.0",
+    "python-docx>=1.2.0",
 ]
 
 [project.scripts]
@@ -31,9 +32,16 @@ select = ["F", "E", "W", "I", "N", "UP", "S"]
 dev = [
     "pytest>=8",
     "pytest-asyncio>=0.24",
+    "pytest-cov>=6",
     "coverage>=7",
+    "mypy>=1.13",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+strict = false

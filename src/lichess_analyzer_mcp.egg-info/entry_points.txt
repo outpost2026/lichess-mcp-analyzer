@@ -1,2 +1,0 @@
-[console_scripts]
-lichess-mcp = lichess_analyzer_mcp.server:main
