@@ -22,6 +22,18 @@ async def lichess_analyze_game(
             pgn = fetch_game_pgn(game_id)
         if not pgn:
             return {"error": "Provide either game_id or pgn"}
+        if username:
+            import io
+            import chess.pgn
+
+            game_node = chess.pgn.read_game(io.StringIO(pgn))
+            if game_node:
+                white = game_node.headers.get("White", "")
+                black = game_node.headers.get("Black", "")
+                if username.lower() == black.lower():
+                    color = "black"
+                elif username.lower() == white.lower():
+                    color = "white"
         result = analyze_pgn(pgn, player_color=color, depth=depth, game_id=game_id)
         return {
             "game": {

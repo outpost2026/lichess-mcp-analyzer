@@ -38,7 +38,7 @@ async def lichess_opening_explorer(fen: str, source: str = "lichess"):
             "source": source,
             "total_games": data.get("total", 0),
             "top_moves": moves[:10],
-            "opening": data.get("opening", {}),
+            "opening": data.get("opening") or {},
         }
     except Exception as e:
         return {"error": str(e)}

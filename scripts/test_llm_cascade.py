@@ -101,7 +101,10 @@ print(f"  Started: {datetime.now(timezone.utc).isoformat()}")
 
 # ── Step 1: LLM status ────────────────────────────────────────────────────
 section("[1/6] LLM provider check")
-from lichess_analyzer_mcp.services.llm_client import get_llm_status, generate_coaching_report_with_logs
+from lichess_analyzer_mcp.services.llm_client import (
+    get_llm_status,
+    generate_coaching_report_with_logs,
+)
 
 status = get_llm_status()
 print(f"  Configured: {status['total_configured']}")
@@ -217,9 +220,9 @@ except Exception as e:
 
 # ── Step 5: Build LLM input prompt (log it!) ──────────────────────────────
 section("[5/6] LLM prompt (deterministic pipeline output)")
-from lichess_analyzer_mcp.services.llm_client import _build_coaching_prompt
+from lichess_analyzer_mcp.services.llm_client import build_coaching_prompt
 
-prompt_text = _build_coaching_prompt("systeq", len(analyses), pattern_results, wr_dict)
+prompt_text = build_coaching_prompt("systeq", len(analyses), pattern_results, wr_dict)
 print(f"  System prompt: {len(SYSPROMPT_DISPLAY)} chars")
 print(f"  User prompt:   {len(prompt_text)} chars ({len(prompt_text) // 4} est. tokens)")
 print(f"\n  ── User prompt preview ──")

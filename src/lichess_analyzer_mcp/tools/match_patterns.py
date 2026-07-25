@@ -11,7 +11,9 @@ log = get_logger("match_patterns")
 
 
 @app.tool("lichess_match_patterns")
-async def lichess_match_patterns(username: str, max_games: int = 20, depth: int = 12):
+async def lichess_match_patterns(
+    username: str, max_games: int = 20, depth: int = 12, result: str = "all"
+):
     """Detects known playing patterns (A-Q1) from the player's pattern library.
 
     Analyzes recent games and matches them against the pattern library
@@ -23,11 +25,12 @@ async def lichess_match_patterns(username: str, max_games: int = 20, depth: int 
         username: Lichess username
         max_games: Number of games to analyze (5-50)
         depth: Stockfish depth (8-18)
+        result: Filtr dle vysledku - 'all', 'win', 'loss', 'draw'
     """
     max_games = max(5, min(50, max_games))
     depth = max(8, min(18, depth))
     try:
-        games_data = fetch_user_games(username, max_games=max_games)
+        games_data = fetch_user_games(username, max_games=max_games, result=result)
         total_available = len(games_data)
         log.info(
             "patterns start | user=%s | requested=%d | available=%d | depth=%d",
@@ -100,6 +103,8 @@ async def lichess_match_patterns(username: str, max_games: int = 20, depth: int 
 
         log.info("patterns detected | user=%s | total=%d", username, len(result))
 
+        result.sort(key=lambda x: (x["severity"] == "critical", x["confidence"]), reverse=True)
+
         artifact = {
             "username": username,
             "games_analyzed": len(analyses),
@@ -123,7 +128,6 @@ async def lichess_match_patterns(username: str, max_games: int = 20, depth: int 
         resource_key = f"{username}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
         store_patterns(resource_key, artifact)
 
-        result.sort(key=lambda x: (x["severity"] == "critical", x["confidence"]), reverse=True)
         return artifact
     except Exception as e:
         log.exception("patterns error | user=%s", username)

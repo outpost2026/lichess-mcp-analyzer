@@ -49,12 +49,24 @@ def diagnose(analyses: list[GameAnalysis], username: str) -> WeaknessReport:
             }
         )
     top_weaknesses = []
-    if phase_blunders["middlegame"] >= phase_blunders["opening"] + phase_blunders["endgame"]:
-        top_weaknesses.append("Tactical awareness in middlegame transitions")
+    if all(p in phase_weaknesses for p in ("opening", "middlegame", "endgame")):
+        mg_rate = phase_weaknesses["middlegame"]["blunders"] / max(
+            phase_weaknesses["middlegame"]["move_count"], 1
+        )
+        op_rate = phase_weaknesses["opening"]["blunders"] / max(
+            phase_weaknesses["opening"]["move_count"], 1
+        )
+        eg_rate = phase_weaknesses["endgame"]["blunders"] / max(
+            phase_weaknesses["endgame"]["move_count"], 1
+        )
+        if mg_rate > op_rate + eg_rate:
+            top_weaknesses.append("Tactical awareness in middlegame transitions")
     if total_acpl > 80:
         top_weaknesses.append("Overall precision: high centipawn loss")
-    if openings and list(openings.values())[0]["blunders"] > 2:
-        top_weaknesses.append(f"Opening preparation: {list(openings.keys())[0]}")
+    if openings:
+        worst_opening = sorted(openings.items(), key=lambda x: x[1]["blunders"], reverse=True)[0]
+        if worst_opening[1]["blunders"] > 2:
+            top_weaknesses.append(f"Opening preparation: {worst_opening[0]}")
     return WeaknessReport(
         username=username,
         total_games_analyzed=len(analyses),

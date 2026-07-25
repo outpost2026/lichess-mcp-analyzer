@@ -20,7 +20,7 @@ def _cleanup_engine():
 
 def _find_stockfish() -> str:
     project_stockfish = os.path.join(
-        os.path.dirname(__file__), "..", "..", "..", "stockfish", "stockfish.exe"
+        os.path.dirname(__file__), "..", "..", "..", "stockfish", "stockfish-bmi2.exe"
     )
     search_dirs = os.environ.get("STOCKFISH_SEARCH_DIRS", "")
     extra = search_dirs.split(";") if search_dirs else []
@@ -32,6 +32,7 @@ def _find_stockfish() -> str:
         + extra
         + [
             "stockfish",
+            "stockfish-bmi2.exe",
             "stockfish.exe",
         ]
     )
@@ -48,7 +49,7 @@ def get_engine() -> chess.engine.SimpleEngine:
             if _engine is None:
                 sf_path = _find_stockfish()
                 _engine = chess.engine.SimpleEngine.popen_uci(sf_path)
-                _engine.configure({"Threads": 2, "Hash": 128})
+                _engine.configure({"Threads": 6, "Hash": 512, "NumaPolicy": "hardware"})
     return _engine
 
 

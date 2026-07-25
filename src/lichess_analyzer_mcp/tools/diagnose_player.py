@@ -8,7 +8,9 @@ log = get_logger("diagnose_player")
 
 
 @app.tool("lichess_diagnose_player")
-async def lichess_diagnose_player(username: str, max_games: int = 20, depth: int = 12):
+async def lichess_diagnose_player(
+    username: str, max_games: int = 20, depth: int = 12, result: str = "all"
+):
     """Diagnoses a player's weaknesses across multiple games.
 
     Analyzes recent games and identifies recurring tactical blind spots,
@@ -21,11 +23,12 @@ async def lichess_diagnose_player(username: str, max_games: int = 20, depth: int
         username: Lichess username
         max_games: Number of recent games to analyze (5-50)
         depth: Stockfish depth for analysis (8-18, lower = faster)
+        result: Filtr dle vysledku - 'all', 'win', 'loss', 'draw'
     """
     max_games = max(5, min(50, max_games))
     depth = max(8, min(18, depth))
     try:
-        games_data = fetch_user_games(username, max_games=max_games)
+        games_data = fetch_user_games(username, max_games=max_games, result=result)
         total_available = len(games_data)
         log.info(
             "diagnose start | user=%s | requested=%d | available=%d | depth=%d",

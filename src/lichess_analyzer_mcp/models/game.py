@@ -47,6 +47,8 @@ class MoveAnalysis:
     is_tactical_motif: bool
     motif_type: Optional[str]
     phase: str
+    fen: str = ""
+    was_in_check: bool = False
 
     def to_dict(self) -> dict:
         return asdict(self)

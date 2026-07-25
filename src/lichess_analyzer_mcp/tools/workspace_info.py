@@ -6,6 +6,7 @@ from lichess_analyzer_mcp.app import app
 
 _KNOWN_TOOLS = [
     "lichess_fetch_games",
+    "lichess_games_index",
     "lichess_analyze_game",
     "lichess_analyze_position",
     "lichess_opening_explorer",
@@ -24,8 +25,8 @@ async def lichess_workspace_info():
     Provides root path, stockfish status, Python version,
     and registered tools count.
     """
-    root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    sf_path = os.path.join(root, "stockfish", "stockfish.exe")
+    root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+    sf_path = os.path.join(root, "stockfish", "stockfish-bmi2.exe")
     stockfish_ok = os.path.isfile(sf_path)
     token_set = bool(os.environ.get("LICHESS_TOKEN")) or bool(os.environ.get("LICHESS_TOKEN_FILE"))
 

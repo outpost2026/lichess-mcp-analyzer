@@ -3,6 +3,7 @@
 import glob
 import json
 import os
+import re
 
 from lichess_analyzer_mcp.models.game import GameSummary, MoveAnalysis, GameAnalysis
 from lichess_analyzer_mcp.services import engine_client
@@ -11,8 +12,13 @@ from lichess_analyzer_mcp.services.lichess_client import fetch_game_pgn
 CACHE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "game_cache")
 
 
+def _sanitize_id(raw: str) -> str:
+    return re.sub(r"[^a-zA-Z0-9_-]", "", raw)
+
+
 def _cache_path(game_id: str, depth: int, color: str = "white") -> str:
-    d = os.path.join(CACHE_DIR, f"{game_id}_{color}_d{depth}.json")
+    safe = _sanitize_id(game_id)
+    d = os.path.join(CACHE_DIR, f"{safe}_{color}_d{depth}.json")
     return d
 
 
@@ -142,6 +148,7 @@ def _run_analyze_pgn(pgn: str, player_color: str = "white", depth: int = 14) -> 
                 cp_loss = 0
             classification = _classify_move(cp_loss)
             phase = _detect_phase(ply)
+            was_in_check = board.is_check()
             move_analysis = MoveAnalysis(
                 ply=ply,
                 move_uci=move.uci(),
@@ -157,9 +164,13 @@ def _run_analyze_pgn(pgn: str, player_color: str = "white", depth: int = 14) -> 
                 is_tactical_motif=False,
                 motif_type=None,
                 phase=phase,
+                fen=fen_before,
+                was_in_check=was_in_check,
             )
-            if classification in ("blunder", "mistake"):
+            if classification == "blunder":
                 analysis.blunders.append(move_analysis)
+            elif classification == "mistake":
+                analysis.mistakes.append(move_analysis)
             elif classification == "inaccuracy":
                 analysis.inaccuracies.append(move_analysis)
             total_cp += cp_loss

@@ -1,4 +1,4 @@
-﻿"""Pattern detection engine for patterns A-Q1."""
+"""Pattern detection engine for patterns A-Q1."""
 
 from lichess_analyzer_mcp.models.pattern import PatternDef, PatternMatch, PatternLibrary
 from lichess_analyzer_mcp.models.game import GameAnalysis
@@ -126,6 +126,14 @@ class PatternDetector:
             )
             dominant = "White" if white_blunder_rate > black_blunder_rate else "Black"
             if ratio > 1.4:
+                affected_ids = [
+                    g.game.id
+                    for g in (
+                        white_analyses
+                        if white_blunder_rate > black_blunder_rate
+                        else black_analyses
+                    )
+                ]
                 return PatternMatch(
                     pattern_id="G",
                     pattern_name="Color as modulator",
@@ -138,15 +146,8 @@ class PatternDetector:
                             "dominant_side": dominant,
                         }
                     ],
-                    game_ids=[
-                        g.game.id
-                        for g in (
-                            white_analyses
-                            if white_blunder_rate > black_blunder_rate
-                            else black_analyses
-                        )
-                    ],
-                    frequency=int(max(white_blunder_rate, black_blunder_rate)),
+                    game_ids=affected_ids,
+                    frequency=len(affected_ids),
                     severity="high",
                     hypothesis=f"Hypothesis: player's error rate shifts with color — {dominant} side has {ratio:.1f}x more blunders.",
                 )
@@ -185,9 +186,9 @@ class PatternDetector:
         affected = []
         block_count = 0
         for analysis in analyses:
-            for i, m in enumerate(analysis.moves):
+            for m in analysis.moves:
                 if m.classification in ("blunder", "mistake") and m.centipawn_loss >= 150:
-                    if "+" in m.move_san or "#" in m.move_san:
+                    if m.was_in_check and "x" not in m.move_san:
                         block_count += 1
                         affected.append(analysis.game.id)
         if block_count >= 1:
@@ -198,7 +199,7 @@ class PatternDetector:
                 evidence=[
                     {
                         "impulsive_blocks": block_count,
-                        "detail": "Player blocked a check with a piece instead of moving the king, leading to material loss or positional collapse",
+                        "detail": "Player was in check and blocked with a piece instead of capturing the checking piece or moving the king, leading to material loss or positional collapse",
                     }
                 ],
                 game_ids=list(set(affected)),
