@@ -98,7 +98,7 @@ class TestStockfishCacheContract:
         data = _first_cache()
         mistakes = data.get("mistakes", [])
         if not mistakes:
-            return
+            return  # cache generated before GT-061 fix — run batch analysis to regenerate
         for key in PROMPT_ERROR_SUBKEYS:
             assert key in mistakes[0], (
                 f"Missing mistake key '{key}'. Available keys: {list(mistakes[0].keys())}"
