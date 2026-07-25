@@ -1,4 +1,4 @@
-"""
+﻿"""
 Test LLM reasoning layer: end-to-end test with real Lichess data.
 
 1. Load .env for LICHESS_TOKEN
@@ -55,7 +55,7 @@ print("=" * 70)
 
 # ── Step 1: LLM provider status ───────────────────────────────────────────
 print("\n[1/5] LLM provider status...")
-from src.services.llm_client import get_llm_status, is_llm_available, generate_coaching_report
+from lichess_analyzer_mcp.services.llm_client import get_llm_status, is_llm_available, generate_coaching_report
 
 status = get_llm_status()
 print(f"  Providers configured: {status['total_configured']}")
@@ -67,8 +67,8 @@ if not status["active_provider"]:
 
 # ── Step 2: Fetch games ───────────────────────────────────────────────────
 print("\n[2/5] Fetching games for systeq...")
-from src.services.lichess_client import fetch_user_games, fetch_game_pgn
-from src.services.game_analyzer import analyze_pgn
+from lichess_analyzer_mcp.services.lichess_client import fetch_user_games, fetch_game_pgn
+from lichess_analyzer_mcp.services.game_analyzer import analyze_pgn
 
 try:
     games_data = fetch_user_games("systeq", max_games=20)
@@ -137,9 +137,9 @@ if len(analyses) < 2:
 
 # ── Step 4: Pattern detection ─────────────────────────────────────────────
 print(f"\n[4/5] Pattern detection on {len(analyses)} games...")
-from src.services.pattern_detector import PatternDetector
-from src.services.diagnostician import diagnose
-from src.services.compressibility_validator import compute_compression
+from lichess_analyzer_mcp.services.pattern_detector import PatternDetector
+from lichess_analyzer_mcp.services.diagnostician import diagnose
+from lichess_analyzer_mcp.services.compressibility_validator import compute_compression
 
 metadata = {"username": "systeq", "total_games": len(analyses)}
 detector = PatternDetector()

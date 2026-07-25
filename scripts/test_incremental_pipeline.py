@@ -1,4 +1,4 @@
-"""Test inkrementalni pipeline: per-game LLM cache + aggregate z cached summaries.
+﻿"""Test inkrementalni pipeline: per-game LLM cache + aggregate z cached summaries.
 Demonstruje: 2 nove hry + 3 cache = jen 2 per-game LLM cally, aggregate pouzije summaries.
 """
 
@@ -7,7 +7,7 @@ import os, sys, json, time
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 os.environ["LLM_MAX_TOKENS"] = "4000"
 
-from src.services.game_llm_cache import analyze_game_llm, get_all_game_summaries
+from lichess_analyzer_mcp.services.game_llm_cache import analyze_game_llm, get_all_game_summaries
 
 print("=" * 60)
 print("  INCREMENTAL PIPELINE — per-game LLM cache")
@@ -49,7 +49,7 @@ print(f"  Summaries: {len(game_summaries)}")
 
 # Step 4: Aggregate LLM call (lighter prompt — summaries instead of raw data)
 print(f"\n[4/5] Aggregate LLM (using cached summaries)...")
-from src.services.llm_client import generate_coaching_report_with_logs
+from lichess_analyzer_mcp.services.llm_client import generate_coaching_report_with_logs
 
 report, log = generate_coaching_report_with_logs(
     username="systeq",

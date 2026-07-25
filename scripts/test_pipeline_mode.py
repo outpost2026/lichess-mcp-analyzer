@@ -1,4 +1,4 @@
-"""Test pipeline mode switch: auto / mono / incremental."""
+﻿"""Test pipeline mode switch: auto / mono / incremental."""
 
 import os, sys, json, time
 
@@ -14,7 +14,7 @@ games_list = ref.get("games_analyzed", [])
 game_ids = [g["id"] for g in games_list]
 game_colors = [g["color"] for g in games_list]
 
-from src.services.llm_client import run_coaching_pipeline
+from lichess_analyzer_mcp.services.llm_client import run_coaching_pipeline
 
 for mode in ["mono", "incremental", "auto"]:
     print(f"\n{'=' * 50}")

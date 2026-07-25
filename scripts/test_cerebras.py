@@ -1,4 +1,4 @@
-"""Debug Cerebras gpt-oss-120b response and run pipeline."""
+﻿"""Debug Cerebras gpt-oss-120b response and run pipeline."""
 
 import os, sys, json, time
 
@@ -39,7 +39,7 @@ print(f"\n\nPipeline with {model}...")
 os.environ["CEREBRAS_MODEL"] = model
 os.environ["LLM_MAX_TOKENS"] = "4000"
 
-from src.services.llm_client import (
+from lichess_analyzer_mcp.services.llm_client import (
     generate_coaching_report_with_logs,
 )
 

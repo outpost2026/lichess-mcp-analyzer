@@ -1,17 +1,20 @@
-"""Unit tests for services."""
+﻿"""Unit tests for services."""
 
 import sys
 
 sys.path.insert(0, "src")
 
-from src.models.game import GameSummary, MoveAnalysis, GameAnalysis
-from src.models.analysis import WeaknessReport
-from src.models.pattern import PatternDef, PatternMatch, PatternLibrary
-from src.models.srs_card import SRSCard, FSRSState
-from src.models.player_profile import PlayerProfile, OpeningStats
-from src.services.compressibility_validator import compute_compression, compression_score
-from src.services.validator import validate_pattern_artifact, ValidationError
-from src.kb.schemas import validate_against_schema
+from lichess_analyzer_mcp.models.game import GameSummary, MoveAnalysis, GameAnalysis
+from lichess_analyzer_mcp.models.analysis import WeaknessReport
+from lichess_analyzer_mcp.models.pattern import PatternDef, PatternMatch, PatternLibrary
+from lichess_analyzer_mcp.models.srs_card import SRSCard, FSRSState
+from lichess_analyzer_mcp.models.player_profile import PlayerProfile, OpeningStats
+from lichess_analyzer_mcp.services.compressibility_validator import (
+    compute_compression,
+    compression_score,
+)
+from lichess_analyzer_mcp.services.validator import validate_pattern_artifact, ValidationError
+from lichess_analyzer_mcp.kb.schemas import validate_against_schema
 
 
 class TestModels:
@@ -256,6 +259,62 @@ class TestModels:
         }
         issues = validate_pattern_artifact(artifact)
         assert any("hypothesis" in i for i in issues)
+
+    def test_classify_move_thresholds(self):
+        from lichess_analyzer_mcp.services.game_analyzer import _classify_move
+
+        assert _classify_move(500) == "blunder"
+        assert _classify_move(300) == "blunder"
+        assert _classify_move(299) == "mistake"
+        assert _classify_move(150) == "mistake"
+        assert _classify_move(149) == "inaccuracy"
+        assert _classify_move(50) == "inaccuracy"
+        assert _classify_move(49) == "good"
+        assert _classify_move(20) == "good"
+        assert _classify_move(19) == "best"
+        assert _classify_move(0) == "best"
+
+    def test_mistakes_list_populated(self):
+        from lichess_analyzer_mcp.services.game_analyzer import _classify_move
+
+        g = GameSummary(
+            id="test",
+            platform="lichess",
+            opening="",
+            opening_eco="",
+            color="white",
+            result="1-0",
+            opponent_name="opp",
+            opponent_rating=1500,
+        )
+        a = GameAnalysis(game=g)
+        for i, cp in enumerate([150, 299, 50, 300, 20]):
+            m = MoveAnalysis(
+                ply=i,
+                move_uci="e2e4",
+                move_san="e4",
+                eval_before=0.0,
+                eval_after=-cp / 100.0,
+                win_prob_before=0.5,
+                win_prob_after=0.3,
+                centipawn_loss=cp,
+                classification=_classify_move(cp),
+                best_move_uci="d2d4",
+                best_move_san="d4",
+                is_tactical_motif=False,
+                motif_type=None,
+                phase="opening",
+            )
+            if m.classification == "blunder":
+                a.blunders.append(m)
+            elif m.classification == "mistake":
+                a.mistakes.append(m)
+            elif m.classification == "inaccuracy":
+                a.inaccuracies.append(m)
+            a.moves.append(m)
+        assert len(a.blunders) == 1, f"Expected 1 blunder, got {len(a.blunders)}"
+        assert len(a.mistakes) == 2, f"Expected 2 mistakes, got {len(a.mistakes)}"
+        assert len(a.inaccuracies) == 1, f"Expected 1 inaccuracy, got {len(a.inaccuracies)}"
 
     def test_schema_validation(self):
         artifact = {

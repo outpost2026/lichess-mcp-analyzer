@@ -168,11 +168,12 @@ SNR = semantic fidelity to input data (confidence %, phase ACPL, no hallucinated
 
 ---
 
-## Tools (9 MCP tools)
+## Tools (10 MCP tools)
 
 | Tool | Description |
 |------|-------------|
 | `lichess_fetch_games` | Fetch recent games from Lichess |
+| `lichess_games_index` | Quick game index cache by result |
 | `lichess_analyze_game` | Analyze a single game with Stockfish (per-move, centipawn loss) |
 | `lichess_analyze_position` | Analyze a FEN position (depth 8-24, multipv 3) |
 | `lichess_opening_explorer` | Explore openings in the Lichess database |
@@ -221,7 +222,7 @@ Generate your token at [lichess.org/settings/oauth](https://lichess.org/settings
 
 ```powershell
 uv sync
-uv run python -m src.server
+uv run python -m lichess_analyzer_mcp.server
 ```
 
 The server connects over stdio. Register it in `opencode.jsonc`:
@@ -229,7 +230,7 @@ The server connects over stdio. Register it in `opencode.jsonc`:
 ```json
 "lichess-analyzer": {
     "type": "local",
-    "command": ["path\\to\\repo\\.venv\\Scripts\\python.exe", "-X", "utf8", "-m", "src.server"],
+    "command": ["path\\to\\repo\\.venv\\Scripts\\python.exe", "-X", "utf8", "-m", "lichess_analyzer_mcp.server"],
     "enabled": true,
     "timeout": 60000
 }
@@ -320,23 +321,25 @@ uv run python scripts\run_pipeline.py outpost2026 --games 10
 lichess-analyzer-mcp/
 ├── stockfish/               ← Stockfish 18 binary (not committed)
 ├── src/
-│   ├── app.py               ← FastMCP instance
-│   ├── server.py            ← Entry point + workspace context
-│   ├── models/              ← Data models (dataclasses)
-│   ├── services/
-│   │   ├── llm_client.py    ← Multi-provider LLM cascade (NVIDIA/Cerebras/DeepSeek)
-│   │   └── ...              ← Lichess, Stockfish, SRS, diagnostics
-│   ├── tools/               ← 9 MCP tools
-│   ├── resources/           ← L2 Resources
-│   └── kb/
-│       ├── md_reporter.py   ← MD report generation to docs/
-│       └── ...              ← KB persistence (B2B-Knowledge-Base)
+│   └── lichess_analyzer_mcp/
+│       ├── app.py               ← FastMCP instance
+│       ├── server.py            ← Entry point + workspace context
+│       ├── models/              ← Data models (dataclasses)
+│       ├── services/
+│       │   ├── llm_client.py    ← Multi-provider LLM cascade
+│       │   └── ...              ← Lichess, Stockfish, SRS, diagnostics
+│       ├── tools/               ← 10 MCP tools
+│       ├── resources/           ← L2 Resources
+│       └── kb/
+│           ├── md_reporter.py   ← MD report generation to docs/
+│           └── ...              ← KB persistence (B2B-Knowledge-Base)
 ├── scripts/
 │   ├── run_pipeline.py      ← CLI batch pipeline
 │   └── setup_stockfish.ps1  ← Automatic Stockfish download
 ├── tests/
 │   ├── test_services.py       ← 15 unit tests (models, compression, validation)
-│   └── test_prompt_contract.py ← 13 contract tests (schema, mapping, noise-floor)
+│   ├── test_prompt_contract.py ← 13 contract tests (schema, mapping, noise-floor)
+│   └── test_engine_client.py  ← 5 unit tests with mocked Stockfish
 ├── docs/
 │   ├── CONTEXT_A_ZAMER.md   ← Full project context (CZ)
 │   └── PHASE2_BUILD_PLAN.md ← Build plan + MCP post-mortem rules
@@ -419,8 +422,9 @@ Architectural patterns (tools-of-tools, KB write-back, L2 Resources, session sta
 
 ## References
 
-- **Pattern library:** 9 patterns (A-R) — analysis of 21 games
-- **Tests:** 28/28 pass (15 unit + 13 contract)
+- **Pattern library:** 11 patterns (A-Q1) — analysis of 22 games
+- **Tests:** 35/35 pass (15 unit + 13 contract + 5 engine mock + 2 new)
+- **Pattern J semantics:** ✅ **FIXED (P0/F-007)** — m.was_in_check + "x" not in m.move_san
 - **LLM pipeline:** ✅ NVIDIA, Cerebras, DeepSeek V4 Flash operational
 - **LLM reporting:** ✅ MD reports to `docs/` (summary, signal priority, training, strengths)
 - **Provider switch:** ✅ `DEFAULT_PROVIDER` env var (nvidia/cerebras/deepseek)
@@ -429,7 +433,7 @@ Architectural patterns (tools-of-tools, KB write-back, L2 Resources, session sta
 - **Low SNR fix:** ✅ GT-059 — accuracy, phase_stats, key mapping fixed
 - **DeepSeek Chat:** ❌ **BANNED** — too expensive ($0.27/$1.10 per 1M tokens)
 - **Background:** `docs/CONTEXT_A_ZAMER.md` (CZ)
-- **MCP rules:** P1-P44 from the aggregated post-mortem (timeout guard, structured logging, L2 Resources, encoding triad, contract testing)
+- **MCP rules:** P1-P45 from the aggregated post-mortem (timeout guard, structured logging, L2 Resources, encoding triad, contract testing)
 - **KB module:** B2B-Knowledge-Base/02_ANALYZY/02_chess/ + 04_KNOWLEDGE_BASE/02_chess/
 
 ---

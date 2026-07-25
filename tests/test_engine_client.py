@@ -1,4 +1,4 @@
-"""Unit tests for engine_client with mocked Stockfish."""
+﻿"""Unit tests for engine_client with mocked Stockfish."""
 
 import sys, os
 
@@ -6,12 +6,12 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from unittest.mock import patch, MagicMock
 import chess
-from src.services.engine_client import (
+from lichess_analyzer_mcp.services.engine_client import (
     _find_stockfish,
     analyze_position,
     evaluate_move,
     close_engine,
-    ENGINE_TIMEOUT,
+    _ENGINE_LOCK_TIMEOUT,
 )
 
 
@@ -21,7 +21,7 @@ class TestFindStockfish:
         assert isinstance(path, str)
         assert len(path) > 0
 
-    @patch("src.services.engine_client.os.path.isfile", return_value=True)
+    @patch("lichess_analyzer_mcp.services.engine_client.os.path.isfile", return_value=True)
     def test_prefers_env_var(self, mock_isfile):
         with patch.dict(os.environ, {"STOCKFISH_PATH": "/custom/stockfish.exe"}, clear=False):
             path = _find_stockfish()
@@ -32,7 +32,7 @@ class TestAnalyzePosition:
     def setup_method(self):
         self.fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 
-    @patch("src.services.engine_client.get_engine")
+    @patch("lichess_analyzer_mcp.services.engine_client.get_engine")
     def test_returns_list(self, mock_get_engine):
         mock_engine = MagicMock()
         mock_get_engine.return_value = mock_engine
@@ -56,7 +56,7 @@ class TestEvaluateMove:
     def setup_method(self):
         self.fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 
-    @patch("src.services.engine_client.get_engine")
+    @patch("lichess_analyzer_mcp.services.engine_client.get_engine")
     def test_returns_dict(self, mock_get_engine):
         mock_engine = MagicMock()
         mock_get_engine.return_value = mock_engine

@@ -1,4 +1,4 @@
-"""Verify DEFAULT_PROVIDER env var switch."""
+﻿"""Verify DEFAULT_PROVIDER env var switch."""
 
 import os, sys, json
 
@@ -12,7 +12,7 @@ patterns = data.get("patterns_detected", [])
 weakness = data.get("weakness_report", None)
 games_count = len(data.get("games_analyzed", []))
 
-from src.services.llm_client import generate_coaching_report_with_logs
+from lichess_analyzer_mcp.services.llm_client import generate_coaching_report_with_logs
 
 for name, env_val in [
     ("default (NVIDIA→Cerebras→DS)", ""),

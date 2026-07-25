@@ -1,4 +1,4 @@
-"""Contract tests: Stockfish cache data ↔ LLM prompt key mapping.
+﻿"""Contract tests: Stockfish cache data ↔ LLM prompt key mapping.
 
 These tests verify the contract between modules:
 - Producer: GameAnalysis → Stockfish JSON cache (game_cache/*.json)
@@ -98,7 +98,7 @@ class TestStockfishCacheContract:
         data = _first_cache()
         mistakes = data.get("mistakes", [])
         if not mistakes:
-            return
+            return  # cache generated before GT-061 fix — run batch analysis to regenerate
         for key in PROMPT_ERROR_SUBKEYS:
             assert key in mistakes[0], (
                 f"Missing mistake key '{key}'. Available keys: {list(mistakes[0].keys())}"
@@ -139,7 +139,7 @@ class TestPromptNoPlaceholders:
     """Verify the built prompt contains real values, not '?'."""
 
     def _build_prompt_for_first_cache(self) -> str:
-        from src.services.game_llm_cache import _build_game_prompt
+        from lichess_analyzer_mcp.services.game_llm_cache import _build_game_prompt
 
         data = _first_cache()
         return _build_game_prompt(data)
@@ -204,7 +204,7 @@ class TestGameAnalysisModelContract:
 
     def test_to_dict_keys_match_prompt_keys(self):
         # Use GameAnalysis.to_dict() output and check prompt-readable keys
-        from src.models.game import GameSummary, GameAnalysis
+        from lichess_analyzer_mcp.models.game import GameSummary, GameAnalysis
 
         g = GameSummary(
             id="test",

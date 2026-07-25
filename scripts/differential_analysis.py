@@ -1,4 +1,4 @@
-"""Diferencialni analyza: monoliticka vs inkrementalni pipeline.
+﻿"""Diferencialni analyza: monoliticka vs inkrementalni pipeline.
 Testuje: tokens, time, cost, determinismus, kvalita."""
 
 import os, sys, json, time, hashlib
@@ -6,8 +6,8 @@ import os, sys, json, time, hashlib
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 os.environ["LLM_MAX_TOKENS"] = "4000"
 
-from src.services.game_llm_cache import analyze_game_llm, get_all_game_summaries
-from src.services.llm_client import generate_coaching_report_with_logs, PROVIDERS
+from lichess_analyzer_mcp.services.game_llm_cache import analyze_game_llm, get_all_game_summaries
+from lichess_analyzer_mcp.services.llm_client import generate_coaching_report_with_logs, PROVIDERS
 
 print("=" * 65)
 print("  DIFFERENTIAL ANALYSIS: Monolithic vs Incremental Pipeline")
