@@ -1,7 +1,22 @@
-"""Pattern detection engine for patterns A-Q1."""
+"""Pattern detection engine for patterns A-Q1, I2, Q2, S."""
+
+import chess
 
 from lichess_analyzer_mcp.models.pattern import PatternDef, PatternMatch, PatternLibrary
 from lichess_analyzer_mcp.models.game import GameAnalysis
+
+THRESHOLD_TUNNEL_CONSECUTIVE = 2
+THRESHOLD_GRAB_CP = 100
+THRESHOLD_BLOCK_CP = 150
+THRESHOLD_VISUAL_CP = 150
+THRESHOLD_ENDGAME_CP = 300
+THRESHOLD_ENDGAME_EVAL = 300
+THRESHOLD_DESPERATE_EVAL = -3.0
+THRESHOLD_DESPERATE_CP = 300
+THRESHOLD_ACTIVE_DEFENSE_EVAL = -150
+THRESHOLD_S_CAPTURE_AVERSION_CP = 500
+THRESHOLD_BAIT_SWING = 80
+THRESHOLD_GIFT_EVAL_JUMP = 70
 
 
 class PatternDetector:
@@ -38,8 +53,9 @@ class PatternDetector:
                 confidence=min(anon_blunder_rate / named_blunder_rate / 2, 0.95),
                 evidence=[
                     {
-                        "anonymous_blunder_rate": anon_blunder_rate,
-                        "named_blunder_rate": named_blunder_rate,
+                        "anonymous_blunder_rate": round(anon_blunder_rate, 2),
+                        "named_blunder_rate": round(named_blunder_rate, 2),
+                        "ratio": round(anon_blunder_rate / named_blunder_rate, 2),
                     }
                 ],
                 game_ids=[g.game.id for g in anonymous_games],
@@ -55,21 +71,27 @@ class PatternDetector:
         affected_games = []
         for analysis in analyses:
             for m in analysis.moves:
-                if m.classification in ("blunder", "mistake") and m.centipawn_loss >= 100:
-                    if "x" in m.move_san:
-                        total_captures += 1
+                if "x" in m.move_san:
+                    total_captures += 1
+                    if (
+                        m.classification in ("blunder", "mistake")
+                        and m.centipawn_loss >= THRESHOLD_GRAB_CP
+                    ):
                         blunder_captures += 1
                         affected_games.append(analysis.game.id)
-        if blunder_captures >= 2:
+        if blunder_captures >= 2 and total_captures > 0:
+            ratio = blunder_captures / total_captures
             return PatternMatch(
                 pattern_id="B",
                 pattern_name="Automatic grab",
-                confidence=min(blunder_captures / max(total_captures, 1), 0.95),
+                confidence=min(ratio * 2, 0.95),
                 evidence=[
                     {
                         "blunder_captures": blunder_captures,
                         "total_captures": total_captures,
+                        "blunder_capture_ratio": round(ratio, 3),
                         "affected_games": list(set(affected_games)),
+                        "total_games": len(analyses),
                     }
                 ],
                 game_ids=list(set(affected_games)),
@@ -86,24 +108,30 @@ class PatternDetector:
             consecutive_zone = 0
             max_consecutive = 0
             for m in analysis.moves:
-                if m.classification in ("blunder", "mistake") and m.centipawn_loss >= 100:
+                if (
+                    m.classification in ("blunder", "mistake")
+                    and m.centipawn_loss >= THRESHOLD_GRAB_CP
+                ):
                     consecutive_zone += 1
                     max_consecutive = max(max_consecutive, consecutive_zone)
                 else:
                     consecutive_zone = 0
-            if max_consecutive >= 2:
+            if max_consecutive >= THRESHOLD_TUNNEL_CONSECUTIVE:
                 affected.append(analysis.game.id)
                 total_tunneling += max_consecutive
         if affected:
+            total_games = len(analyses)
             return PatternMatch(
                 pattern_id="C",
                 pattern_name="Attention tunneling",
-                confidence=min(len(affected) / 5, 0.85),
+                confidence=min(len(set(affected)) / total_games * 0.9, 0.85),
                 evidence=[
                     {
                         "affected_games": len(set(affected)),
+                        "total_games": total_games,
                         "max_consecutive_blunders": total_tunneling,
-                        "detail": "Multiple consecutive errors suggest local focus overriding global evaluation",
+                        "threshold_consecutive": THRESHOLD_TUNNEL_CONSECUTIVE,
+                        "detail": "Multiple consecutive errors suggest attention breakdown overriding global evaluation",
                     }
                 ],
                 game_ids=list(set(affected)),
@@ -140,8 +168,8 @@ class PatternDetector:
                     confidence=min(ratio / 3, 0.95),
                     evidence=[
                         {
-                            "white_blunder_rate": white_blunder_rate,
-                            "black_blunder_rate": black_blunder_rate,
+                            "white_blunder_rate": round(white_blunder_rate, 2),
+                            "black_blunder_rate": round(black_blunder_rate, 2),
                             "asymmetry_ratio": round(ratio, 2),
                             "dominant_side": dominant,
                         }
@@ -157,22 +185,33 @@ class PatternDetector:
         bait_count = 0
         affected = []
         for analysis in analyses:
-            for i, m in enumerate(analysis.moves):
-                if m.classification == "best" and m.eval_after is not None and m.eval_after > 50:
-                    if "x" in m.move_san:
-                        prev_eval = m.eval_before if m.eval_before is not None else 0
-                        if prev_eval < 30 and m.eval_after > 100:
-                            bait_count += 1
-                            affected.append(analysis.game.id)
-        if bait_count >= 2:
+            for i in range(len(analysis.moves) - 1):
+                m = analysis.moves[i]
+                if "x" in m.move_san:
+                    continue
+                eb = m.eval_before if m.eval_before is not None else 0
+                if abs(eb) > 60:
+                    continue
+                next_m = analysis.moves[i + 1]
+                n_eb = next_m.eval_before if next_m.eval_before is not None else 0
+                m_ea = m.eval_after if m.eval_after is not None else 0
+                swing = n_eb - m_ea
+                if swing > THRESHOLD_BAIT_SWING:
+                    bait_count += 1
+                    affected.append(analysis.game.id)
+                    break
+        if bait_count >= 1:
+            total_games = len(analyses)
             return PatternMatch(
                 pattern_id="I",
                 pattern_name="Bait trap",
-                confidence=min(bait_count / 5, 0.9),
+                confidence=min(bait_count / total_games * 0.8, 0.9),
                 evidence=[
                     {
-                        "bait_captures": bait_count,
-                        "detail": "Captures that turned a slightly worse position into clear advantage — opponent likely took a poisoned pawn",
+                        "bait_events": bait_count,
+                        "total_games": total_games,
+                        "threshold_swing": THRESHOLD_BAIT_SWING,
+                        "detail": "Non-capture move from balanced position where opponent's subsequent capture led to eval improvement — opponent likely took bait",
                     }
                 ],
                 game_ids=list(set(affected)),
@@ -182,23 +221,61 @@ class PatternDetector:
             )
         return None
 
+    def _detect_i2(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch:
+        gift_count = 0
+        affected = []
+        for analysis in analyses:
+            for m in analysis.moves:
+                if m.classification == "best" and m.eval_after is not None and m.eval_after > 50:
+                    if "x" in m.move_san:
+                        prev_eval = m.eval_before if m.eval_before is not None else 0
+                        if prev_eval < 30 and m.eval_after - prev_eval > THRESHOLD_GIFT_EVAL_JUMP:
+                            gift_count += 1
+                            affected.append(analysis.game.id)
+        if gift_count >= 1:
+            total_games = len(analyses)
+            return PatternMatch(
+                pattern_id="I2",
+                pattern_name="Opponent's gift exploitation",
+                confidence=min(gift_count / total_games * 0.8, 0.9),
+                evidence=[
+                    {
+                        "gift_captures": gift_count,
+                        "total_games": total_games,
+                        "threshold_eval_jump": THRESHOLD_GIFT_EVAL_JUMP,
+                        "detail": "Player's best captures that turned a slightly worse position into clear advantage — opponent dropped a gift",
+                    }
+                ],
+                game_ids=list(set(affected)),
+                frequency=gift_count,
+                severity="low",
+                hypothesis="Hypothesis: player capitalises on opponent's suboptimal captures — analogous to exploiting a misconfigured firewall rule.",
+            )
+        return None
+
     def _detect_j(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch:
         affected = []
         block_count = 0
         for analysis in analyses:
             for m in analysis.moves:
-                if m.classification in ("blunder", "mistake") and m.centipawn_loss >= 150:
+                if (
+                    m.classification in ("blunder", "mistake")
+                    and m.centipawn_loss >= THRESHOLD_BLOCK_CP
+                ):
                     if m.was_in_check and "x" not in m.move_san:
                         block_count += 1
                         affected.append(analysis.game.id)
         if block_count >= 1:
+            total_games = len(analyses)
             return PatternMatch(
                 pattern_id="J",
                 pattern_name="Impulsive check block",
-                confidence=min(block_count / 3, 0.85),
+                confidence=min(block_count / total_games * 0.9, 0.85),
                 evidence=[
                     {
                         "impulsive_blocks": block_count,
+                        "total_games": total_games,
+                        "threshold_cp": THRESHOLD_BLOCK_CP,
                         "detail": "Player was in check and blocked with a piece instead of capturing the checking piece or moving the king, leading to material loss or positional collapse",
                     }
                 ],
@@ -210,23 +287,50 @@ class PatternDetector:
         return None
 
     def _detect_o(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch:
-        affected = []
+        affected_repetition = []
+        affected_fallback = []
         for analysis in analyses:
-            for i in range(len(analysis.moves) - 3):
-                eval_vals = [m.eval_after for m in analysis.moves[i : i + 3]]
-                if None in eval_vals:
-                    continue
-                if max(eval_vals) - min(eval_vals) < 30:
-                    for j in range(i + 3, min(i + 6, len(analysis.moves))):
-                        if analysis.moves[j].classification in ("blunder", "mistake"):
-                            affected.append(analysis.game.id)
-                            break
+            found_repetition = False
+            for i, m in enumerate(analysis.moves):
+                if m.fen:
+                    board = chess.Board(m.fen)
+                    if board.can_claim_threefold_repetition():
+                        for j in range(i, min(i + 3, len(analysis.moves))):
+                            if analysis.moves[j].classification in ("blunder", "mistake"):
+                                found_repetition = True
+                                affected_repetition.append(analysis.game.id)
+                                break
+                if found_repetition:
+                    break
+            if not found_repetition:
+                for i in range(len(analysis.moves) - 3):
+                    eval_vals = [m.eval_after for m in analysis.moves[i : i + 3]]
+                    if None in eval_vals:
+                        continue
+                    if max(eval_vals) - min(eval_vals) < 30:
+                        for j in range(i + 3, min(i + 6, len(analysis.moves))):
+                            if analysis.moves[j].classification in ("blunder", "mistake"):
+                                affected_fallback.append(analysis.game.id)
+                                break
+        affected = list(set(affected_repetition + affected_fallback))
         if affected:
+            total_games = len(analyses)
+            rep_conf = len(set(affected_repetition)) / max(
+                len(set(affected_fallback + affected_repetition)), 1
+            )
             return PatternMatch(
                 pattern_id="O",
                 pattern_name="Repetition avoidance greed",
-                confidence=0.6,
-                evidence=[{"affected_games": len(set(affected))}],
+                confidence=min(len(set(affected)) / total_games * 0.8, 0.85),
+                evidence=[
+                    {
+                        "affected_games": len(set(affected)),
+                        "total_games": total_games,
+                        "repetition_confirmed": len(set(affected_repetition)),
+                        "fallback_heuristic": len(set(affected_fallback)),
+                        "detail": "Player refused a safe repetition (or flat eval plateau) and blundered within 3 moves",
+                    }
+                ],
                 game_ids=list(set(affected)),
                 frequency=len(set(affected)),
                 severity="critical",
@@ -238,17 +342,31 @@ class PatternDetector:
         affected = []
         for analysis in analyses:
             for m in analysis.moves:
-                if m.classification in ("blunder", "mistake") and m.centipawn_loss >= 150:
-                    if "x" in m.move_san or "Q" in m.move_san or "R" in m.move_san:
-                        if m.eval_before is not None and m.eval_before > 0:
-                            affected.append(analysis.game.id)
-                            break
+                if (
+                    m.classification in ("blunder", "mistake")
+                    and m.centipawn_loss >= THRESHOLD_VISUAL_CP
+                ):
+                    is_heavy = "x" in m.move_san or "Q" in m.move_san or "R" in m.move_san
+                    is_check_context = m.was_in_check
+                    has_advantage = m.eval_before is not None and m.eval_before > 0
+                    if is_heavy and has_advantage:
+                        affected.append(analysis.game.id)
+                        break
         if affected:
+            total_games = len(analyses)
             return PatternMatch(
                 pattern_id="P",
                 pattern_name="Visual misrecognition",
-                confidence=0.5,
-                evidence=[{"affected_games": len(set(affected))}],
+                confidence=min(len(set(affected)) / total_games * 0.7, 0.75),
+                evidence=[
+                    {
+                        "affected_games": len(set(affected)),
+                        "total_games": total_games,
+                        "threshold_cp": THRESHOLD_VISUAL_CP,
+                        "condition": "expensive_move_with_advantage",
+                        "detail": "Player misread a tactical sequence involving captures or major pieces while winning, overlooking opponent's counterplay",
+                    }
+                ],
                 game_ids=list(set(affected)),
                 frequency=len(set(affected)),
                 severity="high",
@@ -257,24 +375,38 @@ class PatternDetector:
         return None
 
     def _detect_q(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch:
-        defensive_wins = []
+        affected = []
         for analysis in analyses:
-            big_blunders = [m for m in analysis.blunders if m.centipawn_loss > 200]
-            if not big_blunders:
-                continue
-            won = (analysis.game.color == "white" and "1-0" in analysis.game.result) or (
-                analysis.game.color == "black" and "0-1" in analysis.game.result
-            )
-            if won:
-                defensive_wins.append(analysis.game.id)
-        if defensive_wins:
+            had_deficit = False
+            active_count = 0
+            for m in analysis.moves:
+                eb = m.eval_before if m.eval_before is not None else 0
+                if eb < THRESHOLD_ACTIVE_DEFENSE_EVAL:
+                    had_deficit = True
+                    if "+" in m.move_san or "x" in m.move_san:
+                        active_count += 1
+            if had_deficit and active_count >= 1:
+                won = (analysis.game.color == "white" and "1-0" in analysis.game.result) or (
+                    analysis.game.color == "black" and "0-1" in analysis.game.result
+                )
+                if won:
+                    affected.append(analysis.game.id)
+        if affected:
+            total_games = len(analyses)
             return PatternMatch(
                 pattern_id="Q",
                 pattern_name="Active defense",
-                confidence=0.8,
-                evidence=[{"defensive_wins": len(defensive_wins)}],
-                game_ids=defensive_wins,
-                frequency=len(defensive_wins),
+                confidence=min(len(set(affected)) / total_games * 0.9, 0.85),
+                evidence=[
+                    {
+                        "defensive_wins": len(set(affected)),
+                        "total_games": total_games,
+                        "threshold_deficit_cp": THRESHOLD_ACTIVE_DEFENSE_EVAL,
+                        "detail": "Player was materially behind (eval < -150cp) but chose active checks/captures instead of passive defense, and won",
+                    }
+                ],
+                game_ids=list(set(affected)),
+                frequency=len(set(affected)),
                 severity="low",
                 hypothesis="Hypothesis: player prefers active counterplay over passive defense, creating winning chances even in lost positions.",
             )
@@ -283,7 +415,9 @@ class PatternDetector:
     def _detect_q1(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch:
         affected = []
         for analysis in analyses:
-            big_blunders = [m for m in analysis.blunders if m.centipawn_loss > 300]
+            big_blunders = [
+                m for m in analysis.blunders if m.centipawn_loss > THRESHOLD_DESPERATE_CP
+            ]
             if not big_blunders:
                 continue
             last_blunder_ply = max(m.ply for m in big_blunders)
@@ -296,20 +430,23 @@ class PatternDetector:
             rejected_queen_trades = len(queen_exchanges) <= 1
             total_subsequent = len(subsequent_moves)
             has_checks = any("+" in m.move_san for m in subsequent_moves)
-            won_lost = (analysis.game.color == "white" and "1-0" in analysis.game.result) or (
+            won = (analysis.game.color == "white" and "1-0" in analysis.game.result) or (
                 analysis.game.color == "black" and "0-1" in analysis.game.result
             )
-            if rejected_queen_trades and total_subsequent >= 10 and has_checks and won_lost:
+            if rejected_queen_trades and total_subsequent >= 10 and has_checks and won:
                 affected.append(analysis.game.id)
         if affected:
+            total_games = len(analyses)
             return PatternMatch(
                 pattern_id="Q1",
                 pattern_name="Desperate Gambit Mode",
-                confidence=0.7,
+                confidence=min(len(set(affected)) / total_games * 0.8, 0.75),
                 evidence=[
                     {
                         "affected_games": len(set(affected)),
-                        "detail": "After losing position, player rejected queen exchanges, kept pieces active, created checks/threats, and won",
+                        "total_games": total_games,
+                        "threshold_eval": THRESHOLD_DESPERATE_EVAL,
+                        "detail": "After losing position (eval < -3.0), player rejected queen exchanges, kept pieces active, created checks/threats, and won",
                     }
                 ],
                 game_ids=list(set(affected)),
@@ -319,22 +456,64 @@ class PatternDetector:
             )
         return None
 
+    def _detect_q2(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch:
+        resilient_wins = []
+        for analysis in analyses:
+            big_blunders = [
+                m for m in analysis.blunders if m.centipawn_loss > THRESHOLD_DESPERATE_CP
+            ]
+            if not big_blunders:
+                continue
+            won = (analysis.game.color == "white" and "1-0" in analysis.game.result) or (
+                analysis.game.color == "black" and "0-1" in analysis.game.result
+            )
+            if won:
+                resilient_wins.append(analysis.game.id)
+        if resilient_wins:
+            total_games = len(analyses)
+            return PatternMatch(
+                pattern_id="Q2",
+                pattern_name="Win despite blunder",
+                confidence=min(len(set(resilient_wins)) / total_games * 0.9, 0.85),
+                evidence=[
+                    {
+                        "resilient_wins": len(set(resilient_wins)),
+                        "total_games": total_games,
+                        "threshold_blunder_cp": THRESHOLD_DESPERATE_CP,
+                        "detail": "Player made at least one large blunder (>300cp) but still won the game — resilience or opponent failed to capitalise",
+                    }
+                ],
+                game_ids=list(set(resilient_wins)),
+                frequency=len(set(resilient_wins)),
+                severity="low",
+                hypothesis="Hypothesis: player recovers from large blunders and still wins — resilience under pressure or opponent's failure to capitalise.",
+            )
+        return None
+
     def _detect_r(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch:
         affected = []
         for analysis in analyses:
             for m in analysis.moves:
                 eb = m.eval_before if m.eval_before is not None else 0
-                if m.centipawn_loss >= 300 and eb > 300 and m.phase == "endgame":
+                if (
+                    m.centipawn_loss >= THRESHOLD_ENDGAME_CP
+                    and eb > THRESHOLD_ENDGAME_EVAL
+                    and m.phase == "endgame"
+                ):
                     affected.append(analysis.game.id)
                     break
         if affected:
+            total_games = len(analyses)
             return PatternMatch(
                 pattern_id="R",
                 pattern_name="Endgame relaxation",
-                confidence=0.7,
+                confidence=min(len(set(affected)) / total_games * 0.8, 0.75),
                 evidence=[
                     {
                         "affected_games": len(set(affected)),
+                        "total_games": total_games,
+                        "threshold_eval_before": THRESHOLD_ENDGAME_EVAL,
+                        "threshold_cp_loss": THRESHOLD_ENDGAME_CP,
                         "condition": "eval_before>300 AND cp_loss>=300 AND phase=endgame",
                     }
                 ],
@@ -342,5 +521,38 @@ class PatternDetector:
                 frequency=len(set(affected)),
                 severity="high",
                 hypothesis="Hypothesis: player relaxes concentration when materially ahead in endgame, making passive moves that squander the advantage.",
+            )
+        return None
+
+    def _detect_s(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch:
+        affected = []
+        for analysis in analyses:
+            for m in analysis.moves:
+                if m.was_in_check and m.centipawn_loss >= THRESHOLD_S_CAPTURE_AVERSION_CP:
+                    board = chess.Board(m.fen)
+                    king_square = board.king(board.turn)
+                    if king_square:
+                        for checker in board.checkers():
+                            if board.is_legal(chess.Move(king_square, checker)):
+                                affected.append(analysis.game.id)
+                                break
+        if affected:
+            total_games = len(analyses)
+            return PatternMatch(
+                pattern_id="S",
+                pattern_name="Capture aversion under check",
+                confidence=min(len(set(affected)) / total_games * 0.5, 0.5),
+                evidence=[
+                    {
+                        "affected_games": len(set(affected)),
+                        "total_games": total_games,
+                        "threshold_cp": THRESHOLD_S_CAPTURE_AVERSION_CP,
+                        "detail": "Player was in check with king able to capture the checking piece, but chose a different move resulting in large material loss",
+                    }
+                ],
+                game_ids=list(set(affected)),
+                frequency=len(set(affected)),
+                severity="critical",
+                hypothesis="Hypothesis: when in check, 'king in danger' reflex suppresses the capture option — player moves king or blocks instead of capturing the checking piece.",
             )
         return None

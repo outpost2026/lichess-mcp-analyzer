@@ -1,241 +1,351 @@
-# Phase 2 — Build Plan
+# Phase 2 — Build Plan v3.0
 
-**Datum:** 2026-07-25 | **Verze:** 2.0 **Navazuje na:** DBCL\_cross\_audit\_artifact.md (v1.0 + audit appendix v1.1), DBCL\_Cross\_Audit\_Report.docx **Status:** 🟡 Phase 2 (detectors done, DBCL designed+audited, ready to implement)
+**Datum:** 2026-07-26 | **Verze:** 3.0
+**Navazuje na:** `01_DBCL_unity_synthesis.md`, `02_DBCL_meta_evaluation.md`, `PHASE2_BUILD_PLAN.md` v2.0
+**Status:** P0-1 hotov, P0-2 blokuje DBCL core
 
+---
 
-## Current State (2026-07-25 baseline)
+## Current State (2026-07-26)
 
 | Komponenta | Stav |
-| - | - |
-| Stockfish 18 BMI2 (Threads=6, Hash=512) | ✅ +24.7% NPS |
-| 11 pattern detectoru (A-R) + S kandidat | ✅ vsechny implementovany |
-| Pattern J semantika | ⚠️ **BUG** — testuje "+" in move\_san, ma byt board.is\_check() (viz F-007) |
-| Analyzovane partie | 22 (RUN\_001 + RUN\_002, depth 12-14) |
+|------------|------|
+| Repo | `main` clean, HEAD `5ba1919` |
+| Tests | 35/35 pass |
+| P0-1 (FEN + was_in_check v MoveAnalysis) | ✅ hotovo |
+| P0-1 (pattern J semantika) | ✅ hotovo (`m.was_in_check and "x" not in m.move_san`) |
+| P0-1 (sort before persist) | ✅ hotovo |
+| 11 pattern detectoru (A-R) + S kandidat | ✅ implementovany, **ale neauditovane** |
+| Analyzovane partie | 22 (RUN_001 + RUN_002, depth 12-14) |
 | LLM pipeline (NVIDIA/Cerebras/DeepSeek) | ✅ 3 provider, mono + incremental |
-| DBCL architektura | ✅ navrzena + auditem verifikovana (PASS WITH CONCERNS) |
-| Cross-audit releasu | 21 nalezu, 3 critical, 4 high |
-| Tests | 33/33 pass |
-| Branch | `debug/phase1-fixes` (commit `c1b095b` + pending changes) |
+| DBCL architektura | ✅ navrzena + cross-auditovana (21 nalezu, PASS WITH CONCERNS) |
+| DBCL dokumentace | ✅ unity synthesis + meta-evaluation (3-pohledovy ramec) |
+| .gitignore, egg-info, CI, README | ✅ vycisteno |
 
+---
+
+## Tři kanály šumu (z 02_DBCL §3)
+
+Architektura DBCL rozpoznava **tri nezavisle kanaly**, kazdy s vlastnim typem sumu:
+
+```
+Kan�l 1 (K1): DETEKTOR     — deterministicky, ale muze byt semanticky chybny
+Kan�l 2 (K2): KONTRAKT     — prenos mezi per-game a aggregate LLM
+Kan�l 3 (K3): DEKODER/LLM  — inferencni sum LLM
+```
 
+Tento build plan je strukturovan podle kanalu, ne podle priority cisel.
+
+---
 
-## P0 — Critical fixes (DBCL blocker, must do first)
+## P0 — Detektor audit (K1) a infrastruktura
 
-Priorita: **NEJVYSSI** — aktivni bug + jednoradkove opravy, ktere jinak znehodnoti DBCL.
+**Priorita: NEJVYSSI** — dokud neni K1 auditovan, DBCL v1 stoji na pisku.
+Meta-evaluation §10.3: *"dokud nebude audit kompletni, DBCL v1 je experiment, ne reseni"*
 
-### Tasks
+### P0-2: Audit 11 detektoru A-R (K1 cleanup) ✅ HOTOVO
 
-- [ ] 
+**Goal:** Pro kazdy pattern overit, ze `detection_method` testuje to, co tvrdi `pattern_name`.
 
-- **F-007: Opravit pattern J semantiku**
+**Datum auditu:** 2026-07-26 | **Metoda:** rucni pruchod `services/pattern_detector.py:27-350` radka po radce proti `models/pattern.py:37-155`
 
-  - `pattern\_detector.py:\_detect\_j()`: nahradit podminku `"+" in m.move\_san` → kontrola, zda `board.is\_check()` v pozici pred tahem
+#### Audit Matrix
 
-  - Overit, ze blok neni zaroven capture (kdyz hrac bere sachujici figuru, neni to "impulsivni blok")
+| # | Pattern | detection_method (PatternDef) | Code testuje (_detect_X) | Verdikt |
+|---|---------|------------------------------|--------------------------|---------|
+| A | Anonymous effect | `compare_blunder_rate` | Porovnava blunder rate anonymnich (opponent "anonymous") vs pojmenovanych her; ratio >1.3 trigger | ✅ **OK.** detection_method sedi. Confidence: `anon / named / 2`. Evidence obsahuje oba rates. |
+| B | Automatic grab | `capture_eval_drop` | Detekuje blunder/mistake (cp_loss>=100) obsahujici "x" v SAN | ⚠️ **CONFIDENCE BUG.** total_captures se pocita jen z blunder moves, ne ze vsech captures → total_captures == blunder_captures vzdy → confidence vzdy cap 0.95. detection_method slibuje "eval_drop", kod testuje "capture blunder existence" (nevyhodnocuje eval drop pattern). |
+| C | Attention tunneling | `sector_focus_sequence` | Pocita consecutive error >= 2. Zadny check na sektor/souradnice. | ❌ **SEMANTIC BUG.** detection_method slibuje "sector_focus_sequence" (lokalita na desce), kod testuje pouze "consecutive errors" globalne. Threshold 2 je implicitni, neni definovan v PatternDef. |
+| G | Color as modulator | `compare_per_color` | Porovnava blunder rate white games vs black games; ratio >1.4 trigger | ✅ **OK.** detection_method sedi. Confidence: `ratio / 3`. Evidence obsahuje oba rates + dominant side. |
+| I | Bait trap | `bait_detection` | Detekuje "best" capture, ktery zlepsil eval z <30cp na >100cp | ❌ **SIGNIFICANT SEMANTIC BUG.** Pattern tvrdi "player leaves hanging pieces to punish opponent's automatic grab" (aktivni strategie). Kod testuje "player captured well and it was the best move" (profit z chyby soupere). Jde o **opačný smer** — kod detekuje, ze hrac tezil z chyby soupere, ne ze hrac nastrazil past. |
+| J | Impulsive check block | `check_block_analysis` | `m.was_in_check and "x" not in m.move_san` pro blunder/mistake (cp_loss>=150) | ✅ **FIXED** (P0-1). Drive "+" in m.move_san — opraveno na spravnou velicinu. |
+| O | Repetition avoidance greed | `repetition_refusal` | Hleda ploche eval okno (max-min<30cp pres 3 tahy), pak blunder v nasledujicich 3-5 tazich | ❌ **SEVERE SEMANTIC BUG.** detection_method slibuje "refusing threefold repetition" — detekci, ze hrac odmítl trojnásobne opakovani. Kod testuje "flat eval then blunder" — neoveruje existenci repeat pozice vubec. Miri na jiny jev. |
+| P | Visual misrecognition | `forcing_move_classification` | Blunder (cp_loss>=150) v capture/tezke figure (Q,R), kdyz eval_before>0 | ⚠️ **PARTIAL BUG.** detection_method slibuje "forcing move classification", kod testuje "expensive mistake with heavy piece when winning". Heuristika sedi (tezka figura + capture + vyhra = pravdepodobne misread forcing chain), ale neoveruje forcing nature. |
+| Q | Active defense | `defensive_phase_analysis` | Hra, kde hrac mel big blunder (cp_loss>200) ale stejne vyhral | ❌ **SEMANTIC BUG.** detection_method slibuje "defensive phase analysis" — analyzu obrany pod tlakem. Kod testuje "blundered but still won", coz muze byt zpusobeno blunderem soupere, ne aktivni obranou. Chybi check na counterplay. |
+| Q1 | Desperate Gambit Mode | `desperate_gambit_analysis` | Po big blunderu (cp_loss>300): rejected queen trades + 10+ dalsich tahu + checks + win | ✅ **OK.** detection_method sedi. Kod testuje klicove prvky mechanismu. |
+| R | Endgame relaxation | `endgame_positional_blunder` | cp_loss>=300 + eval_before>300 + phase=endgame | ✅ **OK.** detection_method sedi. Presna operationalizace mechanismu. Evidence obsahuje condition string. |
 
-  - Vysvetlivka: soucasna implementace testuje, zda *odehrany tah* dava sach (`+` v SAN), coz je jina promenna nez "hrac byl v sachu a zablokoval"
+#### Souhrn
 
-  - Upravit hypothesis v PatternDef J v `models/pattern.py` pokud nutno
+| Kategorie | Pocet | Detektory |
+|-----------|-------|-----------|
+| ✅ SEMANTICKY SPRAVNE | 5 | A, G, J, Q1, R |
+| ⚠️ PARTIAL / CONFIDENCE BUG | 2 | B (confidence vzdy 0.95), P (heuristika, ne forcing analysis) |
+| ❌ SEMANTICKY BUG | 4 | C (sector chybi), I (opačný smer), O (repetition chybi), Q (obrana chybi) |
 
-- [ ] 
+#### Dalsi nalezy (mimo hlavni matici)
 
-- **F-002: Propagovat fen\_before do MoveAnalysis**
+1. **Pattern S chybi v produkcnim kode** — dokumentovan v 01_DBCL §2.2 (INC-B, capture aversion under check, confidence ~40%), ale neni v `models/pattern.py` ani `services/pattern_detector.py`. V build planu zustava v P3-1.
+
+2. **Evidence format nekonzistentni**:
+   - Detailni: B, G, J, R — obsahuji konkretni podminky a hodnoty
+   - Minimalni: O, P, Q — pouze `{affected_games: N}` (nedostatecne pro audit)
+   - A, I — nekolik poli, ale chybi referencni hodnoty
 
-  - `models/game.py:MoveAnalysis`: pridat pole `fen: str = ""`
+3. **Confidence vzorce**:
+   - Data-driven: A (`anon/named/2`), B (`blunder_captures/total_captures` — BUG), C (`len(affected)/5`), G (`ratio/3`), I (`bait_count/5`), J (`block_count/3`)
+   - Hardcoded: O (0.6), P (0.5), Q (0.8), Q1 (0.7), R (0.7)
+   - Hardcoded confidence je anti-pattern — neodrazi sílu ani konzistenci evidence
 
-  - `services/game\_analyzer.py:\_run\_analyze\_pgn()`: predat `fen\_before = board.fen()` do konstruktoru
+4. **Chybi pattern_detector_version** — neni jednotne ID, ktere by umoznilo odlisit faktury pred/po oprave. Bude reseno v P0-3.
 
-  - TOTO umozni DBCL context\_extractoru cist FEN z cache, ne replayovat PGN
+5. **D-F a H neexistuji** — v `models/pattern.py` ani `pattern_detector.py` nejsou zadne patterny D, E, F, H. Build plan v2.0 uvadi "11 detektoru (A-R)" ale skutecnost je 9 (A, B, C, G, I, J, O, P, Q, Q1, R — coz je 11 s Q/Q1 jako separatni). Vzor `detect_all()` iteruje pres vsechny klice v `self.library.patterns`, takze neexistujici patterny nejsou volany.
 
-- [ ] 
+6. **B: total_captures bug detail** — v _detect_b() je promenna `total_captures` inkrementovana UVNITR bloku `if m.classification in ("blunder", "mistake") and m.centipawn_loss >= 100:`. Pokud tah neni blunder, neni zapocitan. Takze `total_captures == blunder_captures` vzdy, a confidence = `min(1.0, 0.95)` = 0.95. Spravne: `total_captures` by mel pocitat vsechny captures napric vsemi tahy, nejen blunder captures.
 
-- **F-003: Pridat board.is\_check() do pipeline**
+#### Akce z auditu
 
-  - Ve stejne smycce `\_run\_analyze\_pgn()`, kde existuje `board`, volat `board.is\_check()` po kazdem tahu
+| ID | Akce | Typ | 
+|----|------|-----|
+| AUD-01 | B: opravit total_captures bug (pocitat vsechny captures, ne jen blunder) | CODE BUG |
+| AUD-02 | C: detection_method "sector_focus_sequence" neodpovida kodu — opravit detection_method nebo pridat sector check | SPEC BUG |
+| AUD-03 | I: detection_method a mechanismus neodpovidaji kodu — "bait_detection" misto "profit z chyby soupere" | CODE BUG |
+| AUD-04 | O: detection_method "repetition_refusal" neodpovida kodu — kod testuje "flat eval then blunder" | CODE BUG |
+| AUD-05 | Q: detection_method "defensive_phase_analysis" neodpovida kodu — kod testuje "blundered but won" | CODE BUG |
+| AUD-06 | P: detection_method "forcing_move_classification" — overit, zda staci heuristika, nebo doplnit forcing analysis | SPEC BUG |
+| AUD-07 | Vsechny hardcoded confidence nahradit data-driven (O, P, Q, Q1, R) | ENHANCEMENT |
+| AUD-08 | Standardizovat evidence format — kazdy detector musi vypsat konkretni hodnoty, ne jen affected_games | ENHANCEMENT |
+| AUD-09 | Vytvorit `tests/test_pattern_semantic_contract.py` — 1 pozitivni + 1 negativni pripad na detector | TEST |
+| AUD-10 | Doplnit pattern S do `models/pattern.py` a `pattern_detector.py` | FEATURE |
+| AUD-11 | Opravit I detection_method aby odpovidala mechanismu (zmenit pattern na "opponent's automatic grab exploit" nebo prepsat kod) | CODE BUG |
 
-  - Ulozit do MoveAnalysis jako pole `was\_in\_check: bool = False`
+#### Opravene polozky z puvodniho v2.0
 
+| ID | Stav | Poznamka |
+|----|------|----------|
+| F-002 (fen propagace) | ✅ P0-1 | `models/game.py:50-51` |
+| F-003 (board.is_check) | ✅ P0-1 | `services/game_analyzer.py` |
+| F-007 (pattern J) | ✅ P0-1 | `services/pattern_detector.py:191` |
+| N7 (sort persist) | ✅ P0-1 | `tools/match_patterns.py` |
+| F-004 (samostatny context_extractor) | ❌ NEBUDE | inlinovat do _run_analyze_pgn (P1-1) |
+| F-005 (multi-PV v blunder pipeline) | ⏳ P1-2 | existuje, jen zapojit |
+| F-008 (dve prompt mista) | ⏳ P0-5 + P1-3 | navrh protokolu v P0-5 |
+| F-009 (SRSCard konzument) | ⏳ P1-5 | existuje schema, chybi producent |
+| F-010 (win_prob) | ⏳ P0-4 | pole existuji, hardcoded 0.0 |
+| F-011 (validator kolize) | ⏳ P2-3 | prejmenovat |
+| F-013 (validator spec) | ⏳ P1-4 | mapovani claim->field v 01_DBCL §7 |
+| F-014 (cache integrace) | ⏳ P2-1 | |
+| F-015 (engine lock timeout) | ⏳ P2-2 | |
 
-## P1 — DBCL core implementation
+### P0-3: detector_version konstanta
+
+**Goal:** Verze detektoru, ktera umozni odlisit fact sheets pred/po oprave.
+
+- Konstantni string napr. v `models/game.py` nebo `services/pattern_detector.py`
+- Format: `"DBCL-{YYYYMMDD}-{commit_abbrev}"`
+- Inkrementovat pri kazde zmene detection_method (at uz oprava nebo pridani)
+- Ulozit do BlunderFactSheet.detector_version (unity doc §6)
+
+**File:** nova konstanta, evidentne v `models/game.py` nebo `__init__.py`
+
+### P0-4: win_prob vypocet
+
+**Goal:** Nahradit hardcoded 0.0 v `_run_analyze_pgn()` realnym winning-chances sigmoidem.
 
-Priorita: **HIGH** — po P0 je to hlavni prinos teto phase.
+- Implementovat winning-chances sigmoid z lila (prahy 10/20/30%) — viz 01_DBCL §6
+- Vstup: eval_cp v centipawnech
+- Vystup: win_prob (0.0–1.0) pred a po tahu
+- Prepnout klasifikaci: misto plocheho cp prahu (50/150/300) pouzit win% delta jako primarni signal
+- Ulozit do MoveAnalysis.win_prob_before/after a BlunderFactSheet.win_prob_delta
+
+**Files:**
+- `services/game_analyzer.py:_classify_move()` — pricist logiku
+- `models/game.py:MoveAnalysis` — pole uz existuji, jen naplnit
+- `docs/01_DBCL_unity_synthesis.md` §6 — schema reference
+
+### P0-5: Kontrakt mezi per-game a aggregate (K2 cleanup)
+
+**Goal:** Navrhnout informacni protokol mezi per-game a aggregate LLM, ktery zabrani prenosu halucinace.
+
+Per-game LLM halucinace se muze maskovat jako fakt v aggregate (02_DBCL §3.4). Reseni:
+1. Per-game LLM output MUSI mit strukturovane `critical_moments[]` s `blunder_fact_sheet_id` a `claim_type`
+2. Kazdy claim MUSI projit narrative validatorem ($7 unity doc) PRED aggregate
+3. `summary` NESMI obsahovat chess claims (piece-on-square, check, capture)
+4. Pokud per-game validace selze → fallback na raw BlunderFactSheet (zadny LLM per-game)
 
-### Tasks
+Navrh protokolu:
 
-- [ ] 
+```
+=== PER-GAME FEEDBACK PROTOCOL ===
+critical_moments: [
+  {
+    ply: int,
+    blunder_fact_sheet_id: str,
+    claim_type: "descriptive" | "explanatory" | "prescriptive",
+    claim_text: str              # musi projit validatorem
+  }
+]
+summary: str                      # NESMI mit chess claims
+```
 
-- **Vyuzit existujici analyze\_position(multipv=3) pro engine\_lines**
+Tento navrh je odvozen z 02_DBCL §3.5 (de-novo), neni v originalnim auditu.
 
-  - BlunderFactSheet engine\_lines\[\] ziskat volanim `engine\_client.analyze\_position(fen\_before, depth=14, multipv=3)`
+---
 
-  - Existujici kod uz vraci: `rank, score\_cp, mate, pv, pv\_san` — prakticky identicke schema
+## P1 — DBCL core (K3)
 
-  - Nepsat novou logiku (viz F-005)
+**Priorita:** HIGH, ale az po P0-2 (detektor audit).
 
-- [ ] 
+### P1-1: Inline context extraction
 
-- **Sloucit eval\_delta\_threshold + context\_extractor do jedneho pruchodu**
+V `services/game_analyzer.py:_run_analyze_pgn()` implementovat jako jeden pruchod:
 
-  - Nepisat `context\_extractor.py` jako samostatny replay PGN (viz F-004)
+1. Detekovat blunder window: delta > 300cp || classification in (blunder, mistake)
+2. Extrahovat: FEN, was_in_check, legal_moves klasifikovane (captures/king_moves/blocks/checks)
+3. Zavolat `engine_client.analyze_position(fen_before, depth=14, multipv=3)` — existuje (F-005)
+4. Zavolat per-blunder pattern matcher (B, J, S, R, C)
+5. Sestavit BlunderFactSheet
+6. Ulozit pod klic `"dbcl_fact_sheets"` v game_cache JSON
 
-  - Misto: v `\_run\_analyze\_pgn()` inline:
+**Nepsat samostatny modul** (viz F-004). Vse v existujici smycce.
 
-    1. Detekovat blunder window (delta \> 300cp || classification == blunder/mistake)
+### P1-2: BlunderFactSheet schema
 
-    2. Extrahovat: FEN, is\_check, legal\_moves klasifikovane (captures/king\_moves/blocks/checks)
+Schema v 01_DBCL §6 — implementovat jako `@dataclass` (nebo `TypedDict`) v `models/game.py` nebo `models/analysis.py`.
 
-    3. Zavolat analyze\_position(multipv=3)
+```python
+@dataclass
+class BlunderFactSheet:
+    fen_before: str
+    board_state: dict     # was_in_check, checking_pieces, capture_checking_piece_possible, king_capture...
+    legal_moves: dict     # total, captures[], king_moves[], blocks[], checks[]
+    engine_lines: list    # rank, move_san, eval_cp, win_prob, pv[]
+    move_played: str
+    centipawn_loss: int
+    phase: str
+    pattern_matches: list # pattern_id, pattern_name, confidence, evidence
+    detector_version: str
+    context_window: dict  # moves_before[], moves_after[]
+```
 
-    4. Zavolat per-blunder pattern matcher (B, J, S, R, C)
+### P1-3: Guard-clause injection do prompt builderu
 
-    5. Sestavit BlunderFactSheet
+- `llm_client.py:build_coaching_prompt()` — vlozit BlunderFactSheet[] misto agregovaneho blobu
+- `game_llm_cache.py:_build_game_prompt()` — stejna zmena
+- Guard-clause sablona z 01_DBCL §9.2:
 
-  - Ulozit BlunderFactSheet\[\] jako soucast game\_cache (novy klic `"dbcl\_fact\_sheets"`)
+```
+=== GUARD: DBCL v1.1 ===
+You are a chess narrator. You MUST NOT make chess claims (check, block, capture, eval)
+that are not explicitly present in the BlunderFactSheet fields below.
+If a claim type is not in the fact sheet, do NOT narrate it.
+Every eval number must match eval_before/eval_after/engine_lines[].eval_cp within +-20cp.
+Patterns are hypotheses with evidence, not facts.
+Unknown = silence, not assumption.
+=== END GUARD ===
+```
 
-- [ ] 
+### P1-4: narrative_validator.py
 
-- **Inject BlunderFactSheet do obou prompt builderu**
+Implementovat v `services/narrative_validator.py` (NE validator.py — konflikt s existujicim, viz F-011).
 
-  - `llm\_client.py:build\_coaching\_prompt()` — vlozit BlunderFactSheet\[\] misto agregovaneho blobu
+5 kategorii claim operatoru (01_DBCL §7):
 
-  - `game\_llm\_cache.py:\_build\_game\_prompt()` — stejna zmena
+| Claim typ | Example | Validace operator | Cilove pole BFS |
+|-----------|---------|------------------|-----------------|
+| piece-on-square | "Qf4" | existence v fen_before | fen_before |
+| check (pozitivni) | "+" | rovnost was_in_check=true | board_state.was_in_check |
+| check (negativni) | "not check" | rovnost was_in_check=false | board_state.was_in_check |
+| capture | "takes" | existence v legal_moves.captures | legal_moves.captures |
+| eval-cislo | "+823" | tolerance +-20cp | eval_before/after/engine_lines[].eval_cp |
+| king-move | "Kc1" | existence v legal_moves.king_moves | legal_moves.king_moves |
+| variation | "Kxc5 Ba4" | existence jako prefix engine_lines[].pv | engine_lines[].pv |
 
-  - Pridat guard clause template z DBCL §5.2.4 do obou system promptu
+Reject loop: pokud validator fail → zopakovat LLM call s guard clause.
 
-  - Pridat explicitni kontrakt: per-game vrstva nesmi predavat halucinovana data do agregacni
+### P1-5: SRSCard jako konzument BlunderFactSheet
 
-- [ ] 
+`SRSCard` uz ma pole `fen`, `correct_move_uci/san`, `pattern_id` (F-009).
+Po P1-1 az P1-4: producent v `_run_analyze_pgn()` muze vytvaret SRSCard primo z BlunderFactSheet.
 
-- **Implementovat narrative\_validator.py**
+---
 
-  - Nazev: `narrative\_validator.py` (NE `validator.py` — konflikt s existujicim, viz F-011)
+## P2 — Schema completion & konzistence
 
-  - 5 kategorii claimu s operatory (viz Appendix C.4):
+**Priorita:** MEDIUM — po P1.
 
-    1. piece-on-square → existence v fen\_before
+### P2-1: Cache integrace
 
-    2. check → rovnost proti was\_in\_check
+- BlunderFactSheet[] ulozit pod klic `"dbcl_fact_sheets"` v existujicim `{game_id}_{color}_d{depth}.json`
+- Resit logiku priblizne shody hloubky v `_load_cached_analysis()`
 
-    3. capture → existence v legal\_moves.captures nebo engine\_lines
+### P2-2: Engine lock timeout exception handling
 
-    4. eval-cislo → tolerance ±20cp
+V BlunderFactSheet pipeline osetrit timeout z `engine_client._acquire_analysis_lock()` (120s, F-015).
 
-    5. legalita/negace → negace proti legal\_moves.\*
+### P2-3: Prejmenovat services/validator.py
 
-  - Reject loop: pokud validator fail, zopakovat LLM call s prislusnym guard clause
+- Stary: `services/validator.py` → `services/pattern_artifact_validator.py`
+- Novy: `services/narrative_validator.py` (z P1-4)
 
+---
 
-## P2 — Schema completion & consistency
+## P3 — Dlouhodobe
 
-Priorita: **MEDIUM** — doplnit mezery z auditu, zlepsit kvalitu dat.
+**Priorita:** LOW.
 
-### Tasks
+### P3-1: Pattern S — Capture aversion under check
 
-- [ ] 
+- `models/pattern.py`: pridat `PatternDef(id="S", ...)`
+- Detektor: `centipawn_loss > 500 && in_check && king_capture_possible && not king_capture_played`
+- Confidence: ~40 % (N=2), severity: critical
 
-- **Doplnit win\_prob do BlunderFactSheet**
+### P3-2: FSRS integration
 
-  - `models/game.py:MoveAnalysis` ma pole `win\_prob\_before` a `win\_prob\_after` (aktualne hardcoded 0.0)
+Nahradit SM-2 formuli za `fsrs.Card` + `fsrs.Scheduler`.
 
-  - Implementovat winning-chances sigmoid (DBCL §4.6 transfer z lila: 10/20/30% prahy)
+### P3-3: Structured logging (P19)
 
-  - Pridat `win\_prob\_delta` do schematu
+`logger.warning()` per-failed-game, `skipped` counter v kazdem batch toolu.
 
-  - Prepnout klasifikaci z plocheho cp prahu na win% delta
+### P3-4: Cross-LLM audit artifact
 
-- [ ] 
+Predat `DBCL_cross_audit_artifact.md` dalsimu modelu (DeepSeek?) k validaci.
 
-- **Pridat detector\_version do BlunderFactSheet**
+---
 
-  - Umoznuje odlisit fact sheets vznikle pred/po oprave patternu (viz F-007)
+## Sekvence (krizove zavislosti)
 
-  - Verze = commit hash + timestamp buildu
+```
+P0-2 (detektor audit) ─────── blokuje vse ostatni
+    |
+    +── P0-3 (detector_version) ─── bez zavislosti, muze paralelne
+    +── P0-4 (win_prob) ─────────── bez zavislosti, muze paralelne
+    |
+    ↓
+P0-5 (K2 kontrakt design) ── nutne pred P1-3
+    |
+    ↓
+P1-1 (inline context extraction) ── start DBCL core
+    |
+    +── P1-2 (BlunderFactSheet schema)
+    |       ↓
+    +── P1-3 (guard-clause inject) ←── z P0-5 (K2 protokol)
+    |       ↓
+    +── P1-4 (narrative_validator) ←── z P1-2 (schema)
+    |
+    ↓
+P1-5 (SRSCard konzument)
+    ↓
+P2-* (integrace)
+```
 
-- [ ] 
-
-- **Integrovat BlunderFactSheet do cache konvence**
-
-  - Resit: `game\_cache.json` jmenuje soubory `\{game\_id\}\_\{color\}\_d\{depth\}.json`
-
-  - `\_load\_cached\_analysis()` ma logiku priblizne shody hloubky
-
-  - BlunderFactSheet\[\] ulozit pod klic `"dbcl\_fact\_sheets"` ve stejnem JSON, ne jako samostatny cache mechanismus
-
-- [ ] 
-
-- **Cross-validace vsech 11 detektoru**
-
-  - Pro kazdy pattern overit: detection\_method odpovida pattern\_name/mechanism
-
-  - F-007 ukazuje, ze pattern J testuje jinou velicinu nez tvrdi hypothesis
-
-  - Pridat contract test: `test\_pattern\_semantic\_contract.py` s 1 pozitivnim + 1 negativnim pripadem na detector
-
-
-## P3 — Pattern S + Dlouhodobe
-
-Priorita: **LOW** — az po P0-P2.
-
-### Tasks
-
-- [ ] 
-
-- **Pattern S — Capture aversion under check**
-
-  - `models/pattern.py`: pridat `PatternDef(id="S", ...)`
-
-  - Detektor: `centipawn\_loss \> 500 && in\_check && king\_capture\_possible && not king\_capture\_played`
-
-  - Confidence: ~40% (N=2), severity: critical
-
-- [ ] 
-
-- **Cross-audit artifact — predat druhemu LLM k validaci**
-
-  - DBCL\_Cross\_Audit\_Report.docx (Claude) uz existuje
-
-  - Dalsi kolo: predat tentyz artifact dalsimu modelu (DeepSeek?)
-
-- [ ] 
-
-- **FSRS integration**
-
-  - Nahradit SM-2 formuli za `fsrs.Card` + `fsrs.Scheduler`
-
-  - Prvni realny konzument BlunderFactSheet muze byt SRSCard (pole `fen` uz existuje, viz F-009)
-
-- [ ] 
-
-- **Structured logging (P19)**
-
-  - `logger.warning()` per-failed-game
-
-  - `skipped` counter na konci kazdeho batch toolu
-
-
-## Dependencies & Blockers
-
-| Blocker | Kdo resi | Stav |
-| - | - | - |
-| Pattern J bug (F-007) | P0 | ULTIAN — blokuje DBCL |
-| FEN propagace (F-002) | P0 | 1 radek, bezny |
-| Oba prompt buildery (F-008) | P1 | Nutne soubezne |
-| Validator spec (F-013) | P1 | Nutno doplnit mapovani |
-
+---
 
 ## Key Files Reference
 
 | Cesta | Ucel |
-| - | - |
-| `00\_STRATEGIE/DBCL\_cross\_audit\_artifact.md` | Zdrojova architektura + audit appendix |
-| `00\_STRATEGIE/DBCL\_Cross\_Audit\_Report.docx` | Claude audit (21 nalezu) |
-| `00\_STRATEGIE/evening\_coaching\_2026-07-24.md` | Coaching doc v2 s korekcni poznamkou |
-| `src/lichess\_analyzer\_mcp/services/pattern\_detector.py` | 11 detektoru (J bug zde) |
-| `src/lichess\_analyzer\_mcp/services/game\_analyzer.py` | \_run\_analyze\_pgn — FEN propagace sem |
-| `src/lichess\_analyzer\_mcp/services/engine\_client.py` | analyze\_position(multipv=3) — existujici |
-| `src/lichess\_analyzer\_mcp/models/game.py` | MoveAnalysis — pridat fen, was\_in\_check |
-| `src/lichess\_analyzer\_mcp/models/pattern.py` | PatternDef + PatternLibrary |
-| `src/lichess\_analyzer\_mcp/services/llm\_client.py` | build\_coaching\_prompt — mono vetev |
-| `src/lichess\_analyzer\_mcp/services/game\_llm\_cache.py` | \_build\_game\_prompt — incremental vetev |
-
-
+|-------|------|
+| `01_DBCL_unity_synthesis.md` | Synteza + BlunderFactSheet v1.1 + validator spec + incident analysis |
+| `02_DBCL_meta_evaluation.md` | Tri kanaly sumu, SFE terminologie, dve tridy halucinace |
+| `services/pattern_detector.py` | 11 detektoru A-R — cil P0-2 auditu |
+| `models/pattern.py` | PatternDef + PatternLibrary — porovnani detection_method vs pattern_name |
+| `services/game_analyzer.py` | _run_analyze_pgn — cil P1-1 inline extraction |
+| `services/engine_client.py` | analyze_position(multipv=3) — existuje, pouze zapojit (F-005) |
+| `models/game.py` | MoveAnalysis uz ma fen + was_in_check; pridat BlunderFactSheet |
+| `services/llm_client.py` | build_coaching_prompt — guard-clause inject (P1-3) |
+| `services/game_llm_cache.py` | _build_game_prompt — guard-clause inject (P1-3) |
+| `services/narrative_validator.py` | NOVY: 5 kategorii claim operatoru |
+| `services/validator.py` | STARY: prejmenovat na pattern_artifact_validator.py (P2-3) |
+| `tests/test_pattern_semantic_contract.py` | NOVY: 1 pozitivni + 1 negativni pripad na detector |
+| `.session/2026-07-26_context.md` | Deni session context |
