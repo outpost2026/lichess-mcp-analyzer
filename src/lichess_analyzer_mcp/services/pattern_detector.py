@@ -1,5 +1,6 @@
 """Pattern detection engine for patterns A-Q1, I2, Q2, S."""
 
+from collections import Counter
 import chess
 
 from lichess_analyzer_mcp.models.pattern import PatternDef, PatternMatch, PatternLibrary
@@ -291,15 +292,21 @@ class PatternDetector:
         affected_fallback = []
         for analysis in analyses:
             found_repetition = False
-            for i, m in enumerate(analysis.moves):
+            fen_positions = []
+            for m in analysis.moves:
                 if m.fen:
-                    board = chess.Board(m.fen)
-                    if board.can_claim_threefold_repetition():
-                        for j in range(i, min(i + 3, len(analysis.moves))):
-                            if analysis.moves[j].classification in ("blunder", "mistake"):
-                                found_repetition = True
-                                affected_repetition.append(analysis.game.id)
-                                break
+                    parts = m.fen.split(" ")
+                    position_key = " ".join(parts[:4])
+                    fen_positions.append(position_key)
+            pos_counts = Counter(fen_positions)
+            for pos, count in pos_counts.items():
+                if count >= 3:
+                    last_idx = len(fen_positions) - 1 - fen_positions[::-1].index(pos)
+                    for j in range(last_idx + 1, min(last_idx + 4, len(analysis.moves))):
+                        if analysis.moves[j].classification in ("blunder", "mistake"):
+                            affected_repetition.append(analysis.game.id)
+                            found_repetition = True
+                            break
                 if found_repetition:
                     break
             if not found_repetition:
@@ -347,9 +354,8 @@ class PatternDetector:
                     and m.centipawn_loss >= THRESHOLD_VISUAL_CP
                 ):
                     is_heavy = "x" in m.move_san or "Q" in m.move_san or "R" in m.move_san
-                    is_check_context = m.was_in_check
                     has_advantage = m.eval_before is not None and m.eval_before > 0
-                    if is_heavy and has_advantage:
+                    if is_heavy and has_advantage and m.was_in_check:
                         affected.append(analysis.game.id)
                         break
         if affected:

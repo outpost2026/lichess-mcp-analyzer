@@ -198,7 +198,16 @@ class TestPatternSemanticContract:
         base = [
             _move(1, "e4", "e2e4", 0, "best"),
             _move(3, "Nf3", "g1f3", 0, "best"),
-            _move(5, "Rxe5", "f1e5", 250, "blunder", eval_before=200, eval_after=-50),
+            _move(
+                5,
+                "Rxe5",
+                "f1e5",
+                250,
+                "blunder",
+                eval_before=200,
+                eval_after=-50,
+                was_in_check=True,
+            ),
         ]
         match = self._detect("P", _make_three("g_p1", "g_p1n", base))
         assert match is not None, "P should detect expensive capture with advantage"
