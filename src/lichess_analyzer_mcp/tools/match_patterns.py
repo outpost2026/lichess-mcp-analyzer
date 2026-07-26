@@ -27,16 +27,23 @@ async def lichess_match_patterns(
         depth: Stockfish depth (8-18)
         result: Filtr dle vysledku - 'all', 'win', 'loss', 'draw'
     """
-    max_games = max(5, min(50, max_games))
+    max_games = max(5, min(999, max_games))
     depth = max(8, min(18, depth))
     try:
         games_data = fetch_user_games(username, max_games=max_games, result=result)
         total_available = len(games_data)
+
+        # Check for pending (uncached) games
+        from lichess_analyzer_mcp.services.lichess_client import get_pending_analysis
+
+        pending = get_pending_analysis(username, depth)
+
         log.info(
-            "patterns start | user=%s | requested=%d | available=%d | depth=%d",
+            "patterns start | user=%s | requested=%d | available=%d | pending=%d | depth=%d",
             username,
             max_games,
             total_available,
+            len(pending),
             depth,
         )
 
@@ -108,9 +115,18 @@ async def lichess_match_patterns(
         artifact = {
             "username": username,
             "games_analyzed": len(analyses),
+            "total_available": total_available,
             "patterns_detected": result,
             "total_patterns": len(result),
         }
+
+        if pending:
+            artifact["warning"] = (
+                f"{len(pending)} game(s) pending analysis at depth={depth}. "
+                f"Run lichess_analyze_pending(username='{username}', depth={depth}) "
+                "for a full dataset, or these will be analyzed on first use."
+            )
+            artifact["pending_analysis"] = pending
 
         schema_errors = validate_against_schema(artifact)
         if schema_errors:

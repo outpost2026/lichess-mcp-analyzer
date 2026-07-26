@@ -35,6 +35,20 @@ async def lichess_analyze_game(
                 elif username.lower() == white.lower():
                     color = "white"
         result = analyze_pgn(pgn, player_color=color, depth=depth, game_id=game_id)
+
+        # Auto-update user games index so per-game analysis is visible
+        # in the global cache (Systeq_games.json + Systeq_index.json).
+        player_name = result.game.player_name
+        if player_name and result.game.id:
+            try:
+                from lichess_analyzer_mcp.services.lichess_client import (
+                    update_games_index_with_game,
+                )
+
+                update_games_index_with_game(player_name, result.game.id)
+            except Exception:
+                pass  # non-blocking — index update must never break the response
+
         return {
             "game": {
                 "id": result.game.id,

@@ -1,0 +1,139 @@
+{
+  "generated": "2026-07-26",
+  "username": "Systeq",
+  "games_analyzed": 49,
+  "player_acpl": 41.7,
+  "model": "NVIDIA",
+  "total_tokens": 3607,
+  "prompt_tokens": 1032,
+  "completion_tokens": 2575,
+  "patterns": [
+    {
+      "pattern_id": "I",
+      "pattern_name": "Bait trap",
+      "confidence": 65.3,
+      "frequency": 40,
+      "severity": "low",
+      "hypothesis": "Hypothesis: player deliberately leaves seemingly hanging pieces to punish opponent's automatic grab — honeypot strategy.",
+      "mitigation": ""
+    },
+    {
+      "pattern_id": "O",
+      "pattern_name": "Repetition avoidance greed",
+      "confidence": 35.9,
+      "frequency": 22,
+      "severity": "critical",
+      "hypothesis": "Hypothesis: player refuses threefold repetition hoping for more, which often leads to position collapse.",
+      "mitigation": ""
+    },
+    {
+      "pattern_id": "C",
+      "pattern_name": "Attention tunneling",
+      "confidence": 27.6,
+      "frequency": 15,
+      "severity": "medium",
+      "hypothesis": "Hypothesis: player fixates on one area of the board, missing counterplay elsewhere — fixing one bug while creating another.",
+      "mitigation": ""
+    },
+    {
+      "pattern_id": "Q",
+      "pattern_name": "Active defense",
+      "confidence": 20.2,
+      "frequency": 11,
+      "severity": "low",
+      "hypothesis": "Hypothesis: player prefers active counterplay over passive defense, creating winning chances even in lost positions.",
+      "mitigation": ""
+    },
+    {
+      "pattern_id": "Q2",
+      "pattern_name": "Win despite blunder",
+      "confidence": 20.2,
+      "frequency": 11,
+      "severity": "low",
+      "hypothesis": "Hypothesis: player recovers from large blunders and still wins — resilience under pressure or opponent's failure to capitalise.",
+      "mitigation": ""
+    },
+    {
+      "pattern_id": "R",
+      "pattern_name": "Endgame relaxation",
+      "confidence": 18.0,
+      "frequency": 11,
+      "severity": "high",
+      "hypothesis": "Hypothesis: player relaxes concentration when materially ahead in endgame, making passive moves that squander the advantage.",
+      "mitigation": ""
+    },
+    {
+      "pattern_id": "B",
+      "pattern_name": "Automatic grab",
+      "confidence": 10.4,
+      "frequency": 20,
+      "severity": "high",
+      "hypothesis": "Hypothesis: player captures automatically without evaluating opponent's counterplay — analogous to git push --force.",
+      "mitigation": ""
+    },
+    {
+      "pattern_id": "J",
+      "pattern_name": "Impulsive check block",
+      "confidence": 9.2,
+      "frequency": 5,
+      "severity": "high",
+      "hypothesis": "Hypothesis: when in check, player reflexively blocks with a piece without evaluating king safety — silencing an alert instead of fixing the root cause.",
+      "mitigation": ""
+    },
+    {
+      "pattern_id": "I2",
+      "pattern_name": "Opponent's gift exploitation",
+      "confidence": 6.5,
+      "frequency": 4,
+      "severity": "low",
+      "hypothesis": "Hypothesis: player capitalises on opponent's suboptimal captures — analogous to exploiting a misconfigured firewall rule.",
+      "mitigation": ""
+    },
+    {
+      "pattern_id": "Q1",
+      "pattern_name": "Desperate Gambit Mode",
+      "confidence": 3.3,
+      "frequency": 2,
+      "severity": "low",
+      "hypothesis": "Hypothesis: when objectively lost, player switches to chaos mode — reject trades, create threats, exploit opponent's time pressure and automatic grabs.",
+      "mitigation": ""
+    },
+    {
+      "pattern_id": "S",
+      "pattern_name": "Capture aversion under check",
+      "confidence": 1.0,
+      "frequency": 1,
+      "severity": "critical",
+      "hypothesis": "Hypothesis: when in check, 'king in danger' reflex suppresses the capture option -- player moves king or blocks instead of capturing the checking piece.",
+      "mitigation": ""
+    }
+  ],
+  "weakness_report": {
+    "total_acpl": 41.7,
+    "blunder_count": 34,
+    "mistake_count": 94,
+    "inaccuracy_count": 296,
+    "phase_weaknesses": {
+      "opening": {
+        "acpl": 28.6,
+        "blunders": 0
+      },
+      "middlegame": {
+        "acpl": 47.2,
+        "blunders": 14
+      },
+      "endgame": {
+        "acpl": 45.9,
+        "blunders": 20
+      }
+    },
+    "top_weaknesses": [
+      "Automatic grab",
+      "Attention tunneling",
+      "Bait trap",
+      "Opponent's gift exploitation",
+      "Impulsive check block"
+    ]
+  },
+  "output": "**1. Shrnutí**  \nAnalýza 49 partií hráče Systeq ukazuje, že jeho největší problémy souvisí s impulzivním chováním v kritických momentech (odmítání opakování, automatické braní, blokování šachu bez vyhodnocení) a s tendencí k relaxaci v výhodných koncovkách. Zároveň se projevují určité silné stránky – schopnost aktivní obrany, zotavení po velkých chybách a využívání chyb soupeře.\n\n**2. Prioritní problémy** (seřazeno podle závažnosti × četnosti)  \n\n| Priorita | Vzor (závažnost) | Četnost | Co naznačuje data |\n|----------|------------------|---------|-------------------|\n| 1 | **O: Opakování‑avertní žízeň** – [CRITICAL] | 22 | Hráč často odmítá trojnásobné opakování v naději na lepší výsledek, což vede ke kolapsu pozice. |\n| 2 | **B: Automatické braní** – [HIGH] | 20 | Tendence brát figurku bez hlubšího posouzení protihráčovy odpovědi (analogie „git push --force“). |\n| 3 | **R: Koncovková relaxace** – [HIGH] | 11 | Při materiální výhodě v koncovce dochází k poklesu koncentrace a pasivním tahům, které ztrácí výhodu. |\n| 4 | **C: Tunelování pozornosti** – [MEDIUM] | 15 | Fixace na jednu část desky vede k přehlédnutí protihráčovy hry jinde. |\n| 5 | **J: Impulzivní blok šachu** – [HIGH] | 5 | Při šachu hráč často blokuje figurkou bez vyhodnocení bezpečnosti krále. |\n| 6 | **S: Averze k braní pod šachem** – [CRITICAL] | 1 | Velmi nízká četnost, ale když se vyskytne, hráč raději králem uhýbá nebo blokuje místo braní útočící figurky. |\n| 7 | **I: Bait‑trap (medová past)** – [LOW] | 40 | Hráč občas nechává zdánlivě viset figurku, aby chytil soupeře na automatické braní – nízká spolehlivost, ale vysoká frekvence. |\n| 8 | **Q: Aktivní obrana** – [LOW] | 11 | Preference aktivního protiútoku nad pasivní obranou – může vytvářet šance i v horších pozicích. |\n| 9 | **Q2: Výhra i po blundru** – [LOW] | 11 | Schopnost zotavit se po velké chybě a stále vyhrát – naznačuje odolnost nebo chyby soupeře. |\n|10| **I2: Využití daru soupeře** – [LOW] | 4 | Hráč dokáže těžit ze suboptimálních útoků soupeře. |\n|11| **Q1: Rezolutní gambitový režim** – [LOW] | 2 | V prohraných pozicích přechází do chaotického stylu, snaží se vytvářet hrozby a využívat časového tlaku soupeře. |\n\n**3. Tréninková doporučení** (konkrétní a proveditelné)  \n\n- **Cvičení na odolnost vůči opakování**  \n  - Partii hrát s vědomým cílem přijmout trojnásobné opakování, pokud je pozice rovná nebo mírně lepší.  \n  - Po partiích analyzovat situace, kdy bylo opakování odmítnuto, a identifikovat, jaké konkrétní tahy vedly ke zhoršení.\n\n- **Zvýšení obezřetnosti při braní**  \n  - Před každým braním provést rychlou kontrolu: „Jaká je odpověď soupeře po mém tahu?“ (zkontrolovat hrozby, protiútoky, otevřené linie).  \n  - Trénovat pomocí taktických cvičení, kde je nutné odmítnout zdánlivě výhodné braní kvůli skrytému protiútoku.\n\n- **Udržování koncentrace v koncovkách**  \n  - Po získání materiální výhody si stanovit krátký plán (např. aktivizace krále, vytvoření passed pawnu) a jej důsledně provádět.  \n  - Hrát koncovkové partie s časovým omezením (např. 5 min + 2 s) a po partii přezkoumat, zda došlo k neúmyslným pasivním tahům.\n\n- **Rozšíření pozornosti na celou desku**  \n  - Při analýze partií si dělat poznámky: „Kde se soupeř snaží vytvořit protiútok?“ a kontrolovat všechny čtyři křídla.  \n  - Trénovat pomocí cvičení „najdi všechny možné hrozby soupeře v dané pozici“ (5‑10 min denně).\n\n- **Workshop na blokování šachu**  \n  - V tréninkových pozicích s šachem nejprve vyhodnotit všechny tři možnosti (braní, úkryt, blok) a zvolit tu, která nejlépe zachová bezpečnost krále a aktivitu figur.  \n  - Používat šachové hádanky, kde je správná odpověď často braní nebo úkryt, nikoli blok.\n\n- **Rozvíjení bait‑trapu jako záměrné taktiky**  \n  - Protože tato vzorová je nízké spolehlivosti, trénovat ji pouze v situacích, kdy je soupeř známý svou tendencí automaticky brát viditelně visící figurky.  \n  - Po partiích analyzovat, zda past skutečně fungovala nebo jen vytvořila zbytečnou slabost.\n\n- **Upevnění silných stránek**  \n  - Aktivní obranu (Q) a schopnost zotavit se po blundru (Q2) dále rozvíjet prostřednictvím partií s cílem vytvořit protihru i z horších pozic.  \n  - Využívat chyb soupeře (I2) tím, že po partiích hledáme momenty, kdy soupeř udělal nepřesný útok, a trénujeme odpověď na podobné situace.\n\n**4. Silné stránky** (podle dat)  \n\n- **Aktivní obrana (Q)** – hráč často volí protiútok místo pasivního bránění, což může vytvářet šance i v nepříznivých pozicích.  \n- **Odolnost po blundru (Q2)** – v 11 partiích se hráč dokázal zotavit po velké chybě a stále vyhrát, naznačující dobrou psychickou odolnost nebo schopnost využívat chyb soupeře.  \n- **Využití daru soupeře (I2)** – hráč dokáže těžit ze suboptimálních útoků soupeře, což ukazuje dobrý taktický postřeh.  \n- **Nízký počet blundrů v úvodu** – v úvodní fázi ACPL je pouze 28,6 a žádné blundry, což naznačuje solidní přípravu zahájení.  \n\n**5. Zaměření na další tréninkovou seanci**  \n\n1. **Krátká partie (15 min) s důrazem na rozhodování při šachu** – po každém tahu v šachu hráč vysvětlí, proč zvolil konkrétní možnost (braní, úkryt, blok) a jaké následky očekává.  \n2. **Analýza dvou partií, kde došlo k odmítnutí opakování** – identifikovat, jaké alternativní remízové nebo výhodnější pokračování existovaly a procvičit je v tréninkové pozici.  \n3. **Taktický blok na „automatické braní“** – řešit 10 cvičení, kde je správná odpověď odmítnout braní kvůli skrytému protiútoku, a diskutovat o důvodech.  \n\nToto zaměření by mělo pomoci snížit nejrizikovější tendency (opakovací averze, automatické braní, koncovková relaxace) a zároveň rozvíjet již prokázané silné stránky hráče."
+}

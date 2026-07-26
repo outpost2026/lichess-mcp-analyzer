@@ -157,17 +157,18 @@ SNR = semanticka vernost vuci vstupnim datum (konfidence %, phase ACPL, zadne in
 | DeepSeek V4 Flash | ~$0.07 | ~1 460 her za $1 |
 | DeepSeek Chat | ~$0.24 | **ZAKAZAN** — 3.6× drazsi nez V4 Flash |
 
-## Nastroje (9 MCP toolu)
+## Nastroje (10 MCP toolu)
 
 | Tool | Co dela |
 | - | - |
-| `lichess\_fetch\_games` | Stahne recent partie hrace z Lichess |
-| `lichess\_analyze\_game` | Analyzuje jednu partii Stockfishem (depth 8-24, kazdy tah, cp_loss) |
+| `lichess\_fetch\_games` | Stahne recent partie hrace z Lichess (max 999) |
+| `lichess\_analyze\_game` | Analyzuje jednu partii Stockfishem (depth 8-24, kazdy tah, cp_loss) + auto-update indexu |
 | `lichess\_analyze\_position` | Analyzuje FEN pozici (depth 8-24, cloud eval optional) |
 | `lichess\_opening\_explorer` | Prozkuma zahajeni v Lichess/Masters databazi |
 | `lichess\_player\_profile` | Vrati profil, ratingy a statistiky hrace |
-| `lichess\_diagnose\_player` | Diagnostikuje slabiny pres vice partii (faze, otvoreni, ACPL, result filtr) |
-| `lichess\_match\_patterns` | Detekuje vzorove chyby A-Q1 z tve pattern library |
+| `lichess\_diagnose\_player` | Diagnostikuje slabiny pres vice partii + warning pri parciálních datech |
+| `lichess\_match\_patterns` | Detekuje vzorove chyby A-Q1 + pending detection + warning |
+| `lichess\_analyze\_pending` | Batch analyza nezpracovanych her (pending detection consistency) |
 | `lichess\_workspace\_info` | Vrati kontext pracovniho prostoru |
 | `lichess\_import\_pgn` | Importuje PGN (libovolny zdroj) do analyzy |
 | `lichess\_games\_index` | Vrati cache index her dle resultu |
@@ -431,35 +432,31 @@ Architektonicke vzory (tools-of-tools, KB write-back, L2 Resources, session stat
 - **KB modul:** B2B-Knowledge-Base/02\_ANALYZY/02\_chess/ + 04\_KNOWLEDGE\_BASE/02\_chess/
 
 
-## Stav (2026-07-25)
+## Stav (2026-07-26)
 
 | Co | Stav |
 | - | - |
-| Tests | 35/35 pass (15 unit + 13 contract + 5 engine mock + 2 new) |
-| Patterny definovane | 11 (A, B, C, G, I, J, O, P, Q, Q1, R) + S candidate |
-| Patterny s detektorem | 11 + S candidate |
-| Pattern J semantika | ✅ **FIXED (P0/F-007)** — m.was_in_check + "x" not in m.move_san |
-| Analyzovane partie | 22 (depth 12-14, RUN\_001 + RUN\_002) |
-| Engine | Stockfish BMI2 dev-20260609 (depth 14), ACPL MAE 3.9 vs Lichess |
+| Tests | 35/35 pass |
+| Patterny definovane | 12 (A, B, C, G, I, I2, J, O, Q, Q1, Q2, R) + S aktivni |
+| Patterny s detektorem | 12 aktivnich + S |
+| Analyzovane partie | **63** (44W/17L/2D, depth 12, RUN\_003) |
+| Cache konzistence | ✅ **Auto-konzistentni pipeline**: fetch → pending detection → auto-analysis → warning |
+| Engine | Stockfish BMI2 dev-20260609 (depth 12), ACPL MAE 3.9 vs Lichess |
 | Phase 1 | ✅ Hotova |
 | DBCL architektura | ✅ Navrzena + cross-auditovan (Claude, PASS WITH CONCERNS, 21 nalezu) |
 | DBCL implementace | ⏳ P0-P3 plan v docs/PHASE2_BUILD_PLAN.md v2.0 |
-| Pattern S (capture aversion) | Kandidat — ceka na P3 |
+| Pipeline bugfixy | ✅ **6 fixes**: 50-fetch-clamp, 50-patterns-clamp, pagination (berserk 0.14), index auto-update, cache corruption, pending detection |
 | Transfer learning | Take3, VeNRA, Compiled AI, Blunder Tutor, Lichess lila |
 | LLM pipeline | ✅ NVIDIA, Cerebras, DeepSeek V4 Flash |
 | LLM reporting | ✅ MD reporty do `docs/` + `00_STRATEGIE/` |
 | Provider switch | ✅ `DEFAULT_PROVIDER` env var |
 | Pipeline mode | ✅ `PIPELINE_MODE` env var (mono/incremental/auto) |
 | Contract tests | ✅ 13 testu |
-| Low SNR fix | ✅ GT-059 |
-| kNAMNYUF hallucinace | ✅ detekovana + DBCL guard clause navrzen |
 | DeepSeek Chat | ❌ **ZAKAZAN** |
 
-Session state: `.ai_state.json` (klic `2026-07-25_baseline`)
-Kalibracni plan: `docs/KALIBRACE_PLAN_2026-07-19.md`
+Kompletni coaching report: `00_STRATEGIE/report_coaching_2026-07-26_v3.md` (63 her, 12 patternu)
 Build plan: `docs/PHASE2_BUILD_PLAN.md` (v2.0, 2026-07-25)
 DBCL audit: `00_STRATEGIE/DBCL_Cross_Audit_Report.docx` (Claude, 21 findings)
-Coaching: `00_STRATEGIE/evening_coaching_2026-07-24.md` (v2 + audit korekce)
 
 ## License
 

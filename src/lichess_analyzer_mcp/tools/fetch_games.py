@@ -20,7 +20,7 @@ async def lichess_fetch_games(
 
     Args:
         username: Lichess nebo Chess.com username
-        max_games: Maximalni pocet her (1-50)
+        max_games: Maximalni pocet her (1-999, default 10)
         source: Platforma - 'lichess' nebo 'chesscom'
         result: Filtr dle vysledku - 'all', 'win', 'loss', 'draw'
     """
@@ -28,7 +28,7 @@ async def lichess_fetch_games(
         return {"error": "source must be 'lichess' or 'chesscom'"}
     if result not in ("all", "win", "loss", "draw"):
         return {"error": "result must be 'all', 'win', 'loss', or 'draw'"}
-    max_games = max(1, min(50, max_games))
+    max_games = max(1, min(999, max_games))
     try:
         games = fetch_user_games(username, max_games=max_games, result=result)
         from lichess_analyzer_mcp.services.lichess_client import _game_result_for_player

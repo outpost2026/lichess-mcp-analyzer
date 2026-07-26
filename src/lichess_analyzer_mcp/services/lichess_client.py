@@ -211,21 +211,26 @@ def _json_safe(obj):
     return obj
 
 
-def _export_by_player(username: str, max_games: int = 10) -> list[dict]:
-    """Fetch user games via berserk export_by_player with retry on 429."""
+def _export_by_player(username: str, max_games: int = 999) -> list[dict]:
+    """Fetch user games via berserk export_by_player with retry on 429.
+
+    Berserk 0.14+ handles internal pagination; we just pass max and
+    collect results.  Lichess API returns up to ~100 games per call,
+    and berserk's iterator may yield more via its own pagination.
+    """
     client = get_client()
     for attempt in range(3):
         try:
-            games = list(
+            page = list(
                 client.games.export_by_player(
-                    username,
-                    max=max(max_games, 50),
+                    username=username,
+                    max=max_games,
                     as_pgn=False,
                     opening=True,
                     evals=True,
                 )
             )
-            return games
+            return page[:max_games]
         except Exception as e:
             err_str = str(e)
             if "429" in err_str or "rate limit" in err_str.lower():
@@ -288,6 +293,104 @@ def fetch_user_games_metadata(username: str) -> Optional[dict]:
     index = _build_games_index(cached, username)
     _save_games_index(username, index)
     return {k: v for k, v in index.items() if k != "games"}
+
+
+def _game_id_from_created_at(raw: str) -> str:
+    """Extract clean game ID from a berserk-style dict or timestamp string."""
+    return raw if isinstance(raw, str) and len(raw) == 8 else ""
+
+
+def fetch_game_by_id(game_id: str) -> Optional[dict]:
+    """Fetch a single game as raw API dict (as_pgn=False) with retry."""
+    client = get_client()
+    for attempt in range(3):
+        try:
+            raw = client.games.export(game_id, as_pgn=False)
+            if isinstance(raw, dict):
+                return raw
+            return None
+        except Exception as e:
+            err_str = str(e)
+            if "429" in err_str or "rate limit" in err_str.lower():
+                wait = 2 ** (attempt + 1)
+                print(
+                    f"[lichess_client] Rate limited fetch_game_by_id, retry in {wait}s",
+                    file=__import__("sys").stderr,
+                )
+                time.sleep(wait)
+                continue
+            if "404" in err_str or "not found" in err_str.lower():
+                return None
+            raise
+    return None
+
+
+def update_games_index_with_game(username: str, game_id: str) -> None:
+    """After single-game analysis, add/update the game in the user index.
+
+    Fetches raw game data from the API and inserts into both
+    Systeq_games.json (the games list) and Systeq_index.json (the index).
+    """
+    raw = fetch_game_by_id(game_id)
+    if raw is None:
+        return
+
+    # 1) Update Systeq_games.json — append or replace
+    games_path = _user_games_cache_path(username)
+    existing_games: list[dict] = []
+    if os.path.isfile(games_path):
+        try:
+            with open(games_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            existing_games = data.get("games", [])
+        except (OSError, json.JSONDecodeError):
+            existing_games = []
+
+    # Replace if already present, else append
+    found = False
+    for i, g in enumerate(existing_games):
+        if g.get("id") == game_id:
+            existing_games[i] = raw
+            found = True
+            break
+    if not found:
+        existing_games.insert(0, raw)  # newest first
+
+    _save_user_games_cache(username, existing_games)
+
+    # 2) Rebuild and save index from the updated list
+    index = _build_games_index(existing_games, username)
+    _save_games_index(username, index)
+
+
+def get_pending_analysis(username: str, depth: int = 12) -> list[str]:
+    """Return game IDs that have no per-game analysis cache at the given depth.
+
+    Compares game IDs in Systeq_games.json against per-game cache files
+    in data/game_cache/.  Uses depth approximation: any {id}_{color}_d*.json
+    file counts as analyzed.
+    """
+    import glob
+
+    cached_games = _load_user_games_cache(username)
+    if cached_games is None:
+        return []
+
+    pending = []
+    for g in cached_games:
+        gid = g.get("id", "")
+        if not gid:
+            continue
+        color = "white"
+        white_name = g.get("players", {}).get("white", {}).get("user", {}).get("name", "") or ""
+        if white_name.lower() == username.lower():
+            color = "white"
+        else:
+            color = "black"
+        pattern = os.path.join(GAMES_CACHE_DIR, f"{gid}_{color}_d*.json")
+        if not glob.glob(pattern):
+            pending.append(gid)
+    return pending
 
 
 def fetch_game_pgn(game_id: str) -> str:
