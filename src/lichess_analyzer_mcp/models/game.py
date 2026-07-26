@@ -55,7 +55,8 @@ class MoveAnalysis:
 
     @staticmethod
     def from_dict(d: dict) -> "MoveAnalysis":
-        return MoveAnalysis(**d)
+        valid = {k: v for k, v in d.items() if k in MoveAnalysis.__dataclass_fields__}
+        return MoveAnalysis(**valid)
 
 
 @dataclass

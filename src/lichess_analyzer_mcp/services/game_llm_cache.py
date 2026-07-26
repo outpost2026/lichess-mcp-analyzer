@@ -1,4 +1,4 @@
-﻿"""Per-game LLM analysis cache — Level 2 cache.
+﻿"""Per-game LLM analysis cache  --  Level 2 cache.
 
 Each game gets a deep LLM analysis (blunders, phase, opening, critical moments).
 These per-game analyses are cached and reused in aggregate coaching reports.
@@ -11,17 +11,19 @@ from datetime import datetime, timezone
 
 CACHE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "game_cache")
 
-PER_GAME_SYSTEM_PROMPT = """You are a chess coach analyzing a single game.
-You are given deterministic Stockfish data for ONE game.
-Produce a structured game analysis in Czech.
+PER_GAME_SYSTEM_PROMPT = """You are a chess coach translator. You are given DETERMINISTIC Stockfish data for ONE game  --  pre-verified facts, not inference. Your job is to translate these facts into Czech.
 
-RULES:
-1. Only use data present in the input — no invented patterns or stats
-2. Identify critical moments (swings >50cp)
-3. Note phase-specific tendencies
-4. Be specific about opening choices
-5. Keep it concise (max 300 words)
-6. Output as JSON with these keys: summary, phase_notes, critical_moments, opening_note, coaching_note
+OUTPUT: JSON with keys: summary, phase_notes, critical_moments, opening_note, coaching_note (max 400 words total).
+
+GUARD CLAUSES (violation = hallucination):
+1. Every claim must trace to data in the input. Do NOT invent positions, patterns, or statistics.
+2. "in_check: no" means the player was NOT in check. Do NOT say they were.
+3. "in_check: yes" means the player WAS in check. Say so only if relevant to the error.
+4. FEN is the exact board state before the move. Base positional claims on FEN, not move sequence inference.
+5. "best:" shows the engine-recommended move with eval. Do NOT suggest alternatives.
+6. If eval_swing data is absent, do NOT calculate or guess eval differences.
+7. "you always" / "you never" is prohibited  --  patterns are tendencies, not absolutes.
+8. Keep it concise (max 400 words).
 """
 
 
@@ -66,6 +68,20 @@ def _save_llm_cache(game_id: str, data: dict) -> None:
         pass
 
 
+def _format_eval(v: Optional[float], suffix: str = "cp") -> str:
+    if v is None:
+        return "?"
+    return f"{v:+.0f}{suffix}"
+
+
+def _format_fen_short(fen: str) -> str:
+    """Truncate FEN to first 4 fields (pieces + turn + castling + en-passant)."""
+    if not fen:
+        return "(not available)"
+    parts = fen.split(" ")
+    return " ".join(parts[:4])
+
+
 def _build_game_prompt(game_data: dict) -> str:
     g = game_data.get("game", {})
     moves = game_data.get("moves", [])
@@ -94,23 +110,38 @@ def _build_game_prompt(game_data: dict) -> str:
             )
         lines.append("")
 
-    errors = []
-    for b in blunders:
-        errors.append(
-            f"BLUNDER: move {b.get('ply', '?')} {b.get('move_san', '?')} — loss {b.get('centipawn_loss', '?')}cp — {b.get('phase', '?')}"
-        )
-    for m in mistakes:
-        errors.append(
-            f"MISTAKE: move {m.get('ply', '?')} {m.get('move_san', '?')} — loss {m.get('centipawn_loss', '?')}cp — {m.get('phase', '?')}"
-        )
-    for i in inaccuracies:
-        errors.append(
-            f"INACC: move {i.get('ply', '?')} {i.get('move_san', '?')} — loss {i.get('centipawn_loss', '?')}cp — {i.get('phase', '?')}"
-        )
+    all_errors = [("BLUNDER", b) for b in blunders]
+    all_errors += [("MISTAKE", m) for m in mistakes]
+    all_errors += [("INACC", i) for i in inaccuracies]
+    all_errors.sort(key=lambda x: x[1].get("ply", 0))
 
-    if errors:
-        lines.append("Error moves:")
-        lines.extend(errors)
+    if all_errors:
+        lines.append("Error moves (in order of play):")
+        lines.append("")
+        for label, m in all_errors:
+            ply = m.get("ply", "?")
+            san = m.get("move_san", "?")
+            loss = m.get("centipawn_loss", "?")
+            phase = m.get("phase", "?")
+            fen = m.get("fen", "")
+            in_check = m.get("was_in_check", False)
+            eb = m.get("eval_before")
+            ea = m.get("eval_after")
+            best = m.get("best_move_san", "")
+            best_uci = m.get("best_move_uci", "")
+
+            fen_short = _format_fen_short(fen)
+            eval_swing = f"{_format_eval(eb)} -> {_format_eval(ea)}"
+
+            lines.append(f"{label} ply={ply}: {san}")
+            lines.append(
+                f"  loss: {loss}cp | phase: {phase} | in_check: {'yes' if in_check else 'no'}"
+            )
+            lines.append(f"  fen: {fen_short}")
+            lines.append(f"  eval: {eval_swing}")
+            if best:
+                lines.append(f"  best: {best} ({best_uci})")
+            lines.append("")
 
     return "\n".join(lines)
 
@@ -133,7 +164,11 @@ def analyze_game_llm(
             return cached
 
     # Import here to avoid circular imports
-    from lichess_analyzer_mcp.services.llm_client import PROVIDERS, COACHING_SYSTEM_PROMPT, _call_llm
+    from lichess_analyzer_mcp.services.llm_client import (
+        PROVIDERS,
+        COACHING_SYSTEM_PROMPT,
+        _call_llm,
+    )
 
     system = PER_GAME_SYSTEM_PROMPT
     user = _build_game_prompt(game_data)
@@ -171,7 +206,7 @@ def _validate_json_output(content: str) -> Optional[dict]:
         return json.loads(content)
     except json.JSONDecodeError:
         pass
-    # Try to extract JSON from markdown code block — outermost ```json ... ```
+    # Try to extract JSON from markdown code block  --  outermost ```json ... ```
     start = content.find("```json")
     if start == -1:
         start = content.find("```")
