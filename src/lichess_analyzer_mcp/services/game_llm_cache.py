@@ -127,7 +127,6 @@ def _build_game_prompt(game_data: dict) -> str:
             in_check = m.get("was_in_check", False)
             eb = m.get("eval_before")
             ea = m.get("eval_after")
-            best = m.get("best_move_san", "")
             best_uci = m.get("best_move_uci", "")
 
             fen_short = _format_fen_short(fen)
@@ -139,8 +138,8 @@ def _build_game_prompt(game_data: dict) -> str:
             )
             lines.append(f"  fen: {fen_short}")
             lines.append(f"  eval: {eval_swing}")
-            if best:
-                lines.append(f"  best: {best} ({best_uci})")
+            if best_uci:
+                lines.append(f"  best: {best_uci}")
             lines.append("")
 
     return "\n".join(lines)
