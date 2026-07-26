@@ -559,6 +559,41 @@ class PatternDetector:
                 game_ids=list(set(affected)),
                 frequency=len(set(affected)),
                 severity="critical",
-                hypothesis="Hypothesis: when in check, 'king in danger' reflex suppresses the capture option — player moves king or blocks instead of capturing the checking piece.",
+                hypothesis="Hypothesis: when in check, 'king in danger' reflex suppresses the capture option -- player moves king or blocks instead of capturing the checking piece.",
+            )
+        return None
+
+    def _detect_n(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch:
+        affected = []
+        pin_events = 0
+        for analysis in analyses:
+            for m in analysis.moves:
+                if m.classification in ("blunder", "mistake") and m.centipawn_loss >= 100 and m.fen:
+                    try:
+                        board = chess.Board(m.fen)
+                        from_sq = chess.parse_square(m.move_uci[:2])
+                        if board.is_pinned(board.turn, from_sq):
+                            pin_events += 1
+                            affected.append(analysis.game.id)
+                    except (ValueError, IndexError):
+                        pass
+        if pin_events >= 1:
+            total_games = len(analyses)
+            return PatternMatch(
+                pattern_id="N",
+                pattern_name="X-ray pin violation",
+                confidence=min(pin_events / max(total_games, 1) * 0.8, 0.75),
+                evidence=[
+                    {
+                        "pin_events": pin_events,
+                        "total_games": total_games,
+                        "threshold_cp": 100,
+                        "detail": "Player blundered by moving a piece that was x-ray pinned to a higher-value piece behind it",
+                    }
+                ],
+                game_ids=list(set(affected)),
+                frequency=pin_events,
+                severity="high",
+                hypothesis="Hypothesis: player fails to recognize when their piece is pinned, treating it as free to move -- overlooking the higher-value piece behind it.",
             )
         return None

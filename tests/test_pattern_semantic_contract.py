@@ -329,6 +329,33 @@ class TestPatternSemanticContract:
         ]
         assert self._detect("S", analyses) is None
 
+    def test_n_xray_pin_positive(self):
+        fen_pin = "r3k3/8/8/4r3/8/8/4R3/4K3 w - - 0 1"
+        base = [
+            _move(1, "Re3", "e2e3", 300, "blunder", fen=fen_pin, eval_before=100, eval_after=-200),
+        ]
+        analyses = [
+            _make_analysis("g_n1", "white", "0-1", list(base)),
+            _make_analysis("g_n1b", "white", "0-1", list(base)),
+            _make_analysis("g_n1n", "white", "1-0", [_move(1, "e4", "e2e4", 0, "best")]),
+        ]
+        match = self._detect("N", analyses)
+        assert match is not None, "N should detect pinned piece blunder"
+
+    def test_n_xray_pin_negative(self):
+        fen_no_pin = "r3k3/8/8/8/8/8/4R3/4K3 w - - 0 1"
+        analyses = [
+            _make_analysis(
+                "g1",
+                "white",
+                "1-0",
+                [
+                    _move(1, "Re3", "e2e3", 0, "best", fen=fen_no_pin),
+                ],
+            ),
+        ]
+        assert self._detect("N", analyses) is None
+
     def test_all_patterns_have_detectors(self):
         lib = PatternLibrary().load_baseline()
         detector = PatternDetector()

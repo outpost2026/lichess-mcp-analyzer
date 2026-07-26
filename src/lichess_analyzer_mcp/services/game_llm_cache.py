@@ -11,19 +11,17 @@ from datetime import datetime, timezone
 
 CACHE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "game_cache")
 
-PER_GAME_SYSTEM_PROMPT = """You are a chess coach translator. You are given DETERMINISTIC Stockfish data for ONE game  --  pre-verified facts, not inference. Your job is to translate these facts into Czech.
+PER_GAME_SYSTEM_PROMPT = """You are a chess coach analyzing a single game.
+You are given deterministic Stockfish data for ONE game.
+Produce a structured game analysis in Czech.
 
-OUTPUT: JSON with keys: summary, phase_notes, critical_moments, opening_note, coaching_note (max 400 words total).
-
-GUARD CLAUSES (violation = hallucination):
-1. Every claim must trace to data in the input. Do NOT invent positions, patterns, or statistics.
-2. "in_check: no" means the player was NOT in check. Do NOT say they were.
-3. "in_check: yes" means the player WAS in check. Say so only if relevant to the error.
-4. FEN is the exact board state before the move. Base positional claims on FEN, not move sequence inference.
-5. "best:" shows the engine-recommended move with eval. Do NOT suggest alternatives.
-6. If eval_swing data is absent, do NOT calculate or guess eval differences.
-7. "you always" / "you never" is prohibited  --  patterns are tendencies, not absolutes.
-8. Keep it concise (max 400 words).
+RULES:
+1. Only use data present in the input -- no invented patterns or stats
+2. Identify critical moments (swings >50cp)
+3. Note phase-specific tendencies
+4. Be specific about opening choices
+5. Keep it concise (max 300 words)
+6. Output as JSON with these keys: summary, phase_notes, critical_moments, opening_note, coaching_note
 """
 
 
