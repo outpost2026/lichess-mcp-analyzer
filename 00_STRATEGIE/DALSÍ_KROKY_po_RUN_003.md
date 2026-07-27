@@ -93,7 +93,7 @@ K0 (orákulum) → K1 (detektor) → K2 (kontrakt) → K3 (dekodér)
 | **1a** | B (Automatic grab) | author_error | Nejjednodušší oprava (AUD-01), vysoký dopad na confidence |
 | **1b** | J (Impulsive check block) | author_error | Již částečně opraven (F-007), zbývá per-blunder konzistence |
 | **1c** | O (Repetition avoidance) | author_error → mechanism | Nejtěžší oprava (AUD-04), ale 0/15 true detekcí je kritické |
-| **1d** | I (Bait trap → Opponent's grab) | strategy → author_error | Přejmenování + hypothesis fix (AUD-03/11) |
+| **1d** | I (Bait trap → concept) | strategy → concept | **RESOLVED:** I→concept, code merged do I2 (AUD-03/11) |
 | **1e** | Q+Q2 merge | recovery | Sloučení duplicit (AUD-05) |
 | **1f** | S (Capture aversion) | author_error | Nový pattern z INC-B, do produkce (AUD-10) |
 
@@ -167,7 +167,7 @@ Fáze 6 (Re-kalibrace): Každých +50% dat
 | B | ✅ | ✅ | ✅ | ⚠️ AUD-01 | ⏳ blokováno | ✅ | ⏳ |
 | C | ✅ | ✅ | ✅ | ⚠️ AUD-02 | ⏳ blokováno | ✅ | ⏳ |
 | G | ✅ | ✅ | ✅ | ✅ PASS | ✅ | ✅ | ⏳ |
-| I | ✅ | ✅ | ✅ | ❌ AUD-03 | ⏳ blokováno | ✅ | ⏳ |
+| I | ✅ | ✅ | ✅ | **✅ FIXED (concept)** | ✅ | ❌ manual_only | ⏳ |
 | J | ✅ | ✅ | ✅ | ✅ FIXED (P0-1) | ✅ | ✅ | ⏳ |
 | O | ✅ | ✅ | ✅ | ❌ AUD-04 | ⏳ blokováno | ✅ | ⏳ |
 | P | ✅ | ✅ | ✅ | ⚠️ AUD-06 | ⏳ blokováno | ✅ | ⏳ |
@@ -184,10 +184,10 @@ Legenda: ✅ hotovo | ⚠️ částečně/audit pass s výhradami | ❌ neprošl
 
 ## 4. Revidovaný commit checklist
 
-1. `[K0-3] feat: INC-A/B/C re-fetch depth=14` — ground truth pro DBCL testování
+1. `[K0-3] feat: INC-A/B/C re-fetch depth=14` — **✅ DONE (v cache, RUN_005)**
 2. `[K0-1] docs: RUN_config template s K0 metrikami`
 3. `[AUD-01] fix: B total_captures scope` — přesunout counter mimo blunder podmínku
-4. `[AUD-03/11] fix: I rename + hypothesis` — "Opponent's grab exploit"
+4. `[AUD-03/11] fix: I→concept, code merge do I2` — **✅ DONE (c928327)**
 5. `[AUD-04] fix: O real repetition detection` — parsovat board history
 6. `[AUD-05] fix: Q + Q2 merge` — odstranit duplicitní detekci
 7. `[AUD-10] feat: S capture aversion under check` — do produkce

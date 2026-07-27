@@ -61,7 +61,7 @@ Analyza 21 partii (2023-2026) odhalila:
 **Klicove insighty:**
 - Pattern **B** (Automatic grab) — 3x, nejcastejsi autor error
 - Pattern **O** (Repetition avoidance greed) — jedina prohra v datasetu
-- Pattern **I** (Bait trap) — 3x, nejsilnejsi zbran
+- Pattern **I** (Bait trap — concept) — 3x v ruční analýze, nyní detected as I2 (gift exploitation)
 - White/Black asymetrie: jako White 8 blunderu vs Black 2 blundery
 - Metakognice neni aplikovana pod tlakem — casem nebo v casual modu
 
@@ -200,16 +200,17 @@ B2B-Knowledge-Base/
 | `lichess_diagnose_player` | username, max_games, depth | Cross-game slabiny, leaky openings | ✅ |
 | `lichess_match_patterns` | username, max_games, depth | Detekce patternu A-Q1 | ✅ |
 
-### 5.3 Pattern detection engine (17 patternu A-Q1)
+### 5.3 Pattern detection engine (14 auto-detected + 1 concept)
 
-Implementovano 6 detectoru (A, B, G, O, P, Q) v `src/services/pattern_detector.py`.
-Zbylych 11 (C, D, E, F, H, I, J, K, L, M, N, Q1) prijde v Phase 2-3.
+Implementovano **14 detectoru** (A, B, C, G, I2, J, N, O, P, Q, Q1, Q2, R, S) v `src/services/pattern_detector.py`.
+Pattern **I** (Bait trap) je concept-only (`detection_method="manual_only"`) — jeho auto-detekcni kod byl sloucen do I2.
 
 Kazdy pattern ma:
-- **id** (A-Q1) + nazev
+- **id** + nazev
+- **typ** (author_error, mechanism, strategy, recovery, concept)
 - **mechanismus** — proc k chybe dochazi
 - **IT analogie** — preklenuti do IT sveta
-- **detekcni metoda** — Stockfish eval + move classification
+- **detekcni metoda** — Stockfish eval + move classification (nebo `manual_only`)
 - **mitigace** — konkretni ritual nebo pravidlo
 - **severity** — critical > high > medium > low
 
@@ -353,8 +354,8 @@ Phase 2 — FSRS upgrade + cache
 ├── Lichess cloud eval cache (TTL)
 └── Due cards tool
 
-Phase 3 — Plna pattern detekce
-├── Zbylych 11 detectoru (C, D, E, F, H, I, J, K, L, M, N, Q1)
+Phase 3 — Rozsirena pattern detekce
+├── Patterny D, E, F, H, K, L, M (z puvodnich A-Q1, nebyly prioritizovany)
 ├── Ritual effectiveness tracking
 ├── ELO trend + metacognition ratio
 └── Vizualizace (graf pokroku)
