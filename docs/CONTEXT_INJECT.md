@@ -1,7 +1,7 @@
 # Context Injection — lichess-analyzer-mcp
 
-**Datum:** 2026-07-27 | **Verze 3.0**
-**Branch:** `feat` | **HEAD:** `c928327` [PATTERN] I→concept (manual_only), merge code into I2
+**Datum:** 2026-07-27 | **Verze 3.1**
+**Branch:** `feat` | **HEAD:** `a3fc36d` [TOOL] feat: lichess_analyze_anonymous_session
 **Working tree:** Clean (all fixes committed)
 
 ---
@@ -37,11 +37,12 @@
 - Root cause: `board.san(m)` AssertionError for Stockfish PV multi-move sequences
 - **Commit `269d425`** — [FIX] engine_client.py:81 depth limit, :86-93 sequential PV SAN; game_analyzer.py:330 silent→logging
 
-### Večer: RUN_005 + INC ground truth + I→concept
+### Večer: RUN_005 + INC ground truth + I→concept + anonymous session tool
 - **RUN_005 @ depth=12**: 30 Systeq games, ACPL=46.1, 70 BFS, **0% engine_lines failure** (70/70 with 3/3)
-- **INC-A/B/C @ depth=14**: kNAMNYUF (ACPL=54.4, 3 BFS), xUlQasD0 (ACPL=77.2, 7 BFS), qmodxzNF (ACPL=80.5, 7 BFS). All 17 BFS with 3/3 engine_lines. K0 variance 7-10% (not 22% as earlier false result).
+- **INC-A/B/C @ depth=14**: kNAMNYUF (ACPL=54.4, 3 BFS), xUlQasD0 (ACPL=77.2, 7 BFS), qmodxzNF (ACPL=80.5, 7 BFS). All 17 BFS with 3/3 engine_lines. K0 variance 7-10%.
 - **AUD-03/11 resolved**: I→concept (manual_only), auto-detection code merged into I2
 - **Commit `c928327`** — [PATTERN] I→concept, merge code into I2
+- **Commit `a3fc36d`** — [TOOL] `lichess_analyze_anonymous_session`: batch analyze anonymous games from txt/URLs/IDs, per-game + aggregate stats
 
 ---
 
@@ -210,6 +211,11 @@ for m in line["pv"][:5]:
 |------|--------|
 | `data/RUN_005_DBCL_v3_2026-07-27.md` | ✅ RUN_005 report |
 | `data/game_cache/` | 33 @ d12 + 3 INC @ d14 |
+
+### Tools
+| Tool | Vstup | Popis |
+|------|-------|-------|
+| `lichess_analyze_anonymous_session` | file_path / urls / game_ids, depth | Batch analýza anonymních her: txt→parse→fetch→analyze→agregace |
 
 ---
 
