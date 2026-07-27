@@ -360,6 +360,9 @@ class TestPatternSemanticContract:
         lib = PatternLibrary().load_baseline()
         detector = PatternDetector()
         for pid in lib.patterns:
+            pdef = lib.patterns[pid]
+            if pdef.detection_method == "manual_only":
+                continue
             method = getattr(detector, f"_detect_{pid.lower()}", None)
             assert method is not None, f"Pattern {pid} has no _detect_{pid.lower()} method"
 
