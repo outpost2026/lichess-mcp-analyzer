@@ -41,6 +41,7 @@ from lichess_analyzer_mcp.tools import match_patterns
 from lichess_analyzer_mcp.tools import workspace_info
 from lichess_analyzer_mcp.tools import import_pgn
 from lichess_analyzer_mcp.tools import analyze_pending
+from lichess_analyzer_mcp.tools import anonymous_session
 
 # P21: L2 Resources
 from lichess_analyzer_mcp.resources import analysis_resources
