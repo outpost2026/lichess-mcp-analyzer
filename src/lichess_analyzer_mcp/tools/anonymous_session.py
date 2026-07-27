@@ -69,6 +69,8 @@ def _parse_game_entries(source: str, is_file: bool = False) -> list[tuple[str, s
 
 def _resolve_color(pgn: str, label: str | None) -> str:
     """Determine player color from label + PGN result header."""
+    if label is None:
+        label = "win"
     if label in ("white", "black"):
         return label
     if label in ("win", "loss"):
