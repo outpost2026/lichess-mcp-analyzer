@@ -3,7 +3,10 @@ from lichess_analyzer_mcp.services.lichess_client import fetch_user_games, fetch
 from lichess_analyzer_mcp.services.game_analyzer import analyze_pgn, _load_cached_analysis
 from lichess_analyzer_mcp.services.pattern_detector import PatternDetector
 from lichess_analyzer_mcp.services.compressibility_validator import compute_compression
-from lichess_analyzer_mcp.services.validator import validate_pattern_artifact, ValidationError
+from lichess_analyzer_mcp.services.pattern_artifact_validator import (
+    validate_pattern_artifact,
+    ValidationError,
+)
 from lichess_analyzer_mcp.kb.schemas import validate_against_schema
 from lichess_analyzer_mcp.services.logger import get_logger
 

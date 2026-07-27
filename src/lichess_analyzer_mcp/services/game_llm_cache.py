@@ -11,7 +11,20 @@ from datetime import datetime, timezone
 
 CACHE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "game_cache")
 
-PER_GAME_SYSTEM_PROMPT = """You are a chess coach analyzing a single game.
+DBCL_GUARD = """=== GUARD: DBCL v1.1 ===
+You are a chess narrator. You MUST NOT make chess claims (check, block, capture, eval)
+that are not explicitly present in the game data or BlunderFactSheet fields below.
+If a claim type is not in the data, do NOT narrate it.
+Every eval number must match eval_before/eval_after within +-20cp.
+Patterns are hypotheses with evidence, not facts.
+Unknown = silence, not assumption.
+=== END GUARD ===
+
+"""
+
+PER_GAME_SYSTEM_PROMPT = (
+    DBCL_GUARD
+    + """You are a chess coach analyzing a single game.
 You are given deterministic Stockfish data for ONE game.
 Produce a structured game analysis in Czech.
 
@@ -23,6 +36,7 @@ RULES:
 5. Keep it concise (max 300 words)
 6. Output as JSON with these keys: summary, phase_notes, critical_moments, opening_note, coaching_note
 """
+)
 
 
 def _game_cache_path(game_id: str, color: str, depth: int = 12) -> str:
@@ -138,6 +152,40 @@ def _build_game_prompt(game_data: dict) -> str:
             lines.append(f"  eval: {eval_swing}")
             if best_uci:
                 lines.append(f"  best: {best_uci}")
+            lines.append("")
+
+    bfs_list = game_data.get("blunder_fact_sheets", [])
+    if bfs_list:
+        lines.append("=== BlunderFactSheets (per-blunder DBCL data) ===")
+        lines.append("")
+        for bfs in bfs_list:
+            lines.append(f"--- ply {bfs.get('ply', '?')} | {bfs.get('move_played_san', '?')} ---")
+            lines.append(
+                f"  cp_loss={bfs.get('centipawn_loss', '?'):.0f} | phase={bfs.get('phase', '?')}"
+            )
+            lines.append(
+                f"  eval: {_format_eval(bfs.get('eval_before'))} -> {_format_eval(bfs.get('eval_after'))}"
+            )
+            bs = bfs.get("board_state", {})
+            lines.append(f"  was_in_check: {'yes' if bs.get('was_in_check') else 'no'}")
+            lm = bfs.get("legal_moves", {})
+            lines.append(
+                f"  legal: {lm.get('total', 0)} total, {len(lm.get('captures', []))} capt, {len(lm.get('king_moves', []))} king, {len(lm.get('blocks', []))} blk"
+            )
+            eng = bfs.get("engine_lines", [])
+            if eng:
+                lines.append("  engine top3:")
+                for el in eng[:3]:
+                    pv_preview = " ".join(el.get("pv", [])[:2])
+                    lines.append(
+                        f"    #{el.get('rank')}: {el.get('move_san', '?')} cp={el.get('eval_cp', '?'):.0f} pv=[{pv_preview}]"
+                    )
+            pm = bfs.get("pattern_matches", [])
+            if pm:
+                lines.append(
+                    "  patterns: "
+                    + ", ".join(f"{p.get('pattern_id')}({p.get('confidence', 0):.2f})" for p in pm)
+                )
             lines.append("")
 
     return "\n".join(lines)

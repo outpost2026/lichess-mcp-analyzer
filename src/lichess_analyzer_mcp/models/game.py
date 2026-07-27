@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field, asdict
 from typing import Optional
 
+from lichess_analyzer_mcp.models.analysis import BlunderFactSheet
+
 
 @dataclass
 class GameSummary:
@@ -69,6 +71,7 @@ class GameAnalysis:
     mistakes: list[MoveAnalysis] = field(default_factory=list)
     inaccuracies: list[MoveAnalysis] = field(default_factory=list)
     phase_stats: dict = field(default_factory=dict)
+    blunder_fact_sheets: list[BlunderFactSheet] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -80,6 +83,7 @@ class GameAnalysis:
             "mistakes": [m.to_dict() for m in self.mistakes],
             "inaccuracies": [m.to_dict() for m in self.inaccuracies],
             "phase_stats": self.phase_stats,
+            "blunder_fact_sheets": [bfs.to_dict() for bfs in self.blunder_fact_sheets],
         }
 
     def auto_annotate(self) -> None:
@@ -138,4 +142,7 @@ class GameAnalysis:
             mistakes=[MoveAnalysis.from_dict(m) for m in d.get("mistakes", [])],
             inaccuracies=[MoveAnalysis.from_dict(m) for m in d.get("inaccuracies", [])],
             phase_stats=d.get("phase_stats", {}),
+            blunder_fact_sheets=[
+                BlunderFactSheet.from_dict(bfs) for bfs in d.get("blunder_fact_sheets", [])
+            ],
         )

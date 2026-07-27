@@ -13,7 +13,10 @@ from lichess_analyzer_mcp.services.compressibility_validator import (
     compute_compression,
     compression_score,
 )
-from lichess_analyzer_mcp.services.validator import validate_pattern_artifact, ValidationError
+from lichess_analyzer_mcp.services.pattern_artifact_validator import (
+    validate_pattern_artifact,
+    ValidationError,
+)
 from lichess_analyzer_mcp.kb.schemas import validate_against_schema
 
 
