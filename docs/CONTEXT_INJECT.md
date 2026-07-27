@@ -1,7 +1,7 @@
 # Context Injection — lichess-analyzer-mcp
 
-**Datum:** 2026-07-27 | **Verze 3.1**
-**Branch:** `feat` | **HEAD:** `a3fc36d` [TOOL] feat: lichess_analyze_anonymous_session
+**Datum:** 2026-07-27 | **Verze 3.2**
+**Branch:** `feat` | **HEAD:** `e6f3f13` [TOOL] lichess_match_patterns: add game_ids param
 **Working tree:** Clean (all fixes committed)
 
 ---
@@ -11,8 +11,8 @@
 | Metrika | Hodnota |
 |---------|---------|
 | Branch | `feat` (odvozena z `main`, pushnuta na remote) |
-| HEAD | `c928327` — I→concept, `269d425` — engine_lines fix + CONTEXT_INJECT v2.0 |
-| Předchozí commity | `5572f53` — DBCL Phase 2 baseline |
+| HEAD | `e6f3f13` — match_patterns game_ids param |
+| Předchozí commity | `a3fc36d` — anonymous session tool, `c928327` — I→concept, `269d425` — engine_lines fix |
 | Test count | 35/35 pass (Phase 1) + 31 testů `tests/test_dbcl.py` |
 | Python | 3.12, uv |
 | Stockfish | 18 BMI2, Threads=6, Hash=512, NumaPolicy=hardware |
@@ -43,6 +43,10 @@
 - **AUD-03/11 resolved**: I→concept (manual_only), auto-detection code merged into I2
 - **Commit `c928327`** — [PATTERN] I→concept, merge code into I2
 - **Commit `a3fc36d`** — [TOOL] `lichess_analyze_anonymous_session`: batch analyze anonymous games from txt/URLs/IDs, per-game + aggregate stats
+- **Commit `548fcd8`** — [TOOL] label support (white/black/win/loss) pro `lichess_analyze_anonymous_session`
+- **25 anonymních her analyzováno**: ACPL=31.7, 21-4-0 winrate
+- **Commit `e6f3f13`** — [TOOL] `lichess_match_patterns` přidán `game_ids` parametr: umožňuje pattern detection na cachovaných anonymních hrách bez username
+- **Pattern detection na anonymních hrách ověřen**: 8 patternů detekováno z 25 her ✅
 
 ---
 
@@ -215,7 +219,8 @@ for m in line["pv"][:5]:
 ### Tools
 | Tool | Vstup | Popis |
 |------|-------|-------|
-| `lichess_analyze_anonymous_session` | file_path / urls / game_ids, depth | Batch analýza anonymních her: txt→parse→fetch→analyze→agregace |
+| `lichess_analyze_anonymous_session` | file_path / urls / game_ids, depth | Batch analýza anonymních her: txt→parse→fetch→analyze→agregace + label support |
+| `lichess_match_patterns` | username / game_ids, max_games, depth, result | Pattern detection A-Q1 — nově podpora anonymních her přes game_ids |
 
 ---
 
