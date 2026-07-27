@@ -16,7 +16,6 @@ THRESHOLD_DESPERATE_EVAL = -3.0
 THRESHOLD_DESPERATE_CP = 300
 THRESHOLD_ACTIVE_DEFENSE_EVAL = -150
 THRESHOLD_S_CAPTURE_AVERSION_CP = 500
-THRESHOLD_BAIT_SWING = 80
 THRESHOLD_GIFT_EVAL_JUMP = 70
 
 
@@ -180,46 +179,6 @@ class PatternDetector:
                     severity="high",
                     hypothesis=f"Hypothesis: player's error rate shifts with color — {dominant} side has {ratio:.1f}x more blunders.",
                 )
-        return None
-
-    def _detect_i(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch:
-        bait_count = 0
-        affected = []
-        for analysis in analyses:
-            for i in range(len(analysis.moves) - 1):
-                m = analysis.moves[i]
-                if "x" in m.move_san:
-                    continue
-                eb = m.eval_before if m.eval_before is not None else 0
-                if abs(eb) > 60:
-                    continue
-                next_m = analysis.moves[i + 1]
-                n_eb = next_m.eval_before if next_m.eval_before is not None else 0
-                m_ea = m.eval_after if m.eval_after is not None else 0
-                swing = n_eb - m_ea
-                if swing > THRESHOLD_BAIT_SWING:
-                    bait_count += 1
-                    affected.append(analysis.game.id)
-                    break
-        if bait_count >= 1:
-            total_games = len(analyses)
-            return PatternMatch(
-                pattern_id="I",
-                pattern_name="Bait trap",
-                confidence=min(bait_count / total_games * 0.8, 0.9),
-                evidence=[
-                    {
-                        "bait_events": bait_count,
-                        "total_games": total_games,
-                        "threshold_swing": THRESHOLD_BAIT_SWING,
-                        "detail": "Non-capture move from balanced position where opponent's subsequent capture led to eval improvement — opponent likely took bait",
-                    }
-                ],
-                game_ids=list(set(affected)),
-                frequency=bait_count,
-                severity="low",
-                hypothesis="Hypothesis: player deliberately leaves seemingly hanging pieces to punish opponent's automatic grab — honeypot strategy.",
-            )
         return None
 
     def _detect_i2(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch:
