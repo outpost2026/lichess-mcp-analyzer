@@ -20,6 +20,9 @@ from lichess_analyzer_mcp.models.analysis import (
 )
 from lichess_analyzer_mcp.services import engine_client
 from lichess_analyzer_mcp.services.lichess_client import fetch_game_pgn
+from lichess_analyzer_mcp.services.logger import get_logger
+
+_logger = get_logger("game_analyzer")
 
 CACHE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "game_cache")
 
@@ -327,8 +330,13 @@ def _run_analyze_pgn(pgn: str, player_color: str = "white", depth: int = 14) -> 
                     engine_lines_raw = engine_client.analyze_position(
                         fen_before, depth=depth, multipv=3
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    _logger.warning(
+                        "analyze_position failed for %s ply %d: %s",
+                        game_id,
+                        ply,
+                        e,
+                    )
                 engine_lines = []
                 for rank, el in enumerate(engine_lines_raw, start=1):
                     score_cp = el.get("score_cp") or 0

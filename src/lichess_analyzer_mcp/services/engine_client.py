@@ -78,12 +78,19 @@ def analyze_position(fen: str, depth: int = 18, multipv: int = 3) -> list[dict]:
     _acquire_analysis_lock()
     try:
         items = []
-        with engine.analysis(board) as analysis:
+        with engine.analysis(board, chess.engine.Limit(depth=depth)) as analysis:
             for line in analysis:
                 if "pv" not in line or "score" not in line:
                     continue
                 score = line["score"].relative
-                moves_san = [board.san(m) for m in line["pv"][:5]]
+                moves_san = []
+                tb = board.copy()
+                for m in line["pv"][:5]:
+                    try:
+                        moves_san.append(tb.san(m))
+                        tb.push(m)
+                    except (AssertionError, ValueError):
+                        break
                 items.append(
                     {
                         "depth": line.get("depth", 0),
