@@ -127,7 +127,7 @@ K0 (orákulum) → K1 (detektor) → K2 (kontrakt) → K3 (dekodér)
 | **CPM mapping** | §4.3: CR = N_detected / (C_impl + C_udrz) normalizováno na stovky řádků |
 | **Implementace** | Do `PatternMatch` přidat `compression_ratio: Optional[float]`. Počítat při `detect_all()`: `CR = len(affected_games) / max(1, (detector_lines / 100))`. Logovat patterns s CR < 1 jako WARNING. |
 | **Očekávané hodnoty** | Pattern B: ~12/0.7 ≈ 17. Pattern J: ~3/0.7 ≈ 4. Pattern C: ~9/0.7 ≈ 13. Všechny > 1. |
-| **Edukace** | Kompresní poměr je ekonomické kritérium: "stojí tento pattern za údržbu?" |
+| **Edukace** | Kompresní poměr je ekonomické kritérium: "stojí tento pattern za údržbu?" **Důležité: CR dává smysl POUZE pokud popis patternu odpovídá kódu.** Pattern s CR=47.8 ale špatným popisem je horší než žádný pattern — měří noise, ne kompresi. |
 
 ### Priorita 4 (NOVÁ): Měřit K0 noise
 
@@ -169,7 +169,7 @@ Fáze 6 (Re-kalibrace): Každých +50% dat
 | G | ✅ | ✅ | ✅ | ✅ PASS | ✅ | ✅ | ⏳ |
 | I | ✅ | ✅ | ✅ | **✅ FIXED (concept)** | ✅ | ❌ manual_only | ⏳ |
 | J | ✅ | ✅ | ✅ | ✅ FIXED (P0-1) | ✅ | ✅ | ⏳ |
-| O | ✅ | ✅ | ✅ | ❌ AUD-04 | ⏳ blokováno | ✅ | ⏳ |
+| O | ✅ | ✅ | ✅ | ❌ AUD-04 (sémantický fail: RL popis ≠ code) | ⏳ blokováno | ✅ | ⏳ |
 | P | ✅ | ✅ | ✅ | ⚠️ AUD-06 | ⏳ blokováno | ✅ | ⏳ |
 | Q | ✅ | ✅ | ✅ | ❌ AUD-05 | ⏳ blokováno | ✅ | ⏳ |
 | Q1 | ✅ | ✅ | ✅ | ✅ PASS | ✅ | ✅ | ⏳ |
@@ -217,6 +217,16 @@ Stejně jako nelze měřit délku bez znalosti přesnosti metru, nelze měřit A
 ### Z compression_ratio — Ekonomie patternů
 
 Pattern s CR < 1 stojí víc, než ušetří. To je ekonomický argument pro "neimplementovat všechno." Pattern S (capture aversion) má N=2 → CR ~ 2/0.6 ≈ 3.3, takže se vyplatí. Ale kdyby měl N=1, CR by bylo ~ 1.7 — stále > 1, ale těsně. To je důvod, proč je S v P3 (dlouhodobé) v build planu.
+
+### Z Lossy Compression — Sémantická integrita > frekvence
+
+**Objev (Mikolov-Dev):** Pattern detection = Lossy compression. Cílem je najít vzory, které popíšou realitu s maximální entropickou hodnotou na minimum tokenů.
+
+**Klíčový předpoklad:** CR = N / (C_impl + C_udrz) dává smysl POUZE pokud N = počet instancí téže věci.
+
+Pattern O je exemplární selhání: CR = 47.8 (zdánlivě silný), ale 0/13 detekcí je skutečná "repetition avoidance." Compress ratio měří noise, ne kompresi, protože sémantická vrstva (jméno, mechanismus, hypothesis) neodpovídá kódu.
+
+**Pravidlo:** Každý pattern musí projít sémantickým auditem v CPM Fázi 3. Pokud popis neodpovídá kódu — buď opravit popis, nebo opravit kód. Pattern s CR > 100 ale špatným popisem je horší než žádný pattern.
 
 ---
 

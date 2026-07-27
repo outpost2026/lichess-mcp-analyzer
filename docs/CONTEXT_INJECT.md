@@ -224,7 +224,50 @@ for m in line["pv"][:5]:
 
 ---
 
-## 8. CPM Lifecycle — Pattern Status
+## 8. Lossy Compression Principle (Mikolov-Dev)
+
+### Základní princip
+
+> **Pattern detection = Lossy compression.** Cílem je najít vzory, které popíšou realitu s maximální entropickou hodnotou na minimum tokenů.
+
+### Klíčový předpoklad
+
+**CR = N / (C_impl + C_udrz) dává smysl POUZE pokud N = počet instancí téže věci.**
+
+Pokud sémantický/lexikální popis patternu neodpovídá kódu (jako u pattern O — "repetition avoidance" vs "flat eval blunder"):
+- CR není kompresní poměr, je to míra klamu
+- Každá instance je falešně pozitivní vůči popisu
+- Entropická hodnota = 0 (popis není pravdivý, nelze z něj odvodit realitu)
+- Vysoká frekvence není výhoda — je to šíření systematické chyby
+
+### Důsledky pro pipeline
+
+| Vrstva | Povinnost |
+|--------|-----------|
+| **PatternDef.name** | Musí přesně odpovídat kódu |
+| **PatternDef.mechanism** | Must be truth — ne "co bychom chtěli detekovat", ale "co kód reálně detekuje" |
+| **PatternDef.hypothesis** | Falsifikovatelná vůči detection_method |
+| **CR výpočet** | Validní jen při splnění výše uvedeného |
+| **AUDIT fáze (CPM Fáze 3)** | Primárně ověřuje sémantickou integritu, ne jen code correctness |
+
+### Pattern O jako exemplární selhání
+
+| Vrstva | Tvrdilo | Realita | Následek |
+|--------|---------|---------|----------|
+| Jméno | "Repetition avoidance greed" | Flat eval → blunder | CR=47.8 měří noise |
+| Mechanism | Refuses threefold repetition | Eval plateau → impatience | Hypotéza neplatí |
+| Code | — | 3×<30cp → chyba do 6 tahů | ✅ |
+| **Verdikt** | Lossy compression creates semantic debt | **Opravit popis nebo opravit kód** |
+
+### Pravidlo pro iterační vývoj
+
+1. Každý pattern musí projít **sémantickým auditem** (AUD fáze): shoduje se jméno, mechanismus, hypothesis s kódem?
+2. Pokud ne — buď opravit popis (lossy > lexikální přesnost) nebo opravit kód (implementovat skutečnou detekci)
+3. CR < 1 není jediný důvod k odmítnutí patternu — pattern s CR > 100 ale špatným popisem je horší než žádný pattern
+
+---
+
+## 9. CPM Lifecycle — Pattern Status
 
 | Pattern | Fáze 0-2 | Fáze 3 (Audit) | Fáze 4 | Fáze 5 | Fáze 6 |
 |---------|----------|----------------|--------|--------|--------|
@@ -246,7 +289,7 @@ for m in line["pv"][:5]:
 
 ---
 
-## 9. Next Steps (Priority Order)
+## 10. Next Steps (Priority Order)
 
 ### P0: Continue P1 checklist (DALSÍ_KROKY)
 1. `[AUD-04]` O real repetition detection — parsovat board history

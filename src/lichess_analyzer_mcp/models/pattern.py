@@ -1,3 +1,18 @@
+"""Pattern Definition Model — Lossy Compression Core.
+
+Pattern detection implements Lossy Compression (T. Mikolov / CPM):
+Find patterns that describe reality with maximum entropy value
+per minimum tokens.
+
+CR = N / (C_impl + C_udrz) is ONLY meaningful when N = count of
+instances of THE SAME THING. Semantic integrity is a prerequisite:
+if a pattern's name/mechanism/hypothesis does not match its code
+detection, the compression ratio measures noise, not signal.
+Every pattern must be falsifiable: the lexical description must
+match the code detection logic exactly. Lossy compression loses
+its unique advantage (high-confidence description of reality)
+when the semantic layer is incorrect."""
+
 from dataclasses import dataclass, field
 from typing import Optional
 
