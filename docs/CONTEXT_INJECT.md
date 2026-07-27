@@ -108,7 +108,7 @@ Po:   K0 → K1 → K2 → K3
 | 2 | `[K0-1] RUN_config template` | ⏳ |
 | 3 | `[AUD-01] B total_captures scope` | ⏳ |
 | 4 | `[AUD-03/11] I rename + hypothesis` | ✅ **RESOLVED** — I→concept, code→I2 |
-| 5 | `[AUD-04] O real repetition detection` | ⏳ |
+| 5 | `[AUD-04] O real repetition detection` | ✅ **RESOLVED** — renamed to Stagnační panika (option A) |
 | 6 | `[AUD-05] Q + Q2 merge` | ⏳ |
 | 7 | `[AUD-10] S capture aversion` | ⏳ |
 | 8 | `[AUD-08] evidence format standard` | ⏳ |
@@ -250,14 +250,15 @@ Pokud sémantický/lexikální popis patternu neodpovídá kódu (jako u pattern
 | **CR výpočet** | Validní jen při splnění výše uvedeného |
 | **AUDIT fáze (CPM Fáze 3)** | Primárně ověřuje sémantickou integritu, ne jen code correctness |
 
-### Pattern O jako exemplární selhání
+### Pattern O jako exemplární selhání (AUD-04 — RESOLVED via rename)
 
 | Vrstva | Tvrdilo | Realita | Následek |
 |--------|---------|---------|----------|
 | Jméno | "Repetition avoidance greed" | Flat eval → blunder | CR=47.8 měří noise |
 | Mechanism | Refuses threefold repetition | Eval plateau → impatience | Hypotéza neplatí |
 | Code | — | 3×<30cp → chyba do 6 tahů | ✅ |
-| **Verdikt** | Lossy compression creates semantic debt | **Opravit popis nebo opravit kód** |
+| **Oprava** | **Option A: rename → "Stagnační panika"** | Popis nyní odpovídá kódu | ✅ RESOLVED |
+| **Verdikt** | Lossy compression creates semantic debt | **Popis opraven — sémantická integrita obnovena** |
 
 ### Pravidlo pro iterační vývoj
 
@@ -279,7 +280,7 @@ Pokud sémantický/lexikální popis patternu neodpovídá kódu (jako u pattern
 | **I2** | ✅ | ✅ PASS | ✅ | ✅ | ⏳ |
 | J | ✅ | ✅ FIXED | ✅ | ✅ | ⏳ |
 | N | ✅ | ✅ PASS | ✅ | ✅ | ⏳ |
-| O | ✅ | ❌ AUD-04 | ⏳ | ✅ | ⏳ |
+| O | ✅ | ✅ **RESOLVED (rename)** | ✅ | ✅ | ⏳ |
 | P | ✅ | ⚠️ AUD-06 | ⏳ | ✅ | ⏳ |
 | Q | ✅ | ❌ AUD-05 | ⏳ | ✅ | ⏳ |
 | Q1 | ✅ | ✅ PASS | ✅ | ✅ | ⏳ |
@@ -292,7 +293,7 @@ Pokud sémantický/lexikální popis patternu neodpovídá kódu (jako u pattern
 ## 10. Next Steps (Priority Order)
 
 ### P0: Continue P1 checklist (DALSÍ_KROKY)
-1. `[AUD-04]` O real repetition detection — parsovat board history
+1. `[AUD-04]` O **RESOLVED** (rename → Stagnační panika) — AUD-05 next
 2. `[AUD-05]` Q + Q2 merge — odstranit duplicitní detekci
 3. `[AUD-10]` S capture aversion under check — do produkce
 4. `[AUD-08]` evidence format standard

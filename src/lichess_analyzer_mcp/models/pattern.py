@@ -126,13 +126,13 @@ class PatternLibrary:
             ),
             PatternDef(
                 id="O",
-                name="Repetition avoidance greed",
+                name="Stagnační panika",
                 pattern_type="author_error",
-                mechanism="Refusing threefold repetition leads to collapse",
-                it_analogy="Refusing to merge stable PR",
-                detection_method="repetition_refusal",
+                mechanism="Flat eval plateau (3+ consecutive moves with <30cp swing) followed by blunder within 6 moves — player panics from positional stagnation and forces a losing move",
+                it_analogy="Deploying a hotfix because CI has been green for 3 hours — no actual problem, but the silence feels dangerous",
+                detection_method="stagnation_fallback",
                 severity="critical",
-                mitigation="5-sec pause + 'A CO ON?' before refusing; evaluate opponent's next check",
+                mitigation="When eval stays flat for 2+ moves: pause and ask 'Je to opravdu stagnace, nebo jen pozicni klid?' — do not force complications without a concrete target",
             ),
             PatternDef(
                 id="P",

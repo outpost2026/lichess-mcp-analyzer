@@ -286,7 +286,7 @@ class PatternDetector:
             )
             return PatternMatch(
                 pattern_id="O",
-                pattern_name="Repetition avoidance greed",
+                pattern_name="Stagnační panika",
                 confidence=min(len(set(affected)) / total_games * 0.8, 0.85),
                 evidence=[
                     {
@@ -294,13 +294,13 @@ class PatternDetector:
                         "total_games": total_games,
                         "repetition_confirmed": len(set(affected_repetition)),
                         "fallback_heuristic": len(set(affected_fallback)),
-                        "detail": "Player refused a safe repetition (or flat eval plateau) and blundered within 3 moves",
+                        "detail": "Flat eval plateau (3+ moves with <30cp swing) triggered panic — player forced a losing move within 6 moves",
                     }
                 ],
                 game_ids=list(set(affected)),
                 frequency=len(set(affected)),
                 severity="critical",
-                hypothesis="Hypothesis: player refuses threefold repetition hoping for more, which often leads to position collapse.",
+                hypothesis="Hypothesis: positional calm feels dangerous to the player — flat eval plateau triggers forced complications that collapse the position.",
             )
         return None
 
