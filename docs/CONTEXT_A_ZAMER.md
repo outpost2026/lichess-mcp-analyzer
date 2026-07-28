@@ -322,49 +322,79 @@ Protoze cilem neni **stahnout par partii**, ale vybudovat **ekosystem**:
 
 ---
 
-## 7. Aktualni stav (Phase 1 — hotovo)
+## 7. Aktualni stav (Phase 1 + DBCL Phase 2 hotovo)
 
 ### Co je implementovano
 
 | Komponenta | Stav | Poznamka |
 |------------|------|----------|
-| Repo struktura | ✅ | `git init` committed (33 files, 1581 lines) |
-| Vsechny modely (5) | ✅ | Game, Analysis, Pattern, SRSCard, PlayerProfile |
-| Vsechny services (6) | ✅ | lichess/engine client, game_analyzer, diagnostician, pattern_detector, srs_engine |
-| Vsechny tools (7) | ✅ | fetch, analyze, position, explorer, profile, diagnose, match |
-| KB writer | ✅ | Zapis do /02_ANALYZY/02_chess/ a /04_KNOWLEDGE_BASE/02_chess/ |
-| CLI pipeline | ✅ | `scripts/run_pipeline.py` — batch analyza + KB write |
-| Testy (9) | ✅ | Unit testy modelu |
-| Dokumentace | ✅ | Tento soubor |
+| Repo struktura | ✅ | `main` clean, 68 testů, 11 toolů |
+| Vsechny modely (5) | ✅ | Game, Analysis, Pattern, SRSCard, BlunderFactSheet |
+| Vsechny services (8) | ✅ | lichess_client, engine_client, game_analyzer, diagnostician, pattern_detector (14 detectorů), compressibility_validator, narrative_validator, srs_engine |
+| Vsechny tools (11) | ✅ | fetch, analyze, position, explorer, profile, diagnose, match, pending, anonymous_session, import_pgn, workspace_info |
+| DBCL Phase 2 | ✅ | BlunderFactSheet, pattern_matches, context_window, engine_lines, detector_version |
+| Pattern detection | ✅ | 14 detectoru A-S (krome I — concept), 68 testu |
+| Hallucination guard | ✅ | DATA-FABRICATION-001 v AGENTS.md, optimized prompt s [DATA]/[IM] |
+| Merge feat→main | ✅ | 17 commitů, 34 files, +3352/−324 |
+| Dokumentace | ✅ | CONTEXT_A_ZAMER, CONTEXT_INJECT v3.2, PHASE2_BUILD_PLAN v4.0, CHESS_PATTERNS_AUDIT, HALUCINACE_ROOT_CAUSE_ANALYSIS, PATTERN_DETECTOR_AUDIT_INJECT |
 
 ### Co chybi k behu (blockery)
 
-1. **Stockfish binary** — `engine_client.py` hleda v PATH + `C:\Program Files\Stockfish\stockfish.exe`. Neni nainstalovan.
-2. **LICHESS_TOKEN** — token vytvoren (`MCP-analyser` s full scope), neni nasazen jako env var.
-3. **`uv sync`** — dependencies neinstalovany (berserk, python-chess, mcp, httpx, py-fsrs).
-4. **FSRS vs SM-2** — ceka na rozhodnuti autora.
-5. **open code registrace** — server neni pridan do `opencode.jsonc`.
+1. **Stockfish binary** — ✅ nainstalovan a funguje
+2. **LICHESS_TOKEN** — ✅ nasazen v `.env`
+3. **`uv sync`** — ✅ provedeno
+4. **FSRS vs SM-2** — SM-2 aktivni, FSRS ceka
+5. **opencode registrace** — ✅ server je v `opencode.jsonc`
 
-### Dalsi kroky (Phase 2-4)
+### Nalezy z auditu (CHESS_PATTERNS_AUDIT_2026-07-28)
+
+| ID | Priorita | Strucny popis |
+|----|----------|---------------|
+| **W1** | CRITICAL | `game_ids` dropped v serializaci — pricina halucinace |
+| **W2** | HIGH | Evidence schema nekonzistentni napric 14 detectory |
+| **W3** | MEDIUM | `_detect_j` chyta king moves jako "blocks" |
+| **W4** | LOW | Pattern S/J overlap bez dedup |
+| **W5** | MEDIUM | `affected_games` type mismatch int vs list |
+| **W6** | HIGH | I2 confidence formula broken (1/35 = 2.3%) |
+| **W7** | MEDIUM | CompressibilityValidator neodpovida README |
+| **W8** | LOW | Artifact validator nevaliduje affected_games |
+| **W9** | CRITICAL | `mistakes` list vzdy prazdny |
+| **W10** | MEDIUM | `frequency` ma 3 ruzne vyznamy |
+| **AUD-01** | MEDIUM | B total_captures bug |
+| **AUD-05** | MEDIUM | Q detection_method mismatch |
+
+Detailni analyza: `docs/CHESS_PATTERNS_AUDIT_2026-07-28.md`
+
+### Dalsi kroky (Phase 2 — opravy + Phase 3)
 
 ```
-Phase 2 — FSRS upgrade + cache
-├── py-fsrs integrace
-├── SRS card creation z blunder analysis
-├── Lichess cloud eval cache (TTL)
-└── Due cards tool
+P0-A (data integrity):
+├── W1: game_ids do response (match_patterns.py)
+├── W9: opravit mistakes bug (game_analyzer.py)
+├── W2+W5: normalizovat evidence (pattern_detector.py)
+└── W6: I2 confidence fix (pattern_detector.py)
 
-Phase 3 — Rozsirena pattern detekce
-├── Patterny D, E, F, H, K, L, M (z puvodnich A-Q1, nebyly prioritizovany)
-├── Ritual effectiveness tracking
-├── ELO trend + metacognition ratio
-└── Vizualizace (graf pokroku)
+P0-B:
+├── AUD-01: B total_captures scope
+└── AUD-07: hardcoded confidence → data-driven
 
-Phase 4 — KB pipeline + EROI
-├── Automaticka analyza kazdy tyden
-├── EROI scoring pro kazdou analyzu
-├── Cross-player comparison (friendly)
-└── Open source publikace (pokud povoli)
+P1 (semantic integrity):
+├── W3: J king move false positive
+├── W7: compressibility alignment s README
+└── W10: frequency standardizace
+
+P2 (quality):
+├── W4: S/J overlap doc
+├── W8: validator affected_games
+├── N2: opening pravidlo
+├── N3: middlegame rate
+└── N7: sort before store
+
+P3 (DBCL Phase 2 completion):
+├── FSRS upgrade
+├── SRS cards
+├── Trend detection
+└── Backtesting
 ```
 
 ---

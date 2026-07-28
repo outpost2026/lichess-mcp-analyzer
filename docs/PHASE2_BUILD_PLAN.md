@@ -1,26 +1,27 @@
-# Phase 2 — Build Plan v3.0
+# Phase 2 — Build Plan v4.0
 
-**Datum:** 2026-07-26 | **Verze:** 3.0
-**Navazuje na:** `01_DBCL_unity_synthesis.md`, `02_DBCL_meta_evaluation.md`, `PHASE2_BUILD_PLAN.md` v2.0
-**Status:** P0-1 hotov, P0-2 blokuje DBCL core
+**Datum:** 2026-07-28 | **Verze:** 4.0
+**Navazuje na:** `01_DBCL_unity_synthesis.md`, `02_DBCL_meta_evaluation.md`, `PHASE2_BUILD_PLAN.md` v3.0
+**Status:** P0-1 hotov, P0-2 hotov, **P0-Audit (CHESS_PATTERNS_AUDIT_2026-07-28) — 10 nových nálezů W1-W10**
 
 ---
 
-## Current State (2026-07-26)
+## Current State (2026-07-28)
 
 | Komponenta | Stav |
 |------------|------|
-| Repo | `main` clean, HEAD `5ba1919` |
-| Tests | 35/35 pass |
+| Repo | `main` clean, HEAD `0f4eef5` |
+| Tests | 68/68 pass (+ test_pattern_semantic_contract.py) |
 | P0-1 (FEN + was_in_check v MoveAnalysis) | ✅ hotovo |
-| P0-1 (pattern J semantika) | ✅ hotovo (`m.was_in_check and "x" not in m.move_san`) |
-| P0-1 (sort before persist) | ✅ hotovo |
-| 11 pattern detectoru (A-R) + S kandidat | ✅ implementovany, **ale neauditovane** |
-| Analyzovane partie | 22 (RUN_001 + RUN_002, depth 12-14) |
-| LLM pipeline (NVIDIA/Cerebras/DeepSeek) | ✅ 3 provider, mono + incremental |
-| DBCL architektura | ✅ navrzena + cross-auditovana (21 nalezu, PASS WITH CONCERNS) |
-| DBCL dokumentace | ✅ unity synthesis + meta-evaluation (3-pohledovy ramec) |
-| .gitignore, egg-info, CI, README | ✅ vycisteno |
+| P0-1 (pattern J semantika) | ✅ hotovo |
+| P0-2 (detektor audit 14 patternů) | ✅ **HOTOVO** — viz AUDIT matrix níže |
+| **Hloubkový audit (CHESS_PATTERNS_AUDIT_2026-07-28)** | ✅ **10 nových nálezů W1-W10** |
+| Analýza halucinace (HALUCINACE_ROOT_CAUSE_ANALYSIS) | ✅ hotovo + DATA-FABRICATION-001 guard |
+| 14 detectorů (A-S, krom I concept) | ✅ implementováno + otestováno |
+| Analyzované partie | 35+ anonymních + 30 Systeq |
+| LLM pipeline | ✅ 3 provider |
+| DBCL architektura | ✅ Phase 2 hotovo |
+| Merge feat→main | ✅ hotovo (34 files, +3352/−324) |
 
 ---
 
@@ -93,21 +94,44 @@ Meta-evaluation §10.3: *"dokud nebude audit kompletni, DBCL v1 je experiment, n
 
 6. **B: total_captures bug detail** — v _detect_b() je promenna `total_captures` inkrementovana UVNITR bloku `if m.classification in ("blunder", "mistake") and m.centipawn_loss >= 100:`. Pokud tah neni blunder, neni zapocitan. Takze `total_captures == blunder_captures` vzdy, a confidence = `min(1.0, 0.95)` = 0.95. Spravne: `total_captures` by mel pocitat vsechny captures napric vsemi tahy, nejen blunder captures.
 
+#### Nové nálezy z CHESS_PATTERNS_AUDIT_2026-07-28 (W1-W10)
+
+| ID | Priorita | Popis | Lokace | Fix |
+|----|----------|-------|--------|-----|
+| **W1** | CRITICAL | `game_ids` dropped v serializaci — přímá příčina halucinace | `match_patterns.py:155-170` | Přidat `"affected_games": list(m.game_ids)` do entry |
+| **W2** | HIGH | Evidence schema nekonzistentní napříč 14 detectory — 7/14 chybí `affected_games` | `pattern_detector.py` všechny `_detect_*` | Normalizovat na jednotný formát |
+| **W3** | MEDIUM | `_detect_j` chytá king moves jako "blocks" — false positive | `pattern_detector.py:225` | Přidat `"K" not in m.move_san` |
+| **W4** | LOW | Pattern S/J overlap bez dedup | `pattern_detector.py:216,492` | Dokumentovat / implementovat |
+| **W5** | MEDIUM | `affected_games` type mismatch int vs list (6 patternů) | C,O,P,Q1,R,S | Změnit `len(set(...))` na `list(set(...))` |
+| **W6** | HIGH | I2 confidence formula broken (1/35 = 2.3%) | `pattern_detector.py:200` | Upravit vzorec pro nízké frekvence |
+| **W7** | MEDIUM | CompressibilityValidator neodpovídá README (chybí entropy + sample score) | `compressibility_validator.py:13-23` | Implementovat chybějící komponenty |
+| **W8** | LOW | Artifact validator nevaliduje `affected_games` | `pattern_artifact_validator.py:17-48` | Přidat validaci typu a formátu |
+| **W9** | CRITICAL | `mistakes` list vždy prázdný — bug v game_analyzer.py | `game_analyzer.py:_run_analyze_pgn()` | Rozlišit blunder/mistake větve |
+| **W10** | MEDIUM | `frequency` má 3 různé významy napříč patterny | Všechny `_detect_*` | Standardizovat na jednotný význam |
+
+Detailní analýza: `docs/CHESS_PATTERNS_AUDIT_2026-07-28.md`
+
 #### Akce z auditu
 
-| ID | Akce | Typ | 
-|----|------|-----|
-| AUD-01 | B: opravit total_captures bug (pocitat vsechny captures, ne jen blunder) | CODE BUG |
-| AUD-02 | C: detection_method "sector_focus_sequence" neodpovida kodu — opravit detection_method nebo pridat sector check | SPEC BUG |
-| AUD-03 | I: detection_method a mechanismus neodpovidaji kodu — "bait_detection" misto "profit z chyby soupere" | CODE BUG |
-| AUD-04 | O: detection_method "repetition_refusal" neodpovida kodu — kod testuje "flat eval then blunder" | CODE BUG |
-| AUD-05 | Q: detection_method "defensive_phase_analysis" neodpovida kodu — kod testuje "blundered but won" | CODE BUG |
-| AUD-06 | P: detection_method "forcing_move_classification" — overit, zda staci heuristika, nebo doplnit forcing analysis | SPEC BUG |
-| AUD-07 | Vsechny hardcoded confidence nahradit data-driven (O, P, Q, Q1, R) | ENHANCEMENT |
-| AUD-08 | Standardizovat evidence format — kazdy detector musi vypsat konkretni hodnoty, ne jen affected_games | ENHANCEMENT |
-| AUD-09 | Vytvorit `tests/test_pattern_semantic_contract.py` — 1 pozitivni + 1 negativni pripad na detector | TEST |
-| AUD-10 | Doplnit pattern S do `models/pattern.py` a `pattern_detector.py` | FEATURE |
-| AUD-11 | Opravit I detection_method aby odpovidala mechanismu (zmenit pattern na "opponent's automatic grab exploit" nebo prepsat kod) | CODE BUG |
+| ID | Akce | Typ | Status |
+|----|------|-----|--------|
+| AUD-01 | B: opravit total_captures bug (pocitat vsechny captures, ne jen blunder) | CODE BUG | ⏳ P2 |
+| AUD-02 | C: detection_method "sector_focus_sequence" neodpovida kodu | SPEC BUG | ⏳ P2 |
+| AUD-03 | I: detection_method → concept | CODE BUG | ✅ RESOLVED |
+| AUD-04 | O: rename → Stagnační panika | CODE BUG | ✅ RESOLVED |
+| AUD-05 | Q: detection_method "defensive_phase_analysis" neodpovida kodu | CODE BUG | ⏳ P2 |
+| AUD-06 | P: heuristika misto forcing analysis | SPEC BUG | ⏳ P2 |
+| AUD-07 | Hardcoded confidence → data-driven | ENHANCEMENT | ⏳ P2 |
+| AUD-08 | Standardizovat evidence format | ENHANCEMENT | **W2+W5** ⏳ P0 |
+| AUD-09 | test_pattern_semantic_contract.py | TEST | ✅ RESOLVED |
+| AUD-10 | Pattern S do produkce | FEATURE | ✅ RESOLVED |
+| AUD-11 | I detection_method opraven (I→concept, code→I2) | CODE BUG | ✅ RESOLVED |
+| **W1** | game_ids v serializaci | CODE BUG | **P0** |
+| **W6** | I2 confidence fix | CODE BUG | **P0** |
+| **W9** | mistakes bug | CODE BUG | **P0** |
+| **W3** | J king move false positive | CODE BUG | **P1** |
+| **W7** | compressibility alignment | ENHANCEMENT | **P1** |
+| **W10** | frequency standardizace | ENHANCEMENT | **P1** |
 
 #### Opravene polozky z puvodniho v2.0
 
@@ -307,27 +331,24 @@ Predat `DBCL_cross_audit_artifact.md` dalsimu modelu (DeepSeek?) k validaci.
 ## Sekvence (krizove zavislosti)
 
 ```
-P0-2 (detektor audit) ─────── blokuje vse ostatni
-    |
-    +── P0-3 (detector_version) ─── bez zavislosti, muze paralelne
-    +── P0-4 (win_prob) ─────────── bez zavislosti, muze paralelne
-    |
-    ↓
-P0-5 (K2 kontrakt design) ── nutne pred P1-3
-    |
-    ↓
-P1-1 (inline context extraction) ── start DBCL core
-    |
-    +── P1-2 (BlunderFactSheet schema)
-    |       ↓
-    +── P1-3 (guard-clause inject) ←── z P0-5 (K2 protokol)
-    |       ↓
-    +── P1-4 (narrative_validator) ←── z P1-2 (schema)
-    |
-    ↓
-P1-5 (SRSCard konzument)
-    ↓
-P2-* (integrace)
+P0-A (data integrity) ────────── W1, W9, W2+W5, W6
+  │
+  ├── W1 (game_ids v response) ── 2 radky, bez zavislosti
+  ├── W9 (mistakes bug) ───────── game_analyzer.py, bez zavislosti
+  ├── W2+W5 (evidence normalizace) ── pattern_detector.py
+  └── W6 (I2 confidence) ─────── pattern_detector.py
+  │
+  ↓
+P0-B (DBCL audit items) ──────── AUD-01, AUD-07
+  │
+  ↓
+P1 (semantic integrity) ──────── W3, W7, W10, AUD-02, AUD-05, AUD-06
+  │
+  ↓
+P2 (quality) ────────────────── W4, W8, N2, N3, N7
+  │
+  ↓
+P3 (DBCL Phase 2 core) ──────── P0-3, P0-4, P0-5, P1-1..P1-5
 ```
 
 ---
@@ -338,11 +359,15 @@ P2-* (integrace)
 |-------|------|
 | `01_DBCL_unity_synthesis.md` | Synteza + BlunderFactSheet v1.1 + validator spec + incident analysis |
 | `02_DBCL_meta_evaluation.md` | Tri kanaly sumu, SFE terminologie, dve tridy halucinace |
-| `services/pattern_detector.py` | 11 detektoru A-R — cil P0-2 auditu |
-| `models/pattern.py` | PatternDef + PatternLibrary — porovnani detection_method vs pattern_name |
-| `services/game_analyzer.py` | _run_analyze_pgn — cil P1-1 inline extraction |
-| `services/engine_client.py` | analyze_position(multipv=3) — existuje, pouze zapojit (F-005) |
-| `models/game.py` | MoveAnalysis uz ma fen + was_in_check; pridat BlunderFactSheet |
+| `services/pattern_detector.py` | 14 detektoru A-S — vcetne W1-W10 nalezů |
+| `models/pattern.py` | PatternDef + PatternLibrary — 14 patternu |
+| `services/game_analyzer.py` | _run_analyze_pgn — W9 (mistakes bug) |
+| `services/compressibility_validator.py` | W7 — alignment s README |
+| `services/pattern_artifact_validator.py` | W8 — chybi affected_games validace |
+| `tools/match_patterns.py` | W1 — game_ids dropped v serializaci |
+| `docs/CHESS_PATTERNS_AUDIT_2026-07-28.md` | **Hloubkovy audit: W1-W10, plen oprav** |
+| `docs/PATTERN_DETECTOR_AUDIT_INJECT.md` | Kontextovy injekt pro silnejsi LLM |
+| `docs/HALUCINACE_ROOT_CAUSE_ANALYSIS.md` | Root cause halucinace Pattern J |
 | `services/llm_client.py` | build_coaching_prompt — guard-clause inject (P1-3) |
 | `services/game_llm_cache.py` | _build_game_prompt — guard-clause inject (P1-3) |
 | `services/narrative_validator.py` | NOVY: 5 kategorii claim operatoru |

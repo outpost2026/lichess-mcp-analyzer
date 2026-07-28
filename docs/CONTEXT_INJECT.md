@@ -1,8 +1,9 @@
 # Context Injection — lichess-analyzer-mcp
 
-**Datum:** 2026-07-27 | **Verze 3.2**
-**Branch:** `feat` | **HEAD:** `e6f3f13` [TOOL] lichess_match_patterns: add game_ids param
-**Working tree:** Clean (all fixes committed)
+**Datum:** 2026-07-28 | **Verze 4.0**
+**Branch:** `main` | **HEAD:** `0f4eef5` [AUDIT] PATTERN_DETECTOR_AUDIT_INJECT
+**Working tree:** Clean
+**Audit:** CHESS_PATTERNS_AUDIT_2026-07-28 — 10 nových nálezů W1-W10
 
 ---
 
@@ -205,10 +206,12 @@ for m in line["pv"][:5]:
 | File | Role | Status |
 |------|------|--------|
 | `engine_client.py` | Stockfish wrapper | ✅ Committed (269d425) |
-| `game_analyzer.py` | Per-move engine eval | ✅ Committed (269d425) |
-| `pattern_detector.py` | 11 detectorů + I2, bez I | ✅ I→concept, code merged (c928327) |
-| `models/pattern.py` | PatternDef I: manual_only | ✅ Updated |
+| `game_analyzer.py` | Per-move engine eval | ✅ Committed — **⚠️ W9 (mistakes bug)** |
+| `pattern_detector.py` | 14 detectorů A-S | ✅ — **⚠️ W2, W3, W5, W6, W10 (5 nálezů)** |
+| `models/pattern.py` | PatternDef + PatternMatch | ✅ — **⚠️ W1 (game_ids dropped v serializaci)** |
 | `narrative_validator.py` | 5 claim operatorů | ⏳ Pending integration |
+| `compressibility_validator.py` | CR computation | ✅ — **⚠️ W7 (neodpovídá README)** |
+| `pattern_artifact_validator.py` | Post-analysis sanity | ✅ — **⚠️ W8 (nevaliduje affected_games)** |
 
 ### Data
 | File | Status |
@@ -224,7 +227,38 @@ for m in line["pv"][:5]:
 
 ---
 
-## 8. Lossy Compression Principle (Mikolov-Dev)
+## 8. Pattern Detector Audit — W1-W10 (CHESS_PATTERNS_AUDIT_2026-07-28)
+
+### Prehled nalezů
+
+| ID | Priorita | Popis | Lokace |
+|----|----------|-------|--------|
+| **W1** | CRITICAL | `game_ids` dropped v serializaci — přímá přičina halucinace | `match_patterns.py:155-170` |
+| **W2** | HIGH | Evidence schema nekonzistentní napříč 14 detektory — 7/14 chybí `affected_games` | `pattern_detector.py` všechny `_detect_*` |
+| **W3** | MEDIUM | `_detect_j` chytá king moves jako "blocks" — false positive | `pattern_detector.py:225` |
+| **W4** | LOW | Pattern S/J overlap bez dedup | `pattern_detector.py:216,492` |
+| **W5** | MEDIUM | `affected_games` type mismatch int vs list (6 patternů) | C,O,P,Q1,R,S evidence |
+| **W6** | HIGH | I2 confidence formula broken (1/35 = 2.3%) | `pattern_detector.py:200` |
+| **W7** | MEDIUM | CompressibilityValidator neodpovídá README (chybí entropy + sample score) | `compressibility_validator.py:13-23` |
+| **W8** | LOW | Artifact validator nevaliduje `affected_games` | `pattern_artifact_validator.py:17-48` |
+| **W9** | CRITICAL | `mistakes` list vždy prázdný — bug v game_analyzer.py | `game_analyzer.py:_run_analyze_pgn()` |
+| **W10** | MEDIUM | `frequency` má 3 různé významy napříč patterny | Všechny `_detect_*` |
+
+Detail: `docs/CHESS_PATTERNS_AUDIT_2026-07-28.md`
+
+### Plán oprav
+
+```
+P0-A (data integrity):  W1, W9, W2+W5, W6
+P0-B:                   AUD-01, AUD-07
+P1 (semantic integrity): W3, W7, W10
+P2 (quality):            W4, W8, N2, N3, N7
+P3 (DBCL Phase 2 core):  P0-3, P0-4, P0-5, P1-1..P1-5
+```
+
+---
+
+## 9. Lossy Compression Principle (Mikolov-Dev)
 
 ### Základní princip
 
@@ -268,7 +302,7 @@ Pokud sémantický/lexikální popis patternu neodpovídá kódu (jako u pattern
 
 ---
 
-## 9. CPM Lifecycle — Pattern Status
+## 10. CPM Lifecycle — Pattern Status
 
 | Pattern | Fáze 0-2 | Fáze 3 (Audit) | Fáze 4 | Fáze 5 | Fáze 6 |
 |---------|----------|----------------|--------|--------|--------|
@@ -290,7 +324,7 @@ Pokud sémantický/lexikální popis patternu neodpovídá kódu (jako u pattern
 
 ---
 
-## 10. Next Steps (Priority Order)
+## 11. Next Steps (Priority Order)
 
 ### P0: Continue P1 checklist (DALSÍ_KROKY)
 1. `[AUD-04]` O **RESOLVED** (rename → Stagnační panika) — AUD-05 next
