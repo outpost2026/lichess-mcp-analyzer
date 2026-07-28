@@ -12,6 +12,8 @@ from lichess_analyzer_mcp.models.player_profile import PlayerProfile, OpeningSta
 from lichess_analyzer_mcp.services.compressibility_validator import (
     compute_compression,
     compression_score,
+    entropy_score,
+    sample_score,
 )
 from lichess_analyzer_mcp.services.pattern_artifact_validator import (
     validate_pattern_artifact,
@@ -209,6 +211,9 @@ class TestModels:
         assert result.compression_ratio is not None
         assert result.compression_ratio > 0
         assert compression_score(result) > 0
+        assert entropy_score(result, [a]) >= 0
+        assert sample_score(result, [a]) >= 0
+        assert result.confidence > 0
 
     def test_validator_passes(self):
         artifact = {
