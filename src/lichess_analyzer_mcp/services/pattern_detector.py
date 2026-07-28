@@ -199,7 +199,7 @@ class PatternDetector:
             return PatternMatch(
                 pattern_id="I2",
                 pattern_name="Opponent's gift exploitation",
-                confidence=min(gift_count / total_games * 0.8, 0.9),
+                confidence=min(0.05 + gift_count / max(total_games, 1) * 0.8, 0.9),
                 evidence=[
                     {
                         "gift_captures": gift_count,
