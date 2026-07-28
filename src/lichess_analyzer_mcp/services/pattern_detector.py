@@ -226,6 +226,8 @@ class PatternDetector:
                     and m.centipawn_loss >= THRESHOLD_BLOCK_CP
                 ):
                     if m.was_in_check and "x" not in m.move_san:
+                        if "K" in m.move_san:
+                            continue
                         block_count += 1
                         affected.append(analysis.game.id)
         if block_count >= 1:
@@ -240,7 +242,7 @@ class PatternDetector:
                         "total_games": total_games,
                         "threshold_cp": THRESHOLD_BLOCK_CP,
                         "affected_games": list(set(affected)),
-                        "detail": "Player was in check and blocked with a piece instead of capturing the checking piece or moving the king, leading to material loss or positional collapse",
+                        "detail": "Player was in check and blocked with a piece instead of capturing the checking piece or retreating the king, leading to material loss or positional collapse",
                     }
                 ],
                 game_ids=list(set(affected)),
