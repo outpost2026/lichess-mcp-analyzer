@@ -1,4 +1,12 @@
-"""Pattern detection engine for patterns A-Q1, I2, Q2, S."""
+"""Pattern detection engine for patterns A-Q1, I2, Q2, S.
+
+Overlap note — S vs J:
+  Both patterns fire when a player is in check and makes a non-capture, non-king
+  block. Pattern S (capture_aversion_under_check) additionally requires that the
+  KING COULD capture the checking piece. If king-capture is possible but player
+  blocks, BOTH patterns trigger. Dedup strategy: prefer S (more specific) when
+  (game_id, ply) match. Currently not implemented — both patterns report independently.
+"""
 
 from collections import Counter
 import chess

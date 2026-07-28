@@ -64,7 +64,7 @@ def diagnose(analyses: list[GameAnalysis], username: str) -> WeaknessReport:
     if total_acpl > 80:
         top_weaknesses.append("Overall precision: high centipawn loss")
     if openings:
-        worst_opening = sorted(openings.items(), key=lambda x: x[1]["blunders"], reverse=True)[0]
+        worst_opening = sorted(openings.items(), key=lambda x: x[1]["games"], reverse=True)[0]
         if worst_opening[1]["blunders"] > 2:
             top_weaknesses.append(f"Opening preparation: {worst_opening[0]}")
     return WeaknessReport(

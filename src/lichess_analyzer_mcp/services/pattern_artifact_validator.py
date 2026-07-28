@@ -42,6 +42,11 @@ def validate_pattern_artifact(artifact: dict) -> list[str]:
             freq = p.get("frequency", 0)
             if not isinstance(freq, int) or freq < 1:
                 issues.append(f"pattern[{i}] frequency must be >= 1")
+            affected = p.get("affected_games", [])
+            if not isinstance(affected, list):
+                issues.append(f"pattern[{i}] affected_games must be a list")
+            elif affected and not all(isinstance(g, str) for g in affected):
+                issues.append(f"pattern[{i}] affected_games items must be strings")
             hyp = p.get("hypothesis", "")
             if hyp and not hyp.startswith("Hypothesis:"):
                 issues.append(f"pattern[{i}] hypothesis must start with 'Hypothesis:'")
