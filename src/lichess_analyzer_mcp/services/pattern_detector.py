@@ -56,6 +56,7 @@ class PatternDetector:
                         "anonymous_blunder_rate": round(anon_blunder_rate, 2),
                         "named_blunder_rate": round(named_blunder_rate, 2),
                         "ratio": round(anon_blunder_rate / named_blunder_rate, 2),
+                        "affected_games": [g.game.id for g in anonymous_games],
                     }
                 ],
                 game_ids=[g.game.id for g in anonymous_games],
@@ -127,7 +128,7 @@ class PatternDetector:
                 confidence=min(len(set(affected)) / total_games * 0.9, 0.85),
                 evidence=[
                     {
-                        "affected_games": len(set(affected)),
+                        "affected_games": list(set(affected)),
                         "total_games": total_games,
                         "max_consecutive_blunders": total_tunneling,
                         "threshold_consecutive": THRESHOLD_TUNNEL_CONSECUTIVE,
@@ -172,6 +173,7 @@ class PatternDetector:
                             "black_blunder_rate": round(black_blunder_rate, 2),
                             "asymmetry_ratio": round(ratio, 2),
                             "dominant_side": dominant,
+                            "affected_games": affected_ids,
                         }
                     ],
                     game_ids=affected_ids,
@@ -203,6 +205,7 @@ class PatternDetector:
                         "gift_captures": gift_count,
                         "total_games": total_games,
                         "threshold_eval_jump": THRESHOLD_GIFT_EVAL_JUMP,
+                        "affected_games": list(set(affected)),
                         "detail": "Player's best captures that turned a slightly worse position into clear advantage — opponent dropped a gift",
                     }
                 ],
@@ -236,6 +239,7 @@ class PatternDetector:
                         "impulsive_blocks": block_count,
                         "total_games": total_games,
                         "threshold_cp": THRESHOLD_BLOCK_CP,
+                        "affected_games": list(set(affected)),
                         "detail": "Player was in check and blocked with a piece instead of capturing the checking piece or moving the king, leading to material loss or positional collapse",
                     }
                 ],
@@ -290,7 +294,7 @@ class PatternDetector:
                 confidence=min(len(set(affected)) / total_games * 0.8, 0.85),
                 evidence=[
                     {
-                        "affected_games": len(set(affected)),
+                        "affected_games": list(set(affected)),
                         "total_games": total_games,
                         "repetition_confirmed": len(set(affected_repetition)),
                         "fallback_heuristic": len(set(affected_fallback)),
@@ -325,7 +329,7 @@ class PatternDetector:
                 confidence=min(len(set(affected)) / total_games * 0.7, 0.75),
                 evidence=[
                     {
-                        "affected_games": len(set(affected)),
+                        "affected_games": list(set(affected)),
                         "total_games": total_games,
                         "threshold_cp": THRESHOLD_VISUAL_CP,
                         "condition": "expensive_move_with_advantage",
@@ -367,6 +371,7 @@ class PatternDetector:
                         "defensive_wins": len(set(affected)),
                         "total_games": total_games,
                         "threshold_deficit_cp": THRESHOLD_ACTIVE_DEFENSE_EVAL,
+                        "affected_games": list(set(affected)),
                         "detail": "Player was materially behind (eval < -150cp) but chose active checks/captures instead of passive defense, and won",
                     }
                 ],
@@ -408,7 +413,7 @@ class PatternDetector:
                 confidence=min(len(set(affected)) / total_games * 0.8, 0.75),
                 evidence=[
                     {
-                        "affected_games": len(set(affected)),
+                        "affected_games": list(set(affected)),
                         "total_games": total_games,
                         "threshold_eval": THRESHOLD_DESPERATE_EVAL,
                         "detail": "After losing position (eval < -3.0), player rejected queen exchanges, kept pieces active, created checks/threats, and won",
@@ -445,6 +450,7 @@ class PatternDetector:
                         "resilient_wins": len(set(resilient_wins)),
                         "total_games": total_games,
                         "threshold_blunder_cp": THRESHOLD_DESPERATE_CP,
+                        "affected_games": list(set(resilient_wins)),
                         "detail": "Player made at least one large blunder (>300cp) but still won the game — resilience or opponent failed to capitalise",
                     }
                 ],
@@ -475,7 +481,7 @@ class PatternDetector:
                 confidence=min(len(set(affected)) / total_games * 0.8, 0.75),
                 evidence=[
                     {
-                        "affected_games": len(set(affected)),
+                        "affected_games": list(set(affected)),
                         "total_games": total_games,
                         "threshold_eval_before": THRESHOLD_ENDGAME_EVAL,
                         "threshold_cp_loss": THRESHOLD_ENDGAME_CP,
@@ -509,7 +515,7 @@ class PatternDetector:
                 confidence=min(len(set(affected)) / total_games * 0.5, 0.5),
                 evidence=[
                     {
-                        "affected_games": len(set(affected)),
+                        "affected_games": list(set(affected)),
                         "total_games": total_games,
                         "threshold_cp": THRESHOLD_S_CAPTURE_AVERSION_CP,
                         "detail": "Player was in check with king able to capture the checking piece, but chose a different move resulting in large material loss",
@@ -547,6 +553,7 @@ class PatternDetector:
                         "pin_events": pin_events,
                         "total_games": total_games,
                         "threshold_cp": 100,
+                        "affected_games": list(set(affected)),
                         "detail": "Player blundered by moving a piece that was x-ray pinned to a higher-value piece behind it",
                     }
                 ],
