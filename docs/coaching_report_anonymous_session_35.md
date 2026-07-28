@@ -54,9 +54,11 @@ Pattern O ma v anonymnim kontextu jeste vyssi frekvenci nez v named hrach (54% v
 
 Anonymita posiluje impulzivitu — hrac pri sachu saha po prvnim bloku, ktery vidi, misto aby vyhodnotil vsechny 3 moznosti (utect, brat, blokovat).
 
-**Konkretni priklad** (z cache: `sAtfdKTi` ply 16): Hrac ma vyhodu ~+4.6, souper da sach dámou. Misto brani vezi (coz drzi vyhodu) nebo ustupu krále, hrac blokuje jezdcem a po 2 tazich uz ma jen +0.5.
+**Konkretni priklad** (z cache: `hrLawxDC` ply 89): Hrac ma vyhodu +13.1, souper da sach dámou. Misto bloku pescem (b3 — coz drzi vyhodu a blokuje sach), hrac blokuje vezí (Rb3), coz vede ke ztrate veze a eval pada z +13.10 na 0.0. **Blunder 840cp.**
 
-**Mitigace:** Pri sachu: 1) muze kral utect? 2) muze brat sachujici figuru? 3) muze blokovat? Pouze v tomto poradi.
+**Dalsi priklad** (z cache: `9WlaBdkU` ply 19): Hrac je v sachu, blokuje damou (Qe2) misto strelcem (Be3 — lepsi blok, dama zustava aktivni). Po Qe2 je dama ztracena. Inaccuracy 53cp.
+
+**Mitigace:** Pri sachu: 1) muze kral utect? 2) muze brat sachujici figuru? 3) muze blokovat? Pouze v tomto poradi. A pokud blokovat — ktera figura je k dispozici a ktera je nejmene hodnotna?
 
 ---
 
