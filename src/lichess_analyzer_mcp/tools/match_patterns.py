@@ -159,6 +159,7 @@ async def lichess_match_patterns(
                 "frequency": m.frequency,
                 "severity": m.severity,
                 "evidence": m.evidence,
+                "affected_games": list(m.game_ids),
                 "mitigation": detector.library.patterns[m.pattern_id].mitigation
                 if m.pattern_id in detector.library.patterns
                 else "",
