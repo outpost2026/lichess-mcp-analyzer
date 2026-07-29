@@ -1,6 +1,6 @@
 # Phase 2 — Build Plan v4.0
 
-**Datum:** 2026-07-28 | **Verze:** 4.0
+**Datum:** 2026-07-29 | **Verze:** 4.1
 **Navazuje na:** `01_DBCL_unity_synthesis.md`, `02_DBCL_meta_evaluation.md`, `PHASE2_BUILD_PLAN.md` v3.0
 **Status:** P0-1 hotov, P0-2 hotov, **P0-Audit (CHESS_PATTERNS_AUDIT_2026-07-28) — 10 nových nálezů W1-W10**
 
@@ -324,7 +324,90 @@ Nahradit SM-2 formuli za `fsrs.Card` + `fsrs.Scheduler`.
 
 ### P3-4: Cross-LLM audit artifact
 
-Predat `DBCL_cross_audit_artifact.md` dalsimu modelu (DeepSeek?) k validaci.
+Předat `DBCL_cross_audit_artifact.md` dalsimu modelu (DeepSeek?) k validaci.
+
+---
+
+## P4 — Opponent Analysis Pipeline (NOVÉ v4.1)
+
+**Priorita:** HIGH — navazuje na P3 (hotové detektory) a využívá existující game cache s dual perspective.
+
+**Motivace:** 68 cached game IDs, 103 cache files (N=1 + N=2 perspective). N=2 analýza odhalila zero-blunder finding (0.00 vs 0.78 blunder/game). 3 design dokumenty vytvořeny (2026-07-29). Design docs: `OPPONENT_PERSPECTIVE_TOOL_DESIGN.md`, `OPPONENT_ELO_ETL_DESIGN.md`, `OPPONENT_COUNTERMEASURES_N2.md`.
+
+**Engineering reference:** dscape/outprep — 9 patternů převzato (mergeConfig, version tracking, source-agnostic interface, ETL 3-phase, phase detection, per-skill temperature, Boltzmann selection, FEN-keyed trie, complexity depth).
+
+### P4-1: Opponent profiling tools (4 new MCP tools)
+
+Goal: Implement 4 new tools defined in `OPPONENT_PERSPECTIVE_TOOL_DESIGN.md`.
+
+| Tool | Účel | Vstup | Výstup |
+|------|------|-------|--------|
+| `lichess_opponent_profile` | Profil jednoho opponent-a z pool cache | `game_ids[]`, `opponent_name` (optional) | ACPL, blunder_rate, pattern_freq, opening_repertoire, phase_weakness |
+| `lichess_compare_sides` | Dual-perspective N1 vs N2 komparace | `game_ids[]` | N1_stats, N2_stats, delta table, hSNR proxy |
+| `lichess_group_profiler` | Pool aggregace (N2, N3, ELO bandy) | `game_ids[]`, `group_by` | Per-group stats, heterogeneity, band classification |
+| `lichess_hsnr_extract` | hSNR extraction z dual-perspective | `game_ids[]` | hSNR_components, suppression_map, timeline |
+
+**Files:**
+- `src/tools/opponent_profile.py` — NOVÝ
+- `src/tools/compare_sides.py` — NOVÝ
+- `src/tools/group_profiler.py` — NOVÝ
+- `src/tools/hsnr_extract.py` — NOVÝ
+- `src/services/opponent_stats.py` — NOVÝ
+- `src/services/pool_aggregator.py` — NOVÝ
+
+### P4-2: ELO estimation from pipeline metrics
+
+Goal: Implement multi-feature ELO estimator bez engine calls, only from cached metrics (ACPLE + blunder/mistake rates + best_move_pct + pattern_freq).
+
+**Design doc:** `OPPONENT_ELO_ETL_DESIGN.md`
+
+| Feature | Váha (dle FIDE 2024) | Zdroj |
+|---------|----------------------|-------|
+| ACPL (avg) | ~0.40 | game_cache ACPl |
+| Blunder rate (avg/game) | ~0.20 | game_cache blunders |
+| Mistake rate (avg/game) | ~0.15 | game_cache mistakes |
+| Best move % | ~0.10 | game_cache best_pct |
+| Pattern frequency | ~0.10 | match_patterns output |
+| Clock time (avg/move) | ~0.05 | game_cache clock (if avail) |
+
+**Files:**
+- `src/services/elo_estimator.py` — NOVÝ (multi-feature regrese)
+- `src/services/opponent_tracker.py` — NOVÝ (N-category + band tracking)
+- `src/services/etl_pipeline.py` — NOVÝ (3-phase: extract→transform→load)
+
+### P4-3: match_patterns extension — group_by parameter
+
+Goal: Rozšířit existující `lichess_match_patterns` o `group_by` parametr.
+
+| group_by value | Výstup |
+|----------------|--------|
+| `"all"` (default) | Single pool — current behavior |
+| `"n1:n2"` | Per-group pattern frekvence + delta |
+| `"elo_band"` | Pattern frekvence per ELO band (1100-2800, 7 bands) |
+| `"result"` | Per-result pattern frekvence |
+
+### P4-4: N3 category architecture
+
+N3 (draws) category — schema must exist even when N3=0 in current dataset. 3-category classification = future-proofing.
+
+- N1: losses (as author perspective)
+- N2: wins (as opponent perspective)
+- N3: draws (currently 0, but schema must exist)
+
+**File change:** `src/services/opponent_tracker.py` — N3 slot in all aggregation, zero-handling, reporting with "(0 games)" not absent.
+
+### P4-5: Dual-perspective pipeline
+
+hSNR extraction requires dual perspective — flip PGNs and re-analyze. Pipeline:
+
+```
+1. Extract author-perspective metrics (N1, current)
+2. Flip PGN → opponent perspective (N2)
+3. Run same analysis pipeline on flipped games
+4. Compare: hSNR = N1_signal / (N1_signal + N2_noise)
+```
+
+**File:** `src/services/etl_pipeline.py` — `dual_perspective_flow()`
 
 ---
 
@@ -349,6 +432,9 @@ P2 (quality) ────────────────── W4, W8, N2, 
   │
   ↓
 P3 (DBCL Phase 2 core) ──────── P0-3, P0-4, P0-5, P1-1..P1-5
+  │
+  ↓
+P4 (Opponent Analysis) ──────── P4-1 (4 tools), P4-2 (ELO estimator), P4-3 (group_by), P4-4 (N3), P4-5 (dual-perspective)
 ```
 
 ---
@@ -374,3 +460,11 @@ P3 (DBCL Phase 2 core) ──────── P0-3, P0-4, P0-5, P1-1..P1-5
 | `services/validator.py` | STARY: prejmenovat na pattern_artifact_validator.py (P2-3) |
 | `tests/test_pattern_semantic_contract.py` | NOVY: 1 pozitivni + 1 negativni pripad na detector |
 | `.session/2026-07-26_context.md` | Deni session context |
+| `docs/OPPONENT_PERSPECTIVE_TOOL_DESIGN.md` | **NOVÝ v4.1:** 4 opponent tools + 3 services design |
+| `docs/OPPONENT_ELO_ETL_DESIGN.md` | **NOVÝ v4.1:** ELO estimation, ETL pipeline, domain-agnostic core |
+| `docs/OPPONENT_COUNTERMEASURES_N2.md` | **NOVÝ v4.1:** 6 countermeasures, zero-blunder finding (N2=0.00) |
+| `src/services/opponent_stats.py` | **NOVÝ:** Per-opponent stat aggregation |
+| `src/services/pool_aggregator.py` | **NOVÝ:** Pool-level aggregation per N-category/ELO band |
+| `src/services/elo_estimator.py` | **NOVÝ:** Multi-feature ELO regression (6 features) |
+| `src/services/opponent_tracker.py` | **NOVÝ:** N-category + band tracking |
+| `src/services/etl_pipeline.py` | **NOVÝ:** 3-phase ETL + dual-perspective flow |
