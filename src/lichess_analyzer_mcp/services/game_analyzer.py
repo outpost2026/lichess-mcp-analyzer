@@ -37,7 +37,9 @@ def _cache_path(game_id: str, depth: int, color: str = "white") -> str:
     return d
 
 
-def _load_cached_analysis(game_id: str, depth: int, color: str = "white") -> GameAnalysis | None:
+def _load_cached_analysis(
+    game_id: str, depth: int, color: str = "white", exact_depth: bool = False
+) -> GameAnalysis | None:
     path = _cache_path(game_id, depth, color)
     if os.path.isfile(path):
         try:
@@ -45,6 +47,8 @@ def _load_cached_analysis(game_id: str, depth: int, color: str = "white") -> Gam
                 return GameAnalysis.from_dict(json.load(f))
         except Exception:
             pass
+    if exact_depth:
+        return None
     # Depth approximation: try nearest depth if exact match not found
     pattern = os.path.join(CACHE_DIR, f"{game_id}_{color}_d*.json")
     for fpath in sorted(glob.glob(pattern), reverse=True):
@@ -75,6 +79,7 @@ def analyze_pgn(
     depth: int = 14,
     game_id: str | None = None,
     use_cache: bool = True,
+    strict_depth: bool = False,
 ) -> GameAnalysis:
     if use_cache:
         if game_id is None:
@@ -87,7 +92,7 @@ def analyze_pgn(
                 if "/" in site:
                     game_id = site.split("/")[-1]
         if game_id:
-            cached = _load_cached_analysis(game_id, depth, player_color)
+            cached = _load_cached_analysis(game_id, depth, player_color, exact_depth=strict_depth)
             if cached is not None:
                 return cached
 

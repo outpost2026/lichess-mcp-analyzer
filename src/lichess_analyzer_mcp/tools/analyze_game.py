@@ -37,12 +37,16 @@ async def lichess_analyze_game(
                     color = "black"
                 elif username.lower() == white.lower():
                     color = "white"
-        result = analyze_pgn(pgn, player_color=color, depth=depth, game_id=game_id)
+        result = analyze_pgn(
+            pgn, player_color=color, depth=depth, game_id=game_id, strict_depth=True
+        )
 
         # Dual cache: always analyze and cache the OPPOSITE perspective too
         # so both {game_id}_white_d{depth}.json and {game_id}_black_d{depth}.json exist
         other_color = "black" if color == "white" else "white"
-        other_result = analyze_pgn(pgn, player_color=other_color, depth=depth, game_id=game_id)
+        other_result = analyze_pgn(
+            pgn, player_color=other_color, depth=depth, game_id=game_id, strict_depth=True
+        )
 
         # Auto-update user games index so per-game analysis is visible
         # in the global cache (Systeq_games.json + Systeq_index.json).
