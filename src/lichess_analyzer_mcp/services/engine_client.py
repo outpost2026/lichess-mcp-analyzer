@@ -2,6 +2,7 @@
 
 import os
 import atexit
+import subprocess
 import threading
 import chess
 import chess.engine
@@ -110,14 +111,35 @@ def analyze_position(fen: str, depth: int = 0, multipv: int = 3) -> list[dict]:
         _analysis_lock.release()
 
 
+_SF_PATH = None
+
+
+def _get_sf_path() -> str:
+    global _SF_PATH
+    if _SF_PATH is None:
+        _SF_PATH = _find_stockfish()
+    return _SF_PATH
+
+
 def evaluate_move(fen: str, move_uci: str, depth: int = 0) -> dict:
     if depth == 0:
         depth = DEPTH_DEFAULTS["standard"]["position"]
-    engine = get_engine()
+
+    sf_path = _get_sf_path()
     board = chess.Board(fen)
     move = chess.Move.from_uci(move_uci)
 
-    _acquire_analysis_lock()
+    if move not in board.legal_moves:
+        return {
+            "eval_before": 0,
+            "eval_after": 0,
+            "centipawn_loss": 0,
+            "best_move_uci": None,
+            "error": f"Move {move_uci} not legal in position {fen}",
+        }
+
+    engine = chess.engine.SimpleEngine.popen_uci(sf_path)
+    engine.configure({"Threads": 6, "Hash": 512, "NumaPolicy": "hardware"})
     try:
         info_before = engine.analyse(board, chess.engine.Limit(depth=depth))
         eval_before = info_before["score"].relative.score()
@@ -137,7 +159,7 @@ def evaluate_move(fen: str, move_uci: str, depth: int = 0) -> dict:
         actual_score = actual_res["score"].relative.score()
         actual_player = -actual_score if actual_score is not None else None
     finally:
-        _analysis_lock.release()
+        engine.quit()
 
     if best_player is not None and actual_player is not None:
         cp_loss = max(0, best_player - actual_player)

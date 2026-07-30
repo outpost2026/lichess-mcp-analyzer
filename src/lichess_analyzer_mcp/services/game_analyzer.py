@@ -291,7 +291,8 @@ def _run_analyze_pgn(pgn: str, player_color: str = "white", depth: int = 0) -> G
         if board.turn == player_side:
             eval_result = None
             try:
-                eval_result = engine_client.evaluate_move(fen_before, move.uci(), depth=depth)
+                if move in board.legal_moves:
+                    eval_result = engine_client.evaluate_move(fen_before, move.uci(), depth=depth)
             except Exception:
                 pass
             if eval_result:
