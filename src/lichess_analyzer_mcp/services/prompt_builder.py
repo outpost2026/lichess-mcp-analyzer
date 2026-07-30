@@ -8,37 +8,40 @@ PROMPT_TEMPLATES: dict[int, str] = {
     1: """Vytvoř coaching report pro hru {game_id}.
 
 K DISPOZICI:
-- Cache analýza: data/game_cache/{game_id}_{color}_d{depth}.json
-  (per-move Stockfish eval, cp_loss, was_in_check, phase)
+- Výsledek: {result}, barva: {color}, zahájení: {opening}
+- Celková ACPL: {acpl}
+- Počet chyb: {blunders_count} blunderů, {mistakes_count} chyb, {inaccuracies_count} nepřesností
+- Blundry: {blunders_list}
+- Fázový breakdown: {phase_breakdown}
 - Pattern detection: {patterns_json}
-- BlunderFactSheet: každý blunder s context_window a engine_lines
+- BlunderFactSheet podrobnosti: {bfs_json}
 
 PRAVIDLA:
-1. KAŽDÉ konkrétní tvrzení o tahu, cp_loss, eval, FEN, patternu MUSÍ být ověřeno z cache nebo tool response.
-2. Pokud tool nevrátí affected_games pro pattern — neuváděj konkrétní game_id. Napiš "N her s tímto patternem".
+1. KAŽDÉ konkrétní tvrzení o tahu, cp_loss, eval, FEN, patternu MUSÍ být ověřeno z dat výše.
+2. Pokud tool nevrátí affected_games pro pattern — neuváděj konkrétní game_id.
 3. Pokud nemáš data — NEVYMÝŠLEJ. Nahraď obecným popisem.
 4. [DATA] a [IM] oddělené sekce.
 
 STRUKTURA:
-[DATA] Základní info: výsledek, barva, time control, celková ACPL, accuracy %
+[DATA] Základní info: výsledek, barva, zahájení, celková ACPL, accuracy %
 [DATA] Fazovy breakdown:
-  - Opening (ply 1-15): ACPL, hlavní chyby
-  - Middlegame (ply 16-40): ACPL, kritické momenty (kde eval skočil >200cp)
-  - Endgame (ply 41+): ACPL, konverze/obrana
+  - Opening: ACPL, hlavní chyby
+  - Middlegame: ACPL, kritické momenty
+  - Endgame: ACPL, konverze/obrana
 [DATA] Error klasifikace:
-  - Blunders (>200cp): počet, seznam, každý s ply, cp_loss, popis
-  - Mistakes (100-200cp): počet, seznam
-  - Inaccuracies (50-100cp): počet (bez detailu pokud >3)
+  - Blunders: každý s ply, cp_loss, fází, popis
+  - Mistakes: seznam
+  - Inaccuracies: počet
 [DATA] Pattern detection výsledky pro tuto hru
-[DATA] Silman imbalance assessment v klíčových pozicích (minor piece, pawn structure, space, king safety)
+[DATA] BlunderFactSheet: engine_lines top3, legal_moves, board_state pro každý blunder
 
 [IM] Heisman-style error analýza:
-  - Která chyba byla nejkritičtější (největší cp_loss, nejhorší načasování)
-  - Šlo o taktickou chybu (patterns, přehlédnutí) nebo poziční (plán, struktura)?
-  - Byl hráč v time trouble? (časová značka pokud dostupná)
+  - Která chyba byla nejkritičtější
+  - Taktická nebo poziční?
+  - Time trouble?
 [IM] Tři věci co hráč udělal dobře
-[IM] Jedna věc na zlepšení do příště (Heisman: minimalizuj největší chybu první)
-[IM] Tréninková doporučení: konkrétní puzzle téma, studijní materiál, otázka k zamyšlení""",
+[IM] Jedna věc na zlepšení do příště
+[IM] Tréninková doporučení""",
     2: """Vytvoř cross-game pattern analysis pro {N} her hráče.
 
 K DISPOZICI:

@@ -39,11 +39,39 @@ async def lichess_coaching_single_game(
         analysis = data.get("analysis", {})
         patterns = collect_patterns_for_games([analysis], "lichess")
 
+        game_info = analysis.get("game", {})
+        blunders_raw = analysis.get("blunders", [])
+        mistakes_raw = analysis.get("mistakes", [])
+        inaccuracies_raw = analysis.get("inaccuracies", [])
+        phase_stats = analysis.get("phase_stats", {})
+        bfs_raw = analysis.get("blunder_fact_sheets", [])
+
+        blunders_list = "\n".join(
+            f"  ply {m.get('ply')}: {m.get('move_san')} (loss {m.get('centipawn_loss'):.0f}cp, {m.get('phase')})"
+            for m in blunders_raw[:10]
+        )
+        phase_breakdown = (
+            "; ".join(
+                f"{p}: ACPL {s.get('acpl', '?')}, {s.get('errors', 0)} chyb"
+                for p, s in sorted(phase_stats.items())
+            )
+            or "(není k dispozici)"
+        )
+
         prompt_data = {
             "game_id": game_id,
             "color": color,
             "depth": depth,
+            "result": game_info.get("result", "?"),
+            "opening": game_info.get("opening", "?"),
+            "acpl": round(analysis.get("total_acpl", 0), 1),
+            "blunders_count": len(blunders_raw),
+            "mistakes_count": len(mistakes_raw),
+            "inaccuracies_count": len(inaccuracies_raw),
+            "blunders_list": blunders_list or "(žádné)",
+            "phase_breakdown": phase_breakdown,
             "patterns_json": json.dumps(patterns, ensure_ascii=False, indent=2),
+            "bfs_json": json.dumps(bfs_raw, ensure_ascii=False, indent=2)[:2000],
         }
         prompt = build_prompt(1, prompt_data)
         report, cascade_log = safe_llm_call(prompt, f"single_game:{game_id}")
