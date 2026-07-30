@@ -1,11 +1,12 @@
 ﻿from lichess_analyzer_mcp.app import app
+from lichess_analyzer_mcp.config.depth import DEPTH_DEFAULTS
 from lichess_analyzer_mcp.services.game_analyzer import analyze_pgn
 from lichess_analyzer_mcp.services.lichess_client import fetch_game_pgn
 
 
 @app.tool("lichess_analyze_game")
 async def lichess_analyze_game(
-    game_id: str = "", pgn: str = "", username: str = "", color: str = "white", depth: int = 14
+    game_id: str = "", pgn: str = "", username: str = "", color: str = "white", depth: int = 0
 ):
     """Analyzes a chess game move by move using Stockfish.
 
@@ -17,9 +18,13 @@ async def lichess_analyze_game(
         pgn: PGN string of the game, or empty if using game_id
         username: Your username (to determine your color), or specify color
         color: Your color if username not provided ('white' or 'black')
-        depth: Stockfish analysis depth (8-24, default 14)
+        depth: Stockfish analysis depth (8-24, default 14 — 0=auto)
     """
-    depth = max(8, min(24, depth))
+    if depth == 0:
+        depth = DEPTH_DEFAULTS["standard"]["single_game"]
+    depth = max(
+        DEPTH_DEFAULTS["limits"]["min"], min(DEPTH_DEFAULTS["limits"]["max_single_game"], depth)
+    )
     try:
         if game_id and not pgn:
             pgn = fetch_game_pgn(game_id)

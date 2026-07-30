@@ -1,4 +1,5 @@
 ﻿from lichess_analyzer_mcp.app import app
+from lichess_analyzer_mcp.config.depth import DEPTH_DEFAULTS
 from lichess_analyzer_mcp.services.lichess_client import fetch_user_games, fetch_game_pgn
 from lichess_analyzer_mcp.services.game_analyzer import analyze_pgn, _load_cached_analysis
 from lichess_analyzer_mcp.services.diagnostician import diagnose
@@ -9,7 +10,7 @@ log = get_logger("diagnose_player")
 
 @app.tool("lichess_diagnose_player")
 async def lichess_diagnose_player(
-    username: str, max_games: int = 20, depth: int = 12, result: str = "all"
+    username: str, max_games: int = 20, depth: int = 0, result: str = "all"
 ):
     """Diagnoses a player's weaknesses across multiple games.
 
@@ -22,11 +23,13 @@ async def lichess_diagnose_player(
     Args:
         username: Lichess username
         max_games: Number of recent games to analyze (5-50)
-        depth: Stockfish depth for analysis (8-18, lower = faster)
+        depth: Stockfish depth for analysis (8-18, 0=auto)
         result: Filtr dle vysledku - 'all', 'win', 'loss', 'draw'
     """
     max_games = max(5, min(999, max_games))
-    depth = max(8, min(18, depth))
+    if depth == 0:
+        depth = DEPTH_DEFAULTS["batch"]["diagnose"]
+    depth = max(DEPTH_DEFAULTS["limits"]["min"], min(DEPTH_DEFAULTS["limits"]["max_batch"], depth))
     try:
         games_data = fetch_user_games(username, max_games=max_games, result=result)
         total_available = len(games_data)

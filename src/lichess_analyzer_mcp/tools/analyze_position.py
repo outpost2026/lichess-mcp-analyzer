@@ -1,18 +1,23 @@
 ﻿from lichess_analyzer_mcp.app import app
+from lichess_analyzer_mcp.config.depth import DEPTH_DEFAULTS
 from lichess_analyzer_mcp.services.engine_client import analyze_position
 from lichess_analyzer_mcp.services.lichess_client import fetch_cloud_eval
 
 
 @app.tool("lichess_analyze_position")
-async def lichess_analyze_position(fen: str, depth: int = 18, use_cloud: bool = True):
+async def lichess_analyze_position(fen: str, depth: int = 0, use_cloud: bool = True):
     """Analyzes a chess position using Stockfish or Lichess cloud eval.
 
     Args:
         fen: FEN string of the position
-        depth: Stockfish analysis depth (8-24, default 18)
+        depth: Stockfish analysis depth (8-24, default 18 — 0=auto)
         use_cloud: Try Lichess cloud eval first (faster if cached)
     """
-    depth = max(8, min(24, depth))
+    if depth == 0:
+        depth = DEPTH_DEFAULTS["standard"]["position"]
+    depth = max(
+        DEPTH_DEFAULTS["limits"]["min"], min(DEPTH_DEFAULTS["limits"]["max_single_game"], depth)
+    )
     try:
         cloud = None
         if use_cloud:

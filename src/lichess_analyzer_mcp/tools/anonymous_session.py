@@ -5,6 +5,7 @@ import re
 import io
 import chess.pgn
 from lichess_analyzer_mcp.app import app
+from lichess_analyzer_mcp.config.depth import DEPTH_DEFAULTS
 from lichess_analyzer_mcp.services.lichess_client import fetch_game_pgn
 from lichess_analyzer_mcp.services.game_analyzer import analyze_pgn
 
@@ -88,7 +89,7 @@ async def lichess_analyze_anonymous_session(
     file_path: str = "",
     game_ids: str = "",
     urls: str = "",
-    depth: int = 12,
+    depth: int = 0,
 ):
     """Analyze multiple anonymous games from URLs or a text file, return per-game + aggregate stats.
 
@@ -96,7 +97,7 @@ async def lichess_analyze_anonymous_session(
         file_path: Path to a .txt file with one URL or game ID per line
         game_ids: Comma-separated list of 8-char game IDs
         urls: Comma-separated list of full Lichess URLs
-        depth: Stockfish analysis depth (8-24, default 12 — anonymous = fast)
+        depth: Stockfish analysis depth (8-24, default 12 — 0=auto)
 
     Notes:
         - URLs like https://lichess.org/XXXXXXXXxxxx are trimmed to 8-char IDs
@@ -105,7 +106,9 @@ async def lichess_analyze_anonymous_session(
           Determines which side is "us" for ACPL/result stats.
           If omitted, assumes "white" and flags player_color="unknown".
     """
-    depth = max(8, min(24, depth))
+    if depth == 0:
+        depth = DEPTH_DEFAULTS["batch"]["anonymous"]
+    depth = max(DEPTH_DEFAULTS["limits"]["min"], min(DEPTH_DEFAULTS["limits"]["max_batch"], depth))
     entries: list[tuple[str, str | None]] = []
 
     if file_path:

@@ -1,6 +1,7 @@
 ﻿import glob as glob_mod
 import os
 from lichess_analyzer_mcp.app import app
+from lichess_analyzer_mcp.config.depth import DEPTH_DEFAULTS
 from lichess_analyzer_mcp.services.lichess_client import fetch_user_games, fetch_game_pgn
 from lichess_analyzer_mcp.services.game_analyzer import analyze_pgn, _load_cached_analysis
 from lichess_analyzer_mcp.services.game_analyzer import CACHE_DIR as GAME_CACHE_DIR
@@ -35,7 +36,7 @@ def _find_cached_analysis(game_id: str) -> object | None:
 async def lichess_match_patterns(
     username: str = "",
     max_games: int = 20,
-    depth: int = 12,
+    depth: int = 0,
     result: str = "all",
     game_ids: str = "",
 ):
@@ -52,12 +53,14 @@ async def lichess_match_patterns(
     Args:
         username: Lichess username (optional if game_ids provided)
         max_games: Number of games to analyze (5-50)
-        depth: Stockfish depth (8-18)
+        depth: Stockfish depth (8-18, 0=auto)
         result: Filtr dle vysledku - 'all', 'win', 'loss', 'draw'
         game_ids: Comma-separated 8-char game IDs for anonymous/cached games
     """
     max_games = max(5, min(999, max_games))
-    depth = max(8, min(18, depth))
+    if depth == 0:
+        depth = DEPTH_DEFAULTS["batch"]["patterns"]
+    depth = max(DEPTH_DEFAULTS["limits"]["min"], min(DEPTH_DEFAULTS["limits"]["max_batch"], depth))
 
     try:
         # ── Branch: cached game_ids (anonymous) ──

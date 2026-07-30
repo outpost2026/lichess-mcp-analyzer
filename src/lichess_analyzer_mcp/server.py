@@ -43,6 +43,13 @@ from lichess_analyzer_mcp.tools import import_pgn
 from lichess_analyzer_mcp.tools import analyze_pending
 from lichess_analyzer_mcp.tools import anonymous_session
 
+# Coaching tools
+from lichess_analyzer_mcp.tools import coaching_single_game
+from lichess_analyzer_mcp.tools import coaching_cross_game
+from lichess_analyzer_mcp.tools import coaching_opponent_pool
+from lichess_analyzer_mcp.tools import coaching_training_plan
+from lichess_analyzer_mcp.tools import coaching_opening_report
+
 # P21: L2 Resources
 from lichess_analyzer_mcp.resources import analysis_resources
 from lichess_analyzer_mcp.resources import pattern_resources

@@ -3,6 +3,7 @@
 from datetime import datetime
 
 from lichess_analyzer_mcp.app import app
+from lichess_analyzer_mcp.config.depth import DEPTH_DEFAULTS
 from lichess_analyzer_mcp.services.game_analyzer import analyze_pgn
 from lichess_analyzer_mcp.resources.analysis_resources import store_analysis
 
@@ -11,7 +12,7 @@ from lichess_analyzer_mcp.resources.analysis_resources import store_analysis
 async def lichess_import_pgn(
     pgn: str,
     color: str = "white",
-    depth: int = 14,
+    depth: int = 0,
     game_id: str = "",
 ):
     """Import and analyze a chess game from a PGN string.
@@ -30,10 +31,14 @@ async def lichess_import_pgn(
     Args:
         pgn: Full PGN string of the game (including headers)
         color: Your color ('white' or 'black', default 'white')
-        depth: Stockfish analysis depth (8-24, default 14)
+        depth: Stockfish analysis depth (8-24, default 14 — 0=auto)
         game_id: Optional game identifier (auto-detected from PGN Site header if empty)
     """
-    depth = max(8, min(24, depth))
+    if depth == 0:
+        depth = DEPTH_DEFAULTS["standard"]["import_pgn"]
+    depth = max(
+        DEPTH_DEFAULTS["limits"]["min"], min(DEPTH_DEFAULTS["limits"]["max_single_game"], depth)
+    )
     try:
         result = analyze_pgn(
             pgn,

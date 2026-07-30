@@ -8,6 +8,7 @@ New games trigger per-game LLM only for themselves, not the entire dataset.
 import os, json, hashlib
 from typing import Optional
 from datetime import datetime, timezone
+from lichess_analyzer_mcp.config.depth import DEPTH_DEFAULTS
 
 CACHE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "game_cache")
 
@@ -39,7 +40,9 @@ RULES:
 )
 
 
-def _game_cache_path(game_id: str, color: str, depth: int = 12) -> str:
+def _game_cache_path(game_id: str, color: str, depth: int = 0) -> str:
+    if depth == 0:
+        depth = DEPTH_DEFAULTS["batch"]["pending"]
     return os.path.join(CACHE_DIR, f"{game_id}_{color}_d{depth}.json")
 
 

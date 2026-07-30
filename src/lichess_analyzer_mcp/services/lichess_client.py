@@ -363,7 +363,11 @@ def update_games_index_with_game(username: str, game_id: str) -> None:
     _save_games_index(username, index)
 
 
-def get_pending_analysis(username: str, depth: int = 12) -> list[str]:
+def get_pending_analysis(username: str, depth: int = 0) -> list[str]:
+    if depth == 0:
+        from lichess_analyzer_mcp.config.depth import DEPTH_DEFAULTS
+
+        depth = DEPTH_DEFAULTS["batch"]["pending"]
     """Return game IDs that have no per-game analysis cache at the given depth.
 
     Compares game IDs in Systeq_games.json against per-game cache files

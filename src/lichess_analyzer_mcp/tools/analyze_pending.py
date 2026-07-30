@@ -6,6 +6,7 @@ cache -> update index.  Reports progress per game and final summary.
 """
 
 from lichess_analyzer_mcp.app import app
+from lichess_analyzer_mcp.config.depth import DEPTH_DEFAULTS
 from lichess_analyzer_mcp.services.lichess_client import (
     fetch_user_games,
     fetch_game_pgn,
@@ -19,7 +20,7 @@ log = get_logger("analyze_pending")
 
 
 @app.tool("lichess_analyze_pending")
-async def lichess_analyze_pending(username: str = "Systeq", depth: int = 12, max_games: int = 0):
+async def lichess_analyze_pending(username: str = "Systeq", depth: int = 0, max_games: int = 0):
     """Analyze all pending (uncached) games in batch.
 
     Detects which games from the user's fetched list lack per-game
@@ -29,10 +30,12 @@ async def lichess_analyze_pending(username: str = "Systeq", depth: int = 12, max
 
     Args:
         username: Lichess username
-        depth: Stockfish analysis depth (8-18, default 12)
+        depth: Stockfish analysis depth (8-18, default 12 — 0=auto)
         max_games: Max games to process (0 = all pending)
     """
-    depth = max(8, min(18, depth))
+    if depth == 0:
+        depth = DEPTH_DEFAULTS["batch"]["pending"]
+    depth = max(DEPTH_DEFAULTS["limits"]["min"], min(DEPTH_DEFAULTS["limits"]["max_batch"], depth))
 
     pending = get_pending_analysis(username, depth)
     if not pending:

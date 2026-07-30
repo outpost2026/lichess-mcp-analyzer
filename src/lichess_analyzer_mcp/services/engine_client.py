@@ -6,6 +6,7 @@ import threading
 import chess
 import chess.engine
 from typing import Optional
+from lichess_analyzer_mcp.config.depth import DEPTH_DEFAULTS
 
 _engine: Optional[chess.engine.SimpleEngine] = None
 _engine_init_lock = threading.Lock()
@@ -72,7 +73,9 @@ def _acquire_analysis_lock() -> bool:
     return True
 
 
-def analyze_position(fen: str, depth: int = 18, multipv: int = 3) -> list[dict]:
+def analyze_position(fen: str, depth: int = 0, multipv: int = 3) -> list[dict]:
+    if depth == 0:
+        depth = DEPTH_DEFAULTS["standard"]["position"]
     engine = get_engine()
     board = chess.Board(fen)
     _acquire_analysis_lock()
@@ -107,7 +110,9 @@ def analyze_position(fen: str, depth: int = 18, multipv: int = 3) -> list[dict]:
         _analysis_lock.release()
 
 
-def evaluate_move(fen: str, move_uci: str, depth: int = 16) -> dict:
+def evaluate_move(fen: str, move_uci: str, depth: int = 0) -> dict:
+    if depth == 0:
+        depth = DEPTH_DEFAULTS["standard"]["position"]
     engine = get_engine()
     board = chess.Board(fen)
     move = chess.Move.from_uci(move_uci)
@@ -147,7 +152,9 @@ def evaluate_move(fen: str, move_uci: str, depth: int = 16) -> dict:
     }
 
 
-def get_best_move(fen: str, depth: int = 18) -> dict:
+def get_best_move(fen: str, depth: int = 0) -> dict:
+    if depth == 0:
+        depth = DEPTH_DEFAULTS["standard"]["position"]
     engine = get_engine()
     board = chess.Board(fen)
     _acquire_analysis_lock()

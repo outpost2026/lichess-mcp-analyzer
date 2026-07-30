@@ -8,6 +8,7 @@ import re
 import chess
 
 from lichess_analyzer_mcp.models.game import GameSummary, MoveAnalysis, GameAnalysis
+from lichess_analyzer_mcp.config.depth import DEPTH_DEFAULTS
 from lichess_analyzer_mcp.models.analysis import (
     BlunderFactSheet,
     BoardState,
@@ -76,11 +77,13 @@ def _save_cached_analysis(game_id: str, depth: int, analysis: GameAnalysis) -> N
 def analyze_pgn(
     pgn: str,
     player_color: str = "white",
-    depth: int = 14,
+    depth: int = 0,
     game_id: str | None = None,
     use_cache: bool = True,
     strict_depth: bool = False,
 ) -> GameAnalysis:
+    if depth == 0:
+        depth = DEPTH_DEFAULTS["standard"]["single_game"]
     if use_cache:
         if game_id is None:
             import io
@@ -230,7 +233,9 @@ def _win_prob_from_cp(cp: float) -> float:
     return 1.0 / (1.0 + 10 ** (-cp / 400.0))
 
 
-def _run_analyze_pgn(pgn: str, player_color: str = "white", depth: int = 14) -> GameAnalysis:
+def _run_analyze_pgn(pgn: str, player_color: str = "white", depth: int = 0) -> GameAnalysis:
+    if depth == 0:
+        depth = DEPTH_DEFAULTS["standard"]["single_game"]
     import chess.pgn
     import io
 
