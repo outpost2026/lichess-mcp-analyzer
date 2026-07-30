@@ -9,6 +9,9 @@ async def lichess_analyze_game(
 ):
     """Analyzes a chess game move by move using Stockfish.
 
+    Always caches BOTH white and black perspectives (dual cache).
+    Returns the primary perspective (requested color).
+
     Args:
         game_id: Lichess game ID (8 chars), or empty if using PGN directly
         pgn: PGN string of the game, or empty if using game_id
@@ -36,6 +39,11 @@ async def lichess_analyze_game(
                     color = "white"
         result = analyze_pgn(pgn, player_color=color, depth=depth, game_id=game_id)
 
+        # Dual cache: always analyze and cache the OPPOSITE perspective too
+        # so both {game_id}_white_d{depth}.json and {game_id}_black_d{depth}.json exist
+        other_color = "black" if color == "white" else "white"
+        other_result = analyze_pgn(pgn, player_color=other_color, depth=depth, game_id=game_id)
+
         # Auto-update user games index so per-game analysis is visible
         # in the global cache (Systeq_games.json + Systeq_index.json).
         player_name = result.game.player_name
@@ -62,6 +70,20 @@ async def lichess_analyze_game(
                 "date": result.game.date,
                 "automatic_grab": result.game.automatic_grab,
                 "elo_estimate": result.game.elo_estimate,
+            },
+            "perspective": color,
+            "dual_cache": {
+                "white": round(other_result.total_acpl, 1)
+                if other_color == "white"
+                else round(result.total_acpl, 1),
+                "black": round(other_result.total_acpl, 1)
+                if other_color == "black"
+                else round(result.total_acpl, 1),
+                f"{other_color}_acpl": round(other_result.total_acpl, 1),
+                "files": [
+                    f"{game_id}_white_d{depth}.json",
+                    f"{game_id}_black_d{depth}.json",
+                ],
             },
             "stats": {
                 "total_acpl": round(result.total_acpl, 1),
