@@ -50,6 +50,17 @@ async def lichess_analyze_pending(username: str = "Systeq", depth: int = 0, max_
     if max_games > 0:
         pending = pending[:max_games]
 
+    # B4: Estimated time reporting
+    AVG_TIME_PER_GAME = {12: 58, 14: 84, 18: 588}
+    est_seconds = len(pending) * AVG_TIME_PER_GAME.get(depth, 84)
+    if est_seconds > 900:
+        log.warning(
+            "estimated batch time %.0fs (%d games at depth=%d) exceeds 15min limit",
+            est_seconds,
+            len(pending),
+            depth,
+        )
+
     results = []
     errors = 0
 
@@ -103,6 +114,7 @@ async def lichess_analyze_pending(username: str = "Systeq", depth: int = 0, max_
         "errors": errors,
         "total_pending": len(pending),
         "remaining": len(remaining),
+        "estimated_seconds": est_seconds,
         "results": results,
         "suggestion": (
             "All games cached — dataset is fully consistent."

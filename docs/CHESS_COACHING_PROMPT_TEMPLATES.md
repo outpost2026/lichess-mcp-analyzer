@@ -24,8 +24,14 @@
 ## Template 1: Per-Game Coaching Report
 
 **Účel:** Detailní analýza jedné hry — fázový breakdown, kritické momenty, tréninková doporučení.
-**Vstup:** 1 game_id, cached analysis (_white_d12 / _black_d12)
+**Vstup:** 1 game_id, cached analysis (_white_d{depth} / _black_d{depth})
 **Metodika:** Heisman error prioritization + AICoachess phase grading + Silman imbalances
+
+POZNAMKA K DEPTH:
+- Standardni analyza: d=14 (single game), d=12 (batch)
+- Cache soubory: {game_id}_{color}_d{depth}.json
+- Pro detailni endgame/positional analyze: pouzij d=18
+- Depth neni tool parametr — MCP tool pouzije default podle profilu hry
 
 ```
 Vytvoř coaching report pro hru {game_id}.
@@ -33,7 +39,7 @@ Vytvoř coaching report pro hru {game_id}.
 K DISPOZICI:
 - Cache analýza: data/game_cache/{game_id}_{color}_d{depth}.json
   (per-move Stockfish eval, cp_loss, was_in_check, phase)
-- Pattern detection: lichess_match_patterns(game_ids="{game_id}")
+- Pattern detection: lichess_match_patterns(game_ids="{game_id}", depth=14)
 - BlunderFactSheet: každý blunder s context_window a engine_lines
 
 PRAVIDLA:
@@ -133,7 +139,7 @@ KONTEXT:
 - Hry jsou z pohledu OPPONENTA (my = oponent, oni = původní hráč)
 - n1 = {n1_počet} her kde OPPONENT prohrál (original: wins)
 - n2 = {n2_počet} her kde OPPONENT vyhrál (original: losses)
-- Cache: data/game_cache/*_black_d12.json a *_white_d12.json (dual perspective)
+- Cache: data/game_cache/*_black_d{depth}.json a *_white_d{depth}.json (dual perspective)
 
 K DISPOZICI:
 - Opponent perspective pattern detection: lichess_match_patterns(game_ids="{ids}")

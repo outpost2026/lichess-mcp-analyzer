@@ -364,16 +364,16 @@ def update_games_index_with_game(username: str, game_id: str) -> None:
 
 
 def get_pending_analysis(username: str, depth: int = 0) -> list[str]:
+    """Return game IDs with no per-game analysis cache at exact depth.
+
+    Compares game IDs in username_games.json against per-game cache files
+    in data/game_cache/.  Uses exact depth match — game analyzed at d=14
+    is still pending for a d=12 request.
+    """
     if depth == 0:
         from lichess_analyzer_mcp.config.depth import DEPTH_DEFAULTS
 
         depth = DEPTH_DEFAULTS["batch"]["pending"]
-    """Return game IDs that have no per-game analysis cache at the given depth.
-
-    Compares game IDs in Systeq_games.json against per-game cache files
-    in data/game_cache/.  Uses depth approximation: any {id}_{color}_d*.json
-    file counts as analyzed.
-    """
     import glob
 
     cached_games = _load_user_games_cache(username)
@@ -391,7 +391,7 @@ def get_pending_analysis(username: str, depth: int = 0) -> list[str]:
             color = "white"
         else:
             color = "black"
-        pattern = os.path.join(GAMES_CACHE_DIR, f"{gid}_{color}_d*.json")
+        pattern = os.path.join(GAMES_CACHE_DIR, f"{gid}_{color}_d{depth}.json")
         if not glob.glob(pattern):
             pending.append(gid)
     return pending

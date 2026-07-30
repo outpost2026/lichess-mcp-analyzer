@@ -3,6 +3,12 @@ DEPTH_DEFAULTS = {
         "single_game": 14,
         "import_pgn": 14,
         "position": 18,
+        "bullet": 12,
+        "blitz": 12,
+        "rapid": 14,
+        "classical": 14,
+        "correspondence": 18,
+        "unknown": 14,
     },
     "batch": {
         "pending": 12,

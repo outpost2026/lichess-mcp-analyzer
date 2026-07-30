@@ -1,6 +1,6 @@
 ﻿from lichess_analyzer_mcp.app import app
 from lichess_analyzer_mcp.config.depth import DEPTH_DEFAULTS
-from lichess_analyzer_mcp.services.game_analyzer import analyze_pgn
+from lichess_analyzer_mcp.services.game_analyzer import analyze_pgn, _detect_game_profile
 from lichess_analyzer_mcp.services.lichess_client import fetch_game_pgn
 
 
@@ -20,16 +20,29 @@ async def lichess_analyze_game(
         color: Your color if username not provided ('white' or 'black')
         depth: Stockfish analysis depth (8-24, default 14 — 0=auto)
     """
-    if depth == 0:
-        depth = DEPTH_DEFAULTS["standard"]["single_game"]
-    depth = max(
-        DEPTH_DEFAULTS["limits"]["min"], min(DEPTH_DEFAULTS["limits"]["max_single_game"], depth)
-    )
     try:
         if game_id and not pgn:
             pgn = fetch_game_pgn(game_id)
         if not pgn:
             return {"error": "Provide either game_id or pgn"}
+        if depth == 0:
+            import io
+            import chess.pgn
+
+            game_node = chess.pgn.read_game(io.StringIO(pgn))
+            if game_node:
+                tc = game_node.headers.get("TimeControl", "")
+                profile = _detect_game_profile(tc)
+                profile_depth = DEPTH_DEFAULTS["standard"].get(
+                    profile, DEPTH_DEFAULTS["standard"]["single_game"]
+                )
+                depth = profile_depth
+            else:
+                depth = DEPTH_DEFAULTS["standard"]["single_game"]
+            depth = max(
+                DEPTH_DEFAULTS["limits"]["min"],
+                min(DEPTH_DEFAULTS["limits"]["max_single_game"], depth),
+            )
         if username:
             import io
             import chess.pgn

@@ -38,6 +38,29 @@ def _cache_path(game_id: str, depth: int, color: str = "white") -> str:
     return d
 
 
+def _detect_game_profile(tc: str) -> str:
+    """Vrátí klíč do DEPTH_DEFAULTS podle time control.
+
+    Returns 'bullet' | 'blitz' | 'rapid' | 'classical' | 'correspondence' | 'unknown'.
+    """
+    if not tc or tc in ("?", "-"):
+        return "unknown"
+    tc = tc.strip()
+    if tc.startswith("-"):
+        return "correspondence"
+    match = re.match(r"^(\d+)", tc)
+    if not match:
+        return "unknown"
+    seconds = int(match.group(1))
+    if seconds <= 120:
+        return "bullet"
+    if seconds <= 480:
+        return "blitz"
+    if seconds <= 1800:
+        return "rapid"
+    return "classical"
+
+
 def _load_cached_analysis(
     game_id: str, depth: int, color: str = "white", exact_depth: bool = False
 ) -> GameAnalysis | None:
