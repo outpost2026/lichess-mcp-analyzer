@@ -22,6 +22,13 @@ from lichess_analyzer_mcp.models.analysis import (
 from lichess_analyzer_mcp.services import engine_client
 from lichess_analyzer_mcp.services.lichess_client import fetch_game_pgn
 from lichess_analyzer_mcp.services.logger import get_logger
+from lichess_analyzer_mcp.services.pattern_detector import (
+    THRESHOLD_GRAB_CP,
+    THRESHOLD_BLOCK_CP,
+    THRESHOLD_ENDGAME_CP,
+    THRESHOLD_ENDGAME_EVAL,
+    THRESHOLD_S_CAPTURE_AVERSION_CP,
+)
 
 _logger = get_logger("game_analyzer")
 
@@ -194,7 +201,7 @@ def _per_blunder_patterns(
     matches = []
     cp = move.centipawn_loss
     # B — Automatic grab: capture that is a blunder/mistake
-    if "x" in move.move_san and cp >= 100:
+    if "x" in move.move_san and cp >= THRESHOLD_GRAB_CP:
         matches.append(
             PatternMatchInfo(
                 pattern_id="B",
@@ -203,8 +210,8 @@ def _per_blunder_patterns(
                 evidence=f"capture blunder cp_loss={cp:.0f}",
             )
         )
-    # J — Impulsive check block: in check, non-capture, cp_loss >= 150
-    if in_check and "x" not in move.move_san and cp >= 150:
+    # J — Impulsive check block: in check, non-capture, cp_loss >= THRESHOLD_BLOCK_CP
+    if in_check and "x" not in move.move_san and cp >= THRESHOLD_BLOCK_CP:
         matches.append(
             PatternMatchInfo(
                 pattern_id="J",
@@ -213,8 +220,12 @@ def _per_blunder_patterns(
                 evidence=f"in_check block cp_loss={cp:.0f}",
             )
         )
-    # R — Endgame relaxation: endgame, eval_before > 300, cp_loss >= 300
-    if move.phase == "endgame" and move.eval_before > 300 and cp >= 300:
+    # R — Endgame relaxation: endgame, eval_before > THRESHOLD_ENDGAME_EVAL, cp_loss >= THRESHOLD_ENDGAME_CP
+    if (
+        move.phase == "endgame"
+        and move.eval_before > THRESHOLD_ENDGAME_EVAL
+        and cp >= THRESHOLD_ENDGAME_CP
+    ):
         matches.append(
             PatternMatchInfo(
                 pattern_id="R",
@@ -227,7 +238,7 @@ def _per_blunder_patterns(
     if in_check:
         king_capture_san = [s for s in legal.king_moves if "x" in s]
         king_capture_played = any("x" in move.move_san for s in legal.king_moves if "x" in s)
-        if king_capture_san and not king_capture_played and cp >= 500:
+        if king_capture_san and not king_capture_played and cp >= THRESHOLD_S_CAPTURE_AVERSION_CP:
             matches.append(
                 PatternMatchInfo(
                     pattern_id="S",

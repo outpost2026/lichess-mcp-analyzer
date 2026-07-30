@@ -6,6 +6,8 @@ Each collector:
 3. Returns structured dict consumable by prompt_builder.build_prompt()
 """
 
+import os
+
 from lichess_analyzer_mcp.config.depth import DEPTH_DEFAULTS
 from lichess_analyzer_mcp.services.game_analyzer import analyze_pgn, _load_cached_analysis
 from lichess_analyzer_mcp.services.lichess_client import fetch_game_pgn
@@ -78,19 +80,34 @@ def _weakness_to_dict(wr) -> dict:
 def safe_llm_call(prompt: str, context: str = "") -> tuple[str, list[dict]]:
     """LLM call with cascade fallback + token tracking.
 
-    If no LLM is available, returns a structured data dump as fallback.
+    Sends pre-built prompt directly to LLM providers in cascade order.
+    Falls back to raw prompt dump if no LLM is available.
     """
     from lichess_analyzer_mcp.services.llm_client import (
-        generate_coaching_report_with_logs,
+        PROVIDERS,
         COACHING_SYSTEM_PROMPT,
+        _call_llm,
     )
 
-    report, cascade_log = generate_coaching_report_with_logs(
-        username="lichess",
-        games_analyzed=1,
-        patterns=[{"prompt": prompt, "context": context}],
-    )
-    return report, cascade_log
+    cascade_log = []
+    for prov_cfg in PROVIDERS:
+        api_key = os.environ.get(prov_cfg["api_key_var"], "")
+        if not api_key:
+            cascade_log.append(
+                {
+                    "provider": prov_cfg["name"],
+                    "skipped": True,
+                    "error": "No API key",
+                }
+            )
+            continue
+        content, token_log = _call_llm(COACHING_SYSTEM_PROMPT, prompt, prov_cfg)
+        cascade_log.append(token_log)
+        if content is not None:
+            return content, cascade_log
+
+    fallback = f"# Coaching Report\n\n_LLM unavailable after cascade._\n\n## Data\n\n{prompt}"
+    return fallback, cascade_log
 
 
 def extract_game_id_color_from_analysis(analysis) -> tuple[str, str]:
