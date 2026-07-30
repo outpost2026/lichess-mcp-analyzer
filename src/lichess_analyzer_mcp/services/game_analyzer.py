@@ -43,7 +43,7 @@ def _detect_game_profile(tc: str) -> str:
 
     Returns 'bullet' | 'blitz' | 'rapid' | 'classical' | 'correspondence' | 'unknown'.
     """
-    if not tc or tc in ("?", "-"):
+    if not tc or tc == "?":
         return "unknown"
     tc = tc.strip()
     if tc.startswith("-"):

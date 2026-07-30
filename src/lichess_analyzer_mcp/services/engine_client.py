@@ -125,7 +125,6 @@ def evaluate_move(fen: str, move_uci: str, depth: int = 0) -> dict:
     if depth == 0:
         depth = DEPTH_DEFAULTS["standard"]["position"]
 
-    sf_path = _get_sf_path()
     board = chess.Board(fen)
     move = chess.Move.from_uci(move_uci)
 
@@ -138,6 +137,15 @@ def evaluate_move(fen: str, move_uci: str, depth: int = 0) -> dict:
             "error": f"Move {move_uci} not legal in position {fen}",
         }
 
+    # D1: Cloud fallback for depth >= 18 (chess-api.com)
+    if depth >= 14:
+        from lichess_analyzer_mcp.services.cloud_client import cloud_evaluate_move
+
+        cloud_result = cloud_evaluate_move(fen, move_uci, depth)
+        if cloud_result is not None:
+            return cloud_result
+
+    sf_path = _get_sf_path()
     engine = chess.engine.SimpleEngine.popen_uci(sf_path)
     engine.configure({"Threads": 6, "Hash": 512, "NumaPolicy": "hardware"})
     try:

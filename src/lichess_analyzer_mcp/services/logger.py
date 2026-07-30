@@ -2,7 +2,7 @@
 
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 _logger = None
 
@@ -12,7 +12,9 @@ def get_logger(name: str) -> logging.Logger:
     if _logger is None:
         LOG_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "logs")
         os.makedirs(LOG_DIR, exist_ok=True)
-        LOG_FILE = os.path.join(LOG_DIR, f"lichess_mcp_{datetime.utcnow().strftime('%Y%m')}.log")
+        LOG_FILE = os.path.join(
+            LOG_DIR, f"lichess_mcp_{datetime.now(timezone.utc).strftime('%Y%m')}.log"
+        )
         _handler = logging.FileHandler(LOG_FILE, encoding="utf-8")
         _handler.setFormatter(
             logging.Formatter(
