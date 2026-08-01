@@ -66,6 +66,12 @@
   - F4: engine timeout guard 15 s (P2) — `_run_engine_call` daemon thread + kill engineu na timeout
   - F2: `services/batch_guard.py` — BatchBudget `max_seconds` + `unprocessed_ids` na 6 batch toolů (P13)
 - **18 MCP toolů**, 93/93 testů, audit log funkční
+- **Senior code review** — `docs/CODE_REVIEW_2026-08-01.md` (4 P1, 6 P2, P3 backlog, test gaps):
+  - B100: opening_report čte neexistující atributy (opening_name/player_color/acpl/result) → data garbage
+  - B98: opponent_pool — opponent hardcodovan "black" bez username; n1_count dead
+  - B121: kb/writer KB_ROOT míří na repo root, ne _github/ — target="kb" nikdy nespuštěn
+  - B31: LLM cache klíč bez color — dual-cache white/black se přepisují
+  - P2: B5 (kill špatného engineu), B16 (tiché selhání evaluate→ACPL bias), B101 (chesscom tiše lichess), B113 (_detect_s crash na starých cache)
 
 ---
 
@@ -349,22 +355,31 @@ Pokud sémantický/lexikální popis patternu neodpovídá kódu (jako u pattern
 
 ## 11. Next Steps (Priority Order)
 
-### P0: Code review fixes (z AUDIT_REPORT_v2)
-1. **[F1] asyncio.to_thread** — sync engine/HTTP volání v async handlerech blokují event loop (0× asyncio v src/). První: coaching + persist cesta, pak zbytek. Odhad 1-2 h, EROI 7/10
-2. **[EXIT-HANG]** proces s engine callem neexituje (threading._shutdown + python-chess background thread, atexit se nespustí) — pre-existing, fix nice-to-have
-3. **[RUFF-DEBT]** 18+ pre-existing chyb v tools/ (I001, F841, S110, E501, N806, UP045, F401) — dedikovaný refactor commit, **ručně, nikdy `ruff --fix`** (GT-078)
+### P0: Fix batch 1 — data correctness (z CODE_REVIEW_2026-08-01)
+1. **[B100]** opening_report: `getattr(a, "opening_name")` → `a.game.opening` (též color/acpl/result) — 15 min
+2. **[B98]** opponent_pool: username param + barvy z PGN headerů; opravit n1/n2 výpočet — 15 min
+3. **[B121]** kb/writer KB_ROOT: 4× `..` do `_github/` + timestamp do filename (B119) — 5 min
+4. **[B31]** game_llm_cache klíč `{game_id}_{color}_llm.json` — 10 min
 
-### P1: DBCL/CPM (z CHESS_PATTERNS_AUDIT W1-W10)
-1. `[AUD-05]` Q + Q2 merge
-2. `[AUD-10]` S capture aversion under check
-3. `[AUD-08]` evidence format standard
-4. `[CPM]` it_analogy + compression_ratio do PatternDef/PatternMatch
-5. `[P1-4]` reject loop v LLM pipeline (narrative_validator integrace)
+### P0: Fix batch 2 — runtime
+1. **[B5]** `_run_engine_call(fn, engine)` — killovat referenci volajícího, ne sdružený engine
+2. **[B16]** `evaluation_errors` counter do GameAnalysis (tiché selhání evaluate→ACPL bias)
+3. **[B101]** source="chesscom" — buď implementovat, nebo vrátit error
+4. **[B113]** `_detect_s` guard na fen="" (staré cache → ValueError → crash detect_all)
+5. **[F1] asyncio.to_thread** — sync engine/HTTP volání v async handlerech (0× asyncio v src/). První: coaching + persist cesta, pak zbytek. Odhad 1-2 h, EROI 7/10
 
-### P2: Monitoring
-1. `[BLIND-SPOT-3]` per-game log truncated BFS (P61 flag)
-2. `[K0-2]` depth mismatch warning v cache load
-3. `[ANOMALY-2]` K0 variance — reportovat s každým RUNem
+### P1: Testy k batch 1-2
+1. Unit testy na coaching tooly (opening_report/opponent_pool) — B100/B98 by chytily
+2. Test kb/writer cesty (B121 latentní) + game_llm_cache (B31)
+3. Oprava test_engine_client (mock get_engine neúčinný — evaluate_move reálně spawnuje SF)
+
+### P2: Ostatní
+1. **[EXIT-HANG]** proces s engine callem neexituje — pre-existing, nice-to-have
+2. **[RUFF-DEBT]** 18+ pre-existing chyb v tools/ — dedikovaný refactor commit, **ručně, nikdy `ruff --fix`** (GT-078)
+3. Dead code cleanup: narrative_validator (P1-4 reject loop), SRSEngine (docstring "FSRS" ale SM-2), extract_game_id_color_from_analysis
+4. **[BLIND-SPOT-3]** per-game log truncated BFS (P61)
+5. **[AUD-05]** Q + Q2 merge; **[AUD-10]** S capture aversion; **[AUD-08]** evidence format standard; CPM it_analogy/compression_ratio
+6. **[K0-2]** depth mismatch warning v cache load; **[ANOMALY-2]** K0 variance reporting
 
 ---
 
