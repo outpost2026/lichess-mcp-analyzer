@@ -30,29 +30,32 @@ print(
 )
 print(f"[server] Python: {sys.version}", file=sys.stderr)
 
-# Tool imports trigger @app.tool() decorator registration
-from lichess_analyzer_mcp.tools import fetch_games
-from lichess_analyzer_mcp.tools import analyze_game
-from lichess_analyzer_mcp.tools import analyze_position
-from lichess_analyzer_mcp.tools import opening_explorer
-from lichess_analyzer_mcp.tools import player_profile
-from lichess_analyzer_mcp.tools import diagnose_player
-from lichess_analyzer_mcp.tools import match_patterns
-from lichess_analyzer_mcp.tools import workspace_info
-from lichess_analyzer_mcp.tools import import_pgn
-from lichess_analyzer_mcp.tools import analyze_pending
-from lichess_analyzer_mcp.tools import anonymous_session
+# Tool imports trigger @app.tool() decorator registration (side-effect imports)
+from lichess_analyzer_mcp.tools import fetch_games  # noqa: F401
+from lichess_analyzer_mcp.tools import analyze_game  # noqa: F401
+from lichess_analyzer_mcp.tools import analyze_position  # noqa: F401
+from lichess_analyzer_mcp.tools import opening_explorer  # noqa: F401
+from lichess_analyzer_mcp.tools import player_profile  # noqa: F401
+from lichess_analyzer_mcp.tools import diagnose_player  # noqa: F401
+from lichess_analyzer_mcp.tools import match_patterns  # noqa: F401
+from lichess_analyzer_mcp.tools import workspace_info  # noqa: F401
+from lichess_analyzer_mcp.tools import import_pgn  # noqa: F401
+from lichess_analyzer_mcp.tools import analyze_pending  # noqa: F401
+from lichess_analyzer_mcp.tools import anonymous_session  # noqa: F401
 
 # Coaching tools
-from lichess_analyzer_mcp.tools import coaching_single_game
-from lichess_analyzer_mcp.tools import coaching_cross_game
-from lichess_analyzer_mcp.tools import coaching_opponent_pool
-from lichess_analyzer_mcp.tools import coaching_training_plan
-from lichess_analyzer_mcp.tools import coaching_opening_report
+from lichess_analyzer_mcp.tools import coaching_single_game  # noqa: F401
+from lichess_analyzer_mcp.tools import coaching_cross_game  # noqa: F401
+from lichess_analyzer_mcp.tools import coaching_opponent_pool  # noqa: F401
+from lichess_analyzer_mcp.tools import coaching_training_plan  # noqa: F401
+from lichess_analyzer_mcp.tools import coaching_opening_report  # noqa: F401
+
+# On-demand persistence
+from lichess_analyzer_mcp.tools import persist_report  # noqa: F401
 
 # P21: L2 Resources
-from lichess_analyzer_mcp.resources import analysis_resources
-from lichess_analyzer_mcp.resources import pattern_resources
+from lichess_analyzer_mcp.resources import analysis_resources  # noqa: F401
+from lichess_analyzer_mcp.resources import pattern_resources  # noqa: F401
 
 # API key health check at startup (lazy — only validates env var presence, no network call)
 from lichess_analyzer_mcp.services.llm_client import list_available_providers
