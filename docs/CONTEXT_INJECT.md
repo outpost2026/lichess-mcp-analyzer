@@ -1,9 +1,9 @@
 # Context Injection — lichess-analyzer-mcp
 
-**Datum:** 2026-07-28 | **Verze 4.0**
-**Branch:** `main` | **HEAD:** `0f4eef5` [AUDIT] PATTERN_DETECTOR_AUDIT_INJECT
+**Datum:** 2026-08-01 | **Verze 5.0**
+**Branch:** `main` | **HEAD:** `4348b04` [REVIEW] F3/F4/F2 code-review fixes
 **Working tree:** Clean
-**Audit:** CHESS_PATTERNS_AUDIT_2026-07-28 — 10 nových nálezů W1-W10
+**Session 2026-08-01:** persist_report tool + MCP GT postmortem v7 (GT-078) + code review F3/F4/F2
 
 ---
 
@@ -11,20 +11,21 @@
 
 | Metrika | Hodnota |
 |---------|---------|
-| Branch | `feat` (odvozena z `main`, pushnuta na remote) |
-| HEAD | `e6f3f13` — match_patterns game_ids param |
-| Předchozí commity | `a3fc36d` — anonymous session tool, `c928327` — I→concept, `269d425` — engine_lines fix |
-| Test count | 35/35 pass (Phase 1) + 31 testů `tests/test_dbcl.py` |
+| Branch | `main` (přímé commity) |
+| HEAD | `4348b04` — [REVIEW] F3/F4/F2 code-review fixes |
+| Předchozí commity | `c92940f` — [PERSIST] lichess_persist_report, `984e78a` — [FIX] prompt #1, `f9f60b5`..`de16794` — depth policy + coaching tools |
+| Test count | **93/93 pass** |
+| MCP tools | **18** (12 data + 5 coaching + `lichess_persist_report`) |
 | Python | 3.12, uv |
 | Stockfish | 18 BMI2, Threads=6, Hash=512, NumaPolicy=hardware |
-| Cache | `data/game_cache/` — RUN_005 fresh @ depth=12 (33 files) + INC depth=14 |
-| Env file | `.env` s LICHESS_TOKEN (lokálně) |
+| Cache | `data/game_cache/` — 151 files (Systeq @ d12 + INC @ d14 + anonymní) |
+| Env file | `.env` s LICHESS_TOKEN + LLM klíče (NVIDIA/Cerebras/DeepSeek V4 Flash cascade) |
 
-### Důležité pravidlo: User directive — všechny změny na aktualním branchi, nikdy ne `main`
+### Workflow: commity přímo na `main` (od 2026-07-30), 93/93 testů před každým commitem
 
 ---
 
-## 1. Session Timeline 2026-07-27
+## 1. Session Timeline
 
 ### Dopoledne: DBCL Phase 2 implementace
 - **Commit `59e9fce`** — Pattern N (x-ray pin) feat + tests
@@ -48,6 +49,23 @@
 - **25 anonymních her analyzováno**: ACPL=31.7, 21-4-0 winrate
 - **Commit `e6f3f13`** — [TOOL] `lichess_match_patterns` přidán `game_ids` parametr: umožňuje pattern detection na cachovaných anonymních hrách bez username
 - **Pattern detection na anonymních hrách ověřen**: 8 patternů detekováno z 25 her ✅
+
+### 2026-07-30: Depth policy + coaching tools
+- **Commit `f9f60b5`** — [DEPTH+P1] centrální `config/depth.py` (DEPTH_DEFAULTS), refaktor 7 toolů + 5 coaching MCP toolů
+- **Commit `0c4e452`** — [B+C] auto-select depth dle time control + prompt templates
+- **Commit `de16794`** — [D+E] cloud eval fallback (chess-api.com) + depth policy test suite (93 total)
+- **Commit `920fb5d`** — [REVIEW] safe_llm_call prompt leak fix, pattern threshold dedup, dead dir cleanup
+- **Commit `05f819c`** — [PLAN] session_plan_2026-07-30
+
+### 2026-08-01: Persistence + code review fixes
+- **Commit `984e78a`** — [FIX] prompt template #1: game data (ACPL, blunders, phase, BFS) do promptu
+- **Commit `c92940f`** — [PERSIST] `lichess_persist_report`: on-demand persistence přes LLM cascade (6 kinds, JSON/MD/KB, read-after-write) + report bbJRWReS (NVIDIA, 0 USD)
+- **KB:** MCP GT postmortem v7 — GT-078 (ruff --fix destruktivní autofix, F401 side-effect importy) + P62 + checklist #37 (B2B-Knowledge-Base)
+- **Commit `4348b04`** — [REVIEW] F3/F4/F2:
+  - F3: `services/audit.py` — @auditable na 18 toolů (P5, JSONL do logs/audit_YYYYMM.jsonl)
+  - F4: engine timeout guard 15 s (P2) — `_run_engine_call` daemon thread + kill engineu na timeout
+  - F2: `services/batch_guard.py` — BatchBudget `max_seconds` + `unprocessed_ids` na 6 batch toolů (P13)
+- **18 MCP toolů**, 93/93 testů, audit log funkční
 
 ---
 
@@ -212,6 +230,9 @@ for m in line["pv"][:5]:
 | `narrative_validator.py` | 5 claim operatorů | ⏳ Pending integration |
 | `compressibility_validator.py` | CR computation | ✅ — **⚠️ W7 (neodpovídá README)** |
 | `pattern_artifact_validator.py` | Post-analysis sanity | ✅ — **⚠️ W8 (nevaliduje affected_games)** |
+| `report_persister.py` | On-demand report persistence (6 kinds, JSON/MD/KB) | ✅ (c92940f) |
+| `audit.py` | P5 per-tool audit (JSONL, @auditable) | ✅ (4348b04) |
+| `batch_guard.py` | P13 batch budget (max_seconds + unprocessed_ids) | ✅ (4348b04) |
 
 ### Data
 | File | Status |
@@ -224,6 +245,8 @@ for m in line["pv"][:5]:
 |------|-------|-------|
 | `lichess_analyze_anonymous_session` | file_path / urls / game_ids, depth | Batch analýza anonymních her: txt→parse→fetch→analyze→agregace + label support |
 | `lichess_match_patterns` | username / game_ids, max_games, depth, result | Pattern detection A-Q1 — nově podpora anonymních her přes game_ids |
+| `lichess_coaching_*` (5) | game_id / username / game_ids, depth, max_games, result | Coaching reporty: single_game, cross_game, opponent_pool, training_plan, opening_report — LLM cascade (NVIDIA→Cerebras→DeepSeek V4 Flash) |
+| `lichess_persist_report` | kind, game_id / username / game_ids, format, target | On-demand persistence reportu (docs/ + B2B-Knowledge-Base) |
 
 ---
 
@@ -326,22 +349,23 @@ Pokud sémantický/lexikální popis patternu neodpovídá kódu (jako u pattern
 
 ## 11. Next Steps (Priority Order)
 
-### P0: Continue P1 checklist (DALSÍ_KROKY)
-1. `[AUD-04]` O **RESOLVED** (rename → Stagnační panika) — AUD-05 next
-2. `[AUD-05]` Q + Q2 merge — odstranit duplicitní detekci
-3. `[AUD-10]` S capture aversion under check — do produkce
-4. `[AUD-08]` evidence format standard
+### P0: Code review fixes (z AUDIT_REPORT_v2)
+1. **[F1] asyncio.to_thread** — sync engine/HTTP volání v async handlerech blokují event loop (0× asyncio v src/). První: coaching + persist cesta, pak zbytek. Odhad 1-2 h, EROI 7/10
+2. **[EXIT-HANG]** proces s engine callem neexituje (threading._shutdown + python-chess background thread, atexit se nespustí) — pre-existing, fix nice-to-have
+3. **[RUFF-DEBT]** 18+ pre-existing chyb v tools/ (I001, F841, S110, E501, N806, UP045, F401) — dedikovaný refactor commit, **ručně, nikdy `ruff --fix`** (GT-078)
 
-### P1: CPM features
-1. `[CPM]` it_analogy do PatternDef + prompt
-2. `[CPM]` compression_ratio do PatternMatch
+### P1: DBCL/CPM (z CHESS_PATTERNS_AUDIT W1-W10)
+1. `[AUD-05]` Q + Q2 merge
+2. `[AUD-10]` S capture aversion under check
+3. `[AUD-08]` evidence format standard
+4. `[CPM]` it_analogy + compression_ratio do PatternDef/PatternMatch
+5. `[P1-4]` reject loop v LLM pipeline (narrative_validator integrace)
 
-### P2: DBCL Phase 2 completion
-1. `[P1-4]` reject loop v LLM pipeline
-2. `[P1-5]` SRSCard konzument BFS
-3. `[K0-2]` depth mismatch warning v cache load
-4. `[K0-1]` RUN_config template
+### P2: Monitoring
+1. `[BLIND-SPOT-3]` per-game log truncated BFS (P61 flag)
+2. `[K0-2]` depth mismatch warning v cache load
+3. `[ANOMALY-2]` K0 variance — reportovat s každým RUNem
 
 ---
 
-*Version 3.0 — 2026-07-27. CPM-korelovaný. Session coverage: engine_lines fix committed, RUN_005 verified, INC ground truth cached, I→concept resolved.*
+*Version 5.0 — 2026-08-01. Session coverage: depth policy + coaching tools (07-30), persist_report + KB v7 + F3/F4/F2 review fixes (08-01). 18 toolů, 93/93 testů.*
