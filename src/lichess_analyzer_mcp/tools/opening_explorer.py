@@ -1,8 +1,10 @@
 ﻿from lichess_analyzer_mcp.app import app
+from lichess_analyzer_mcp.services.audit import auditable
 from lichess_analyzer_mcp.services.lichess_client import fetch_opening_explorer
 
 
 @app.tool("lichess_opening_explorer")
+@auditable
 async def lichess_opening_explorer(fen: str, source: str = "lichess"):
     """Looks up a position in the Lichess Opening Explorer.
 

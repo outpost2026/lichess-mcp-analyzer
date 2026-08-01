@@ -1,5 +1,6 @@
 import json
 from lichess_analyzer_mcp.app import app
+from lichess_analyzer_mcp.services.audit import auditable
 from lichess_analyzer_mcp.config.depth import DEPTH_DEFAULTS
 from lichess_analyzer_mcp.services.coaching_base import (
     collect_single_game,
@@ -13,6 +14,7 @@ log = get_logger("coaching_single_game")
 
 
 @app.tool("lichess_coaching_single_game")
+@auditable
 async def lichess_coaching_single_game(
     game_id: str,
     color: str = "white",

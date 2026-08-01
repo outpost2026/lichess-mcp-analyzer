@@ -6,6 +6,7 @@ on explicit request. Default behavior stays ephemeral everywhere else.
 """
 
 from lichess_analyzer_mcp.app import app
+from lichess_analyzer_mcp.services.audit import auditable
 from lichess_analyzer_mcp.services.logger import get_logger
 from lichess_analyzer_mcp.services.report_persister import persist_report
 
@@ -13,6 +14,7 @@ log = get_logger("persist_report")
 
 
 @app.tool("lichess_persist_report")
+@auditable
 async def lichess_persist_report(
     kind: str,
     game_id: str = "",

@@ -1,10 +1,12 @@
 ﻿from lichess_analyzer_mcp.app import app
+from lichess_analyzer_mcp.services.audit import auditable
 from lichess_analyzer_mcp.config.depth import DEPTH_DEFAULTS
 from lichess_analyzer_mcp.services.game_analyzer import analyze_pgn, _detect_game_profile
 from lichess_analyzer_mcp.services.lichess_client import fetch_game_pgn
 
 
 @app.tool("lichess_analyze_game")
+@auditable
 async def lichess_analyze_game(
     game_id: str = "", pgn: str = "", username: str = "", color: str = "white", depth: int = 0
 ):

@@ -1,6 +1,7 @@
 ﻿import glob as glob_mod
 import os
 from lichess_analyzer_mcp.app import app
+from lichess_analyzer_mcp.services.audit import auditable
 from lichess_analyzer_mcp.config.depth import DEPTH_DEFAULTS
 from lichess_analyzer_mcp.services.lichess_client import fetch_user_games, fetch_game_pgn
 from lichess_analyzer_mcp.services.game_analyzer import analyze_pgn, _load_cached_analysis
@@ -33,6 +34,7 @@ def _find_cached_analysis(game_id: str) -> object | None:
 
 
 @app.tool("lichess_match_patterns")
+@auditable
 async def lichess_match_patterns(
     username: str = "",
     max_games: int = 20,

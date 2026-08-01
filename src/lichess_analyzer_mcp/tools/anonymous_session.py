@@ -5,6 +5,7 @@ import re
 import io
 import chess.pgn
 from lichess_analyzer_mcp.app import app
+from lichess_analyzer_mcp.services.audit import auditable
 from lichess_analyzer_mcp.config.depth import DEPTH_DEFAULTS
 from lichess_analyzer_mcp.services.lichess_client import fetch_game_pgn
 from lichess_analyzer_mcp.services.game_analyzer import analyze_pgn
@@ -85,6 +86,7 @@ def _resolve_color(pgn: str, label: str | None) -> str:
 
 
 @app.tool("lichess_analyze_anonymous_session")
+@auditable
 async def lichess_analyze_anonymous_session(
     file_path: str = "",
     game_ids: str = "",

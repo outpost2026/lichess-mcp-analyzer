@@ -1,8 +1,10 @@
 ﻿from lichess_analyzer_mcp.app import app
+from lichess_analyzer_mcp.services.audit import auditable
 from lichess_analyzer_mcp.services.lichess_client import fetch_user_profile
 
 
 @app.tool("lichess_player_profile")
+@auditable
 async def lichess_player_profile(username: str):
     """Returns a player's Lichess profile, ratings, and stats.
 

@@ -6,6 +6,8 @@ cache -> update index.  Reports progress per game and final summary.
 """
 
 from lichess_analyzer_mcp.app import app
+from lichess_analyzer_mcp.services.audit import auditable
+from lichess_analyzer_mcp.services.batch_guard import BatchBudget
 from lichess_analyzer_mcp.config.depth import DEPTH_DEFAULTS
 from lichess_analyzer_mcp.services.lichess_client import (
     fetch_user_games,
@@ -20,7 +22,10 @@ log = get_logger("analyze_pending")
 
 
 @app.tool("lichess_analyze_pending")
-async def lichess_analyze_pending(username: str = "Systeq", depth: int = 0, max_games: int = 0):
+@auditable
+async def lichess_analyze_pending(
+    username: str = "Systeq", depth: int = 0, max_games: int = 0, max_seconds: int = 0
+):
     """Analyze all pending (uncached) games in batch.
 
     Detects which games from the user's fetched list lack per-game
@@ -32,6 +37,8 @@ async def lichess_analyze_pending(username: str = "Systeq", depth: int = 0, max_
         username: Lichess username
         depth: Stockfish analysis depth (8-18, default 12 — 0=auto)
         max_games: Max games to process (0 = all pending)
+        max_seconds: Max wall-clock seconds for this batch (0 = unlimited).
+            Returns unprocessed_ids when budget is exceeded.
     """
     if depth == 0:
         depth = DEPTH_DEFAULTS["batch"]["pending"]
@@ -63,8 +70,13 @@ async def lichess_analyze_pending(username: str = "Systeq", depth: int = 0, max_
 
     results = []
     errors = 0
+    unprocessed_ids = []
+    budget = BatchBudget(max_seconds)
 
     for i, game_id in enumerate(pending):
+        if budget.exceeded:
+            unprocessed_ids.append(game_id)
+            continue
         log.info("analyze_pending [%d/%d] game_id=%s", i + 1, len(pending), game_id)
         try:
             pgn = fetch_game_pgn(game_id)
@@ -109,16 +121,26 @@ async def lichess_analyze_pending(username: str = "Systeq", depth: int = 0, max_
 
     return {
         "username": username,
-        "status": "complete",
+        "status": "complete" if not unprocessed_ids else "partial",
         "analyzed": len([r for r in results if r["status"] == "ok"]),
         "errors": errors,
         "total_pending": len(pending),
         "remaining": len(remaining),
         "estimated_seconds": est_seconds,
         "results": results,
+        "unprocessed_ids": unprocessed_ids,
+        "elapsed_seconds": round(budget.elapsed, 1),
+        "budget_exceeded": bool(unprocessed_ids),
         "suggestion": (
             "All games cached — dataset is fully consistent."
             if not remaining
-            else f"{len(remaining)} game(s) still pending. Increase depth or check for API errors."
+            else (
+                f"{len(remaining)} game(s) still pending. Increase depth or check for API errors."
+                if not unprocessed_ids
+                else (
+                    f"{len(unprocessed_ids)} game(s) not processed (budget). "
+                    "Call again with higher max_seconds."
+                )
+            )
         ),
     }

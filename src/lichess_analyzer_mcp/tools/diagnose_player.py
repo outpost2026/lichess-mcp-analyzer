@@ -1,4 +1,6 @@
 ﻿from lichess_analyzer_mcp.app import app
+from lichess_analyzer_mcp.services.audit import auditable
+from lichess_analyzer_mcp.services.batch_guard import BatchBudget
 from lichess_analyzer_mcp.config.depth import DEPTH_DEFAULTS
 from lichess_analyzer_mcp.services.lichess_client import fetch_user_games, fetch_game_pgn
 from lichess_analyzer_mcp.services.game_analyzer import analyze_pgn, _load_cached_analysis
@@ -9,8 +11,9 @@ log = get_logger("diagnose_player")
 
 
 @app.tool("lichess_diagnose_player")
+@auditable
 async def lichess_diagnose_player(
-    username: str, max_games: int = 20, depth: int = 0, result: str = "all"
+    username: str, max_games: int = 20, depth: int = 0, result: str = "all", max_seconds: int = 0
 ):
     """Diagnoses a player's weaknesses across multiple games.
 
@@ -25,6 +28,8 @@ async def lichess_diagnose_player(
         max_games: Number of recent games to analyze (5-50)
         depth: Stockfish depth for analysis (8-18, 0=auto)
         result: Filtr dle vysledku - 'all', 'win', 'loss', 'draw'
+        max_seconds: Max wall-clock seconds for this batch (0 = unlimited).
+            Returns unprocessed_ids when budget is exceeded.
     """
     max_games = max(5, min(999, max_games))
     if depth == 0:
@@ -50,9 +55,14 @@ async def lichess_diagnose_player(
 
         analyses = []
         skipped = 0
+        unprocessed_ids = []
+        budget = BatchBudget(max_seconds)
 
         for g in games_data[:max_games]:
             game_id = g.get("id", "")
+            if budget.exceeded:
+                unprocessed_ids.append(game_id)
+                continue
             try:
                 color = "white"
                 if (
@@ -76,6 +86,15 @@ async def lichess_diagnose_player(
                 skipped += 1
 
         if not analyses:
+            if unprocessed_ids:
+                return {
+                    "username": username,
+                    "games_analyzed": 0,
+                    "total_available": total_available,
+                    "error": "No games could be analyzed within budget",
+                    "unprocessed_ids": unprocessed_ids,
+                    **budget.to_dict(),
+                }
             log.error("0 games analyzed | user=%s", username)
             return {"error": "No games could be analyzed"}
 
@@ -116,6 +135,15 @@ async def lichess_diagnose_player(
                 "for a full dataset, or these will be analyzed on first use."
             )
             result["pending_analysis"] = pending
+        if unprocessed_ids:
+            result["unprocessed_ids"] = unprocessed_ids
+            result["budget_exceeded"] = True
+            result["warning"] = (
+                result.get("warning", "")
+                + f" Time budget exceeded — {len(unprocessed_ids)} game(s) not processed. "
+                "Call again or increase max_seconds."
+            ).strip()
+        result["elapsed_seconds"] = round(budget.elapsed, 1)
         return result
     except Exception as e:
         log.exception("diagnose error | user=%s", username)

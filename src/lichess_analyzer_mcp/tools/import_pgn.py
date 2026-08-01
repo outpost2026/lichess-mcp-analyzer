@@ -3,12 +3,14 @@
 from datetime import datetime
 
 from lichess_analyzer_mcp.app import app
+from lichess_analyzer_mcp.services.audit import auditable
 from lichess_analyzer_mcp.config.depth import DEPTH_DEFAULTS
 from lichess_analyzer_mcp.services.game_analyzer import analyze_pgn
 from lichess_analyzer_mcp.resources.analysis_resources import store_analysis
 
 
 @app.tool("lichess_import_pgn")
+@auditable
 async def lichess_import_pgn(
     pgn: str,
     color: str = "white",

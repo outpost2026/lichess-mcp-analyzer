@@ -3,6 +3,7 @@
 import os
 import sys
 from lichess_analyzer_mcp.app import app
+from lichess_analyzer_mcp.services.audit import auditable
 
 _KNOWN_TOOLS = [
     "lichess_fetch_games",
@@ -19,6 +20,7 @@ _KNOWN_TOOLS = [
 
 
 @app.tool("lichess_workspace_info")
+@auditable
 async def lichess_workspace_info():
     """Returns workspace context for LLM agent orientation.
 

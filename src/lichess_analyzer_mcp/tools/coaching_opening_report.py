@@ -1,6 +1,8 @@
 import json
 from collections import defaultdict
 from lichess_analyzer_mcp.app import app
+from lichess_analyzer_mcp.services.audit import auditable
+from lichess_analyzer_mcp.services.batch_guard import BatchBudget
 from lichess_analyzer_mcp.config.depth import DEPTH_DEFAULTS
 from lichess_analyzer_mcp.services.lichess_client import fetch_user_games, fetch_game_pgn
 from lichess_analyzer_mcp.services.game_analyzer import analyze_pgn, _load_cached_analysis
@@ -15,11 +17,13 @@ log = get_logger("coaching_opening_report")
 
 
 @app.tool("lichess_coaching_opening_report")
+@auditable
 async def lichess_coaching_opening_report(
     username: str,
     max_games: int = 20,
     depth: int = 0,
     result: str = "all",
+    max_seconds: int = 0,
 ):
     """Opening repertoire report based on recent games.
 
@@ -31,6 +35,8 @@ async def lichess_coaching_opening_report(
         max_games: Number of games to analyze (5-50)
         depth: Stockfish depth (8-18, 0=auto)
         result: Filter - 'all', 'win', 'loss', 'draw'
+        max_seconds: Max wall-clock seconds for this batch (0 = unlimited).
+            Returns unprocessed_ids when budget is exceeded.
     """
     max_games = max(5, min(999, max_games))
     if depth == 0:
@@ -43,8 +49,13 @@ async def lichess_coaching_opening_report(
     try:
         games_data = fetch_user_games(username, max_games=max_games, result=result)
         analyses_with_opening = []
+        unprocessed_ids = []
+        budget = BatchBudget(max_seconds)
         for g in games_data[:max_games]:
             game_id = g.get("id", "")
+            if budget.exceeded:
+                unprocessed_ids.append(game_id)
+                continue
             try:
                 color = "white"
                 if (
@@ -64,6 +75,14 @@ async def lichess_coaching_opening_report(
                 log.warning("skip %s: %s", game_id, e)
 
         if not analyses_with_opening:
+            if unprocessed_ids:
+                return {
+                    "username": username,
+                    "games_analyzed": 0,
+                    "error": "No games could be analyzed within budget",
+                    "unprocessed_ids": unprocessed_ids,
+                    **budget.to_dict(),
+                }
             return {"error": "No games could be analyzed"}
 
         patterns = collect_patterns_for_games(analyses_with_opening, username)
@@ -139,6 +158,9 @@ async def lichess_coaching_opening_report(
                 "black": {k: len(v) for k, v in black_by_opening.items()},
             },
             "cascade_log": cascade_log,
+            "unprocessed_ids": unprocessed_ids,
+            "elapsed_seconds": round(budget.elapsed, 1),
+            "budget_exceeded": bool(unprocessed_ids),
         }
     except Exception as e:
         log.exception("coaching opening report error | user=%s", username)

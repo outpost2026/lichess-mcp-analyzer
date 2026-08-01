@@ -1,6 +1,7 @@
 ﻿import json
 from datetime import datetime
 from lichess_analyzer_mcp.app import app
+from lichess_analyzer_mcp.services.audit import auditable
 from lichess_analyzer_mcp.services.lichess_client import fetch_user_games, fetch_user_games_metadata
 
 
@@ -13,6 +14,7 @@ def _safe(val):
 
 
 @app.tool("lichess_fetch_games")
+@auditable
 async def lichess_fetch_games(
     username: str, max_games: int = 10, source: str = "lichess", result: str = "all"
 ):
@@ -62,6 +64,7 @@ async def lichess_fetch_games(
 
 
 @app.tool("lichess_games_index")
+@auditable
 async def lichess_games_index(username: str):
     """Vrati games index cache — rychly prehled her dle resultu (win/loss/draw).
 

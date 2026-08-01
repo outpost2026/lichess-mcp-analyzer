@@ -1,5 +1,7 @@
 import json
 from lichess_analyzer_mcp.app import app
+from lichess_analyzer_mcp.services.audit import auditable
+from lichess_analyzer_mcp.services.batch_guard import BatchBudget
 from lichess_analyzer_mcp.config.depth import DEPTH_DEFAULTS
 from lichess_analyzer_mcp.services.lichess_client import fetch_game_pgn
 from lichess_analyzer_mcp.services.game_analyzer import analyze_pgn, _load_cached_analysis
@@ -14,9 +16,11 @@ log = get_logger("coaching_opponent_pool")
 
 
 @app.tool("lichess_coaching_opponent_pool")
+@auditable
 async def lichess_coaching_opponent_pool(
     game_ids: str,
     depth: int = 0,
+    max_seconds: int = 0,
 ):
     """Opponent pool analysis — games analyzed from opponent's perspective.
 
@@ -26,6 +30,8 @@ async def lichess_coaching_opponent_pool(
     Args:
         game_ids: Comma-separated Lichess game IDs (8 chars each)
         depth: Stockfish depth (8-18, 0=auto)
+        max_seconds: Max wall-clock seconds for this batch (0 = unlimited).
+            Returns unprocessed_ids when budget is exceeded.
     """
     if depth == 0:
         depth = DEPTH_DEFAULTS["batch"]["patterns"]
@@ -38,8 +44,13 @@ async def lichess_coaching_opponent_pool(
     try:
         opponent_analyses = []
         author_analyses = []
+        unprocessed_ids = []
+        budget = BatchBudget(max_seconds)
 
         for gid in ids:
+            if budget.exceeded:
+                unprocessed_ids.append(gid)
+                continue
             try:
                 pgn = fetch_game_pgn(gid)
                 if not pgn:
@@ -73,6 +84,15 @@ async def lichess_coaching_opponent_pool(
                 log.warning("skip %s: %s", gid, e)
 
         if not opponent_analyses:
+            if unprocessed_ids:
+                return {
+                    "ids": ids,
+                    "opponent_games_analyzed": 0,
+                    "author_games_analyzed": 0,
+                    "error": "No opponent analyses could be produced within budget",
+                    "unprocessed_ids": unprocessed_ids,
+                    **budget.to_dict(),
+                }
             return {"error": "No opponent analyses could be produced"}
 
         opponent_patterns = collect_patterns_for_games(opponent_analyses, "opponent")
@@ -110,6 +130,9 @@ async def lichess_coaching_opponent_pool(
             "report": report,
             "opponent_patterns": opponent_patterns,
             "cascade_log": cascade_log,
+            "unprocessed_ids": unprocessed_ids,
+            "elapsed_seconds": round(budget.elapsed, 1),
+            "budget_exceeded": bool(unprocessed_ids),
         }
     except Exception as e:
         log.exception("coaching opponent pool error")

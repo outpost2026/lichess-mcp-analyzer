@@ -1,5 +1,7 @@
 import json
 from lichess_analyzer_mcp.app import app
+from lichess_analyzer_mcp.services.audit import auditable
+from lichess_analyzer_mcp.services.batch_guard import BatchBudget
 from lichess_analyzer_mcp.config.depth import DEPTH_DEFAULTS
 from lichess_analyzer_mcp.services.lichess_client import fetch_user_games, fetch_game_pgn
 from lichess_analyzer_mcp.services.game_analyzer import analyze_pgn, _load_cached_analysis
@@ -15,6 +17,7 @@ log = get_logger("coaching_training_plan")
 
 
 @app.tool("lichess_coaching_training_plan")
+@auditable
 async def lichess_coaching_training_plan(
     username: str,
     max_games: int = 20,
@@ -22,6 +25,7 @@ async def lichess_coaching_training_plan(
     rating: int = 0,
     depth: int = 0,
     result: str = "all",
+    max_seconds: int = 0,
 ):
     """Personalized training plan based on cross-game diagnostics.
 
@@ -35,6 +39,8 @@ async def lichess_coaching_training_plan(
         rating: Current rating (0 = unknown)
         depth: Stockfish depth (8-18, 0=auto)
         result: Filter - 'all', 'win', 'loss', 'draw'
+        max_seconds: Max wall-clock seconds for this batch (0 = unlimited).
+            Returns unprocessed_ids when budget is exceeded.
     """
     max_games = max(5, min(999, max_games))
     if depth == 0:
@@ -47,8 +53,13 @@ async def lichess_coaching_training_plan(
     try:
         games_data = fetch_user_games(username, max_games=max_games, result=result)
         analyses = []
+        unprocessed_ids = []
+        budget = BatchBudget(max_seconds)
         for g in games_data[:max_games]:
             game_id = g.get("id", "")
+            if budget.exceeded:
+                unprocessed_ids.append(game_id)
+                continue
             try:
                 color = "white"
                 if (
@@ -68,6 +79,14 @@ async def lichess_coaching_training_plan(
                 log.warning("skip %s: %s", game_id, e)
 
         if not analyses:
+            if unprocessed_ids:
+                return {
+                    "username": username,
+                    "games_analyzed": 0,
+                    "error": "No games could be analyzed within budget",
+                    "unprocessed_ids": unprocessed_ids,
+                    **budget.to_dict(),
+                }
             return {"error": "No games could be analyzed"}
 
         patterns = collect_patterns_for_games(analyses, username)
@@ -102,6 +121,9 @@ async def lichess_coaching_training_plan(
             "patterns": patterns[:5],
             "weakness": weakness,
             "cascade_log": cascade_log,
+            "unprocessed_ids": unprocessed_ids,
+            "elapsed_seconds": round(budget.elapsed, 1),
+            "budget_exceeded": bool(unprocessed_ids),
         }
     except Exception as e:
         log.exception("coaching training plan error | user=%s", username)

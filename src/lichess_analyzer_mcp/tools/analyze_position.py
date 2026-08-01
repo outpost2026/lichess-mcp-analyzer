@@ -1,10 +1,12 @@
 ﻿from lichess_analyzer_mcp.app import app
+from lichess_analyzer_mcp.services.audit import auditable
 from lichess_analyzer_mcp.config.depth import DEPTH_DEFAULTS
 from lichess_analyzer_mcp.services.engine_client import analyze_position
 from lichess_analyzer_mcp.services.lichess_client import fetch_cloud_eval
 
 
 @app.tool("lichess_analyze_position")
+@auditable
 async def lichess_analyze_position(fen: str, depth: int = 0, use_cloud: bool = True):
     """Analyzes a chess position using Stockfish or Lichess cloud eval.
 

@@ -2,7 +2,6 @@
 
 import os
 import atexit
-import subprocess
 import threading
 import chess
 import chess.engine
@@ -13,6 +12,7 @@ _engine: Optional[chess.engine.SimpleEngine] = None
 _engine_init_lock = threading.Lock()
 _analysis_lock = threading.Lock()
 _ENGINE_LOCK_TIMEOUT = 120.0  # seconds — recovery from zombie lock
+_ENGINE_CALL_TIMEOUT = 15.0  # seconds — P2: <= 25% of MCP client timeout (60s)
 
 
 @atexit.register
@@ -74,6 +74,44 @@ def _acquire_analysis_lock() -> bool:
     return True
 
 
+def _kill_engine():
+    """Terminate the shared engine immediately (timeout recovery)."""
+    global _engine
+    if _engine is not None:
+        try:
+            _engine.quit()
+        except Exception:  # noqa: S110 — engine already failing; quit is best-effort
+            pass
+        _engine = None
+
+
+def _run_engine_call(fn, timeout_s: float = _ENGINE_CALL_TIMEOUT):
+    """Run a blocking engine call with a hard timeout.
+
+    The engine call runs in a daemon thread; if it does not finish within
+    timeout_s the shared engine is killed (otherwise the still-running call
+    would corrupt subsequent analysis) and an error dict is returned.
+    A worker exception is converted to an error dict as well.
+    """
+    result = {}
+
+    def _worker():
+        try:
+            result["value"] = fn()
+        except Exception as exc:  # noqa: BLE001
+            result["error"] = str(exc)
+
+    t = threading.Thread(target=_worker, daemon=True)
+    t.start()
+    t.join(timeout_s)
+    if t.is_alive():
+        _kill_engine()
+        return {"error": f"engine call timed out after {timeout_s:.0f}s"}
+    if "error" in result:
+        return {"error": result["error"]}
+    return result["value"]
+
+
 def analyze_position(fen: str, depth: int = 0, multipv: int = 3) -> list[dict]:
     if depth == 0:
         depth = DEPTH_DEFAULTS["standard"]["position"]
@@ -81,32 +119,39 @@ def analyze_position(fen: str, depth: int = 0, multipv: int = 3) -> list[dict]:
     board = chess.Board(fen)
     _acquire_analysis_lock()
     try:
-        items = []
-        with engine.analysis(board, chess.engine.Limit(depth=depth)) as analysis:
-            for line in analysis:
-                if "pv" not in line or "score" not in line:
-                    continue
-                score = line["score"].relative
-                moves_san = []
-                tb = board.copy()
-                for m in line["pv"][:5]:
-                    try:
-                        moves_san.append(tb.san(m))
-                        tb.push(m)
-                    except (AssertionError, ValueError):
+
+        def _do_analysis():
+            items = []
+            with engine.analysis(board, chess.engine.Limit(depth=depth)) as analysis:
+                for line in analysis:
+                    if "pv" not in line or "score" not in line:
+                        continue
+                    score = line["score"].relative
+                    moves_san = []
+                    tb = board.copy()
+                    for m in line["pv"][:5]:
+                        try:
+                            moves_san.append(tb.san(m))
+                            tb.push(m)
+                        except (AssertionError, ValueError):
+                            break
+                    items.append(
+                        {
+                            "depth": line.get("depth", 0),
+                            "score_cp": score.score() if score.score() is not None else None,
+                            "mate": score.mate() if score.mate() is not None else None,
+                            "pv": line["pv"][:5],
+                            "pv_san": moves_san,
+                        }
+                    )
+                    if len(items) >= multipv:
                         break
-                items.append(
-                    {
-                        "depth": line.get("depth", 0),
-                        "score_cp": score.score() if score.score() is not None else None,
-                        "mate": score.mate() if score.mate() is not None else None,
-                        "pv": line["pv"][:5],
-                        "pv_san": moves_san,
-                    }
-                )
-                if len(items) >= multipv:
-                    break
-        return items
+            return items
+
+        res = _run_engine_call(_do_analysis)
+        if isinstance(res, dict) and "error" in res:
+            return []
+        return res
     finally:
         _analysis_lock.release()
 
@@ -149,23 +194,37 @@ def evaluate_move(fen: str, move_uci: str, depth: int = 0) -> dict:
     engine = chess.engine.SimpleEngine.popen_uci(sf_path)
     engine.configure({"Threads": 6, "Hash": 512, "NumaPolicy": "hardware"})
     try:
-        info_before = engine.analyse(board, chess.engine.Limit(depth=depth))
-        eval_before = info_before["score"].relative.score()
-        best_move = info_before["pv"][0] if "pv" in info_before else None
 
-        if best_move:
-            board_best = board.copy()
-            board_best.push(best_move)
-            best_res = engine.analyse(board_best, chess.engine.Limit(depth=depth))
-            best_score = best_res["score"].relative.score()
-            best_player = -best_score if best_score is not None else None
-        else:
-            best_player = eval_before
+        def _do_evaluate():
+            info_before = engine.analyse(board, chess.engine.Limit(depth=depth))
+            eval_before = info_before["score"].relative.score()
+            best_move = info_before["pv"][0] if "pv" in info_before else None
 
-        board.push(move)
-        actual_res = engine.analyse(board, chess.engine.Limit(depth=depth))
-        actual_score = actual_res["score"].relative.score()
-        actual_player = -actual_score if actual_score is not None else None
+            if best_move:
+                board_best = board.copy()
+                board_best.push(best_move)
+                best_res = engine.analyse(board_best, chess.engine.Limit(depth=depth))
+                best_score = best_res["score"].relative.score()
+                best_player = -best_score if best_score is not None else None
+            else:
+                best_player = eval_before
+
+            board.push(move)
+            actual_res = engine.analyse(board, chess.engine.Limit(depth=depth))
+            actual_score = actual_res["score"].relative.score()
+            actual_player = -actual_score if actual_score is not None else None
+            return eval_before, best_move, best_player, actual_player
+
+        res = _run_engine_call(_do_evaluate)
+        if isinstance(res, dict) and "error" in res:
+            return {
+                "eval_before": 0,
+                "eval_after": 0,
+                "centipawn_loss": 0,
+                "best_move_uci": None,
+                "error": res["error"],
+            }
+        eval_before, best_move, best_player, actual_player = res
     finally:
         engine.quit()
 
@@ -189,14 +248,21 @@ def get_best_move(fen: str, depth: int = 0) -> dict:
     board = chess.Board(fen)
     _acquire_analysis_lock()
     try:
-        info = engine.analyse(board, chess.engine.Limit(depth=depth))
-        score = info["score"].relative
-        best_move = info["pv"][0] if "pv" in info else None
-        return {
-            "best_move_uci": best_move.uci() if best_move else None,
-            "score_cp": score.score() if score.score() is not None else None,
-            "mate": score.mate() if score.mate() is not None else None,
-        }
+
+        def _do_best():
+            info = engine.analyse(board, chess.engine.Limit(depth=depth))
+            score = info["score"].relative
+            best_move = info["pv"][0] if "pv" in info else None
+            return {
+                "best_move_uci": best_move.uci() if best_move else None,
+                "score_cp": score.score() if score.score() is not None else None,
+                "mate": score.mate() if score.mate() is not None else None,
+            }
+
+        res = _run_engine_call(_do_best)
+        if isinstance(res, dict) and "error" in res:
+            return res
+        return res
     finally:
         _analysis_lock.release()
 
