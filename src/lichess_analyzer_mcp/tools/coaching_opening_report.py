@@ -16,6 +16,20 @@ from lichess_analyzer_mcp.services.logger import get_logger
 log = get_logger("coaching_opening_report")
 
 
+def _game_opening_stats(a) -> dict:
+    """Extract opening-relevant stats from a GameAnalysis (B100 fix).
+
+    Uses real model attributes (a.game.opening/color/result, a.total_acpl)
+    instead of non-existent getattr fallbacks.
+    """
+    return {
+        "opening": (a.game.opening if a and a.game and a.game.opening else "Unknown"),
+        "color": a.game.color if a and a.game and a.game.color else "white",
+        "acpl": a.total_acpl if a else 0,
+        "result": a.game.result if a and a.game and a.game.result else "*",
+    }
+
+
 @app.tool("lichess_coaching_opening_report")
 @auditable
 async def lichess_coaching_opening_report(
@@ -91,22 +105,29 @@ async def lichess_coaching_opening_report(
         black_by_opening = defaultdict(list)
 
         for a in analyses_with_opening:
-            opening = getattr(a, "opening_name", "Unknown") or "Unknown"
-            color = getattr(a, "player_color", "white")
-            acpl = getattr(a, "acpl", None) or 0
-            result_val = getattr(a, "result", "*")
-            if color == "white":
-                white_by_opening[opening].append({"acpl": acpl, "result": result_val})
+            s = _game_opening_stats(a)
+            if s["color"] == "white":
+                white_by_opening[s["opening"]].append({"acpl": s["acpl"], "result": s["result"]})
             else:
-                black_by_opening[opening].append({"acpl": acpl, "result": result_val})
+                black_by_opening[s["opening"]].append({"acpl": s["acpl"], "result": s["result"]})
 
-        def format_openings(data: dict) -> str:
+        def format_openings(data: dict, side: str = "white") -> str:
             lines = []
             for opening, games_list in sorted(data.items(), key=lambda x: len(x[1]), reverse=True):
                 n = len(games_list)
                 avg_acpl = sum(g["acpl"] for g in games_list) / n if n else 0
-                wins = sum(1 for g in games_list if g["result"] == "1-0")
-                losses = sum(1 for g in games_list if g["result"] == "0-1")
+                wins = sum(
+                    1
+                    for g in games_list
+                    if (side == "white" and g["result"] == "1-0")
+                    or (side == "black" and g["result"] == "0-1")
+                )
+                losses = sum(
+                    1
+                    for g in games_list
+                    if (side == "white" and g["result"] == "0-1")
+                    or (side == "black" and g["result"] == "1-0")
+                )
                 wr = wins / n if n else 0
                 lines.append(f"  - {opening} ({n} her): win_rate={wr:.0%}, ACPL={avg_acpl:.0f}")
             return "\n".join(lines) or "  (žádná data)"
@@ -140,8 +161,8 @@ async def lichess_coaching_opening_report(
             "N": len(analyses_with_opening),
             "username": username,
             "patterns_json": json.dumps(patterns, ensure_ascii=False, indent=2),
-            "white_openings": format_openings(dict(white_by_opening)),
-            "black_openings": format_openings(dict(black_by_opening)),
+            "white_openings": format_openings(dict(white_by_opening), "white"),
+            "black_openings": format_openings(dict(black_by_opening), "black"),
             "worst_openings": top_worst({**dict(white_by_opening), **dict(black_by_opening)}),
             "best_openings": top_best({**dict(white_by_opening), **dict(black_by_opening)}),
         }

@@ -9,21 +9,32 @@ KB_ROOT = os.path.join(
     "..",
     "..",
     "..",
+    "..",
     "B2B-Knowledge-Base",
 )
 
 ANALYSIS_DIR = os.path.join(KB_ROOT, "02_ANAL\xddZY", "02_chess")
 PATTERN_DIR = os.path.join(KB_ROOT, "04_KNOWLEDGE_BASE", "02_chess")
 
+_KB_EXISTS = os.path.isdir(KB_ROOT)
+
 
 def _ensure_dirs():
+    if not _KB_EXISTS:
+        raise FileNotFoundError(
+            f"KB_ROOT does not exist: {KB_ROOT} (expected _github/B2B-Knowledge-Base)"
+        )
     os.makedirs(ANALYSIS_DIR, exist_ok=True)
     os.makedirs(PATTERN_DIR, exist_ok=True)
 
 
+def _ts() -> str:
+    return datetime.utcnow().strftime("%Y-%m-%d_%H%M%S")
+
+
 def write_analysis_report(username: str, report: dict) -> str:
     _ensure_dirs()
-    date = datetime.utcnow().strftime("%Y-%m-%d")
+    date = _ts()
     filename = f"chess_diagnosis_{username}_{date}.md"
     path = os.path.join(ANALYSIS_DIR, filename)
     lines = [
@@ -62,7 +73,7 @@ def write_analysis_report(username: str, report: dict) -> str:
 
 def write_pattern_report(username: str, patterns: list[dict]) -> str:
     _ensure_dirs()
-    date = datetime.utcnow().strftime("%Y-%m-%d")
+    date = _ts()
     filename = f"player_patterns_{username}_{date}.json"
     path = os.path.join(PATTERN_DIR, filename)
     data = {

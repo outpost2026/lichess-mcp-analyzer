@@ -46,8 +46,8 @@ def _game_cache_path(game_id: str, color: str, depth: int = 0) -> str:
     return os.path.join(CACHE_DIR, f"{game_id}_{color}_d{depth}.json")
 
 
-def _llm_cache_path(game_id: str) -> str:
-    return os.path.join(CACHE_DIR, f"{game_id}_llm.json")
+def _llm_cache_path(game_id: str, color: str) -> str:
+    return os.path.join(CACHE_DIR, f"{game_id}_{color}_llm.json")
 
 
 def _load_stockfish_cache(game_id: str, color: str) -> Optional[dict]:
@@ -61,8 +61,8 @@ def _load_stockfish_cache(game_id: str, color: str) -> Optional[dict]:
         return None
 
 
-def _load_llm_cache(game_id: str) -> Optional[dict]:
-    path = _llm_cache_path(game_id)
+def _load_llm_cache(game_id: str, color: str) -> Optional[dict]:
+    path = _llm_cache_path(game_id, color)
     if not os.path.exists(path):
         return None
     try:
@@ -72,8 +72,8 @@ def _load_llm_cache(game_id: str) -> Optional[dict]:
         return None
 
 
-def _save_llm_cache(game_id: str, data: dict) -> None:
-    path = _llm_cache_path(game_id)
+def _save_llm_cache(game_id: str, color: str, data: dict) -> None:
+    path = _llm_cache_path(game_id, color)
     tmp = path + ".tmp"
     try:
         with open(tmp, "w", encoding="utf-8") as f:
@@ -207,7 +207,7 @@ def analyze_game_llm(
     current_tag = _compute_content_tag(game_data)
 
     if not force:
-        cached = _load_llm_cache(game_id)
+        cached = _load_llm_cache(game_id, color)
         if cached and cached.get("content_tag") == current_tag:
             return cached
 
@@ -244,7 +244,7 @@ def analyze_game_llm(
                 "token_log": log,
                 "content_tag": tag,
             }
-            _save_llm_cache(game_id, result)
+            _save_llm_cache(game_id, color, result)
             return result
 
 
@@ -277,9 +277,9 @@ def _compute_content_tag(game_data: dict) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
-def get_game_summary(game_id: str) -> Optional[str]:
+def get_game_summary(game_id: str, color: str = "white") -> Optional[str]:
     """Get cached per-game LLM summary for aggregate prompt."""
-    cached = _load_llm_cache(game_id)
+    cached = _load_llm_cache(game_id, color)
     if not cached:
         return None
     return cached.get("llm_output", "")
@@ -290,8 +290,8 @@ def get_all_game_summaries(game_ids: list[str]) -> list[dict]:
     Returns list of {game_id, color, acpl, blunders, llm_summary}."""
     results = []
     for gid in game_ids:
-        cached = _load_llm_cache(gid)
         stockfish = None
+        game_color = "white"
         try:
             for fname in os.listdir(CACHE_DIR):
                 if fname.startswith(gid) and fname.endswith(".json") and "_llm" not in fname:
@@ -305,20 +305,23 @@ def get_all_game_summaries(game_ids: list[str]) -> list[dict]:
             pass
         if stockfish:
             g = stockfish.get("game", {})
+            game_color = g.get("color", "white")
+            cached = _load_llm_cache(gid, game_color)
             results.append(
                 {
                     "game_id": gid,
-                    "color": g.get("color", "?"),
+                    "color": game_color,
                     "acpl": stockfish.get("total_acpl", 0),
                     "blunders": len(stockfish.get("blunders", [])),
                     "llm_summary": cached.get("llm_output", "")[:300] if cached else "",
                 }
             )
-        elif cached:
+        else:
+            cached = _load_llm_cache(gid, game_color)
             results.append(
                 {
                     "game_id": gid,
-                    "llm_summary": cached.get("llm_output", "")[:300],
+                    "llm_summary": cached.get("llm_output", "")[:300] if cached else "",
                 }
             )
     return results
