@@ -444,12 +444,12 @@ lichess-analyzer-mcp/
 
 ### Strategy and plans
 - `00_STRATEGIE/02_chess/chess_mcp_strategy_v1.md` — strategic plan
-- `00_STRATEGIE/DALSÍ_KROKY_po_RUN_003.md` — 15-commit follow-up checklist
+- `00_STRATEGIE/DALSI_KROKY_po_RUN_003.md` — 15-commit follow-up checklist
 - `docs/PHASE2_BUILD_PLAN.md` — build plan v3.0
 
 ### Pattern library and analysis
 - `B2B-KB/04_KNOWLEDGE_BASE/02_chess/player_pattern_library_v1.json` — source library of 17 patterns
-- `B2B-KB/02_ANALÝZY/02_chess/chess_self_analysis_baseline_2026-04.md` — baseline analysis
+- `B2B-KB/02_ANALYZY/02_chess/chess_self_analysis_baseline_2026-04.md` — baseline analysis
 - `data/runs/RUN_005_DBCL_v3_2026-07-27.md` — RUN_005 report (ACPL=46.1)
 
 ### Lossy Compression Principle

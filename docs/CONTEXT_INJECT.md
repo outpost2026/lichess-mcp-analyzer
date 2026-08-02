@@ -106,7 +106,7 @@
 | `docs/PHASE2_BUILD_PLAN.md` v3.0 | Build plan dle K1/K2/K3 |
 | `docs/01_DBCL_unity_synthesis.md` | Synteza + BlunderFactSheet v1.1 |
 | `docs/02_DBCL_meta_evaluation.md` | 3-kanál noise framework |
-| `00_STRATEGIE/DALSÍ_KROKY_po_RUN_003.md` v2.0 | CPM-korelovaný plán, 15-commit checklist |
+| `00_STRATEGIE/DALSI_KROKY_po_RUN_003.md` v2.0 | CPM-korelovaný plán, 15-commit checklist |
 | `data/RUN_003_DBCL_v1_2026-07-27.md` | RUN_003: ACPL=39.4 |
 | `data/RUN_004_DBCL_v2_2026-07-27.md` | RUN_004: ACPL=51.4 — 30% engine_lines fail |
 | `data/RUN_005_DBCL_v3_2026-07-27.md` | RUN_005: ACPL=46.1 — 0% engine_lines fail ✅ |

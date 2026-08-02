@@ -467,7 +467,7 @@ LICHESS API ──► lichess_fetch_games
                CHESS PATTERN ARTIFACT (JSON)
                       │
                       ├──► KB writer (B2B-Knowledge-Base)
-                      │       └── 02_ANALÝZY/02_chess/
+                      │       └── 02_ANALYZY/02_chess/
                       │       └── 04_KNOWLEDGE_BASE/02_chess/
                       │
                       └──► LLM (explainer role)
