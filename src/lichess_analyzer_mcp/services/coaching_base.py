@@ -49,8 +49,9 @@ def collect_patterns_for_games(analyses: list, username: str) -> list[dict]:
         }
         if m.hypothesis:
             entry["hypothesis"] = m.hypothesis
-        if m.mitigation:
-            entry["mitigation"] = m.mitigation
+        mitigation = detector.library.patterns.get(m.pattern_id)
+        if mitigation:
+            entry["mitigation"] = mitigation.mitigation
         result.append(entry)
     result.sort(key=lambda x: (x["severity"] == "critical", x["confidence"]), reverse=True)
     return result

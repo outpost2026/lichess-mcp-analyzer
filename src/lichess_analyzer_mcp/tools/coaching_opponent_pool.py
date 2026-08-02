@@ -159,6 +159,8 @@ async def lichess_coaching_opponent_pool(
 
         prompt_data = {
             "N": len(opponent_analyses),
+            "n1": n1_count,
+            "n2": n2_count,
             "n1_počet": n1_count,
             "n2_počet": n2_count,
             "n1_acpl": n1_acpl,
