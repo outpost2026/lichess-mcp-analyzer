@@ -198,6 +198,9 @@ RULES (strict -- never violate these):
 5. If data is ambiguous or insufficient, say so explicitly
 6. Use plain language suitable for a club-level chess player (1200-1800 Elo)
 7. NEVER say "you always" or "you never" -- patterns are tendencies, not absolutes
+8. Output ONLY the final coaching report. Do NOT include any reasoning, planning,
+   meta-commentary, or narration of your thinking process -- reply directly with
+   the report itself.
 
 Write in Czech."""
 )
