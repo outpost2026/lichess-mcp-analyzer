@@ -509,7 +509,7 @@ class PatternDetector:
         affected = []
         for analysis in analyses:
             for m in analysis.moves:
-                if m.was_in_check and m.centipawn_loss >= THRESHOLD_S_CAPTURE_AVERSION_CP:
+                if m.was_in_check and m.centipawn_loss >= THRESHOLD_S_CAPTURE_AVERSION_CP and m.fen:
                     board = chess.Board(m.fen)
                     king_square = board.king(board.turn)
                     if king_square:

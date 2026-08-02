@@ -85,14 +85,18 @@ def _kill_engine():
         _engine = None
 
 
-def _run_engine_call(fn, timeout_s: float = _ENGINE_CALL_TIMEOUT):
+def _run_engine_call(fn, timeout_s: float = _ENGINE_CALL_TIMEOUT, engine=None):
     """Run a blocking engine call with a hard timeout.
 
     The engine call runs in a daemon thread; if it does not finish within
-    timeout_s the shared engine is killed (otherwise the still-running call
+    timeout_s the engine is killed (otherwise the still-running call
     would corrupt subsequent analysis) and an error dict is returned.
+    The `engine` reference (default: shared `_engine`) determines which
+    engine gets terminated — callers with a LOCAL engine pass it so the
+    shared engine is never killed as collateral.
     A worker exception is converted to an error dict as well.
     """
+    global _engine
     result = {}
 
     def _worker():
@@ -105,7 +109,14 @@ def _run_engine_call(fn, timeout_s: float = _ENGINE_CALL_TIMEOUT):
     t.start()
     t.join(timeout_s)
     if t.is_alive():
-        _kill_engine()
+        target = engine if engine is not None else _engine
+        if target is not None:
+            try:
+                target.quit()
+            except Exception:  # noqa: S110 — engine already failing; quit is best-effort
+                pass
+            if engine is None:
+                _engine = None
         return {"error": f"engine call timed out after {timeout_s:.0f}s"}
     if "error" in result:
         return {"error": result["error"]}
@@ -215,7 +226,7 @@ def evaluate_move(fen: str, move_uci: str, depth: int = 0) -> dict:
             actual_player = -actual_score if actual_score is not None else None
             return eval_before, best_move, best_player, actual_player
 
-        res = _run_engine_call(_do_evaluate)
+        res = _run_engine_call(_do_evaluate, engine=engine)
         if isinstance(res, dict) and "error" in res:
             return {
                 "eval_before": 0,
@@ -226,7 +237,10 @@ def evaluate_move(fen: str, move_uci: str, depth: int = 0) -> dict:
             }
         eval_before, best_move, best_player, actual_player = res
     finally:
-        engine.quit()
+        try:
+            engine.quit()
+        except Exception:  # noqa: S110 — timeout may already have quit the local engine
+            pass
 
     if best_player is not None and actual_player is not None:
         cp_loss = max(0, best_player - actual_player)

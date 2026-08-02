@@ -328,11 +328,12 @@ def _run_analyze_pgn(pgn: str, player_color: str = "white", depth: int = 0) -> G
                 if move in board.legal_moves:
                     eval_result = engine_client.evaluate_move(fen_before, move.uci(), depth=depth)
             except Exception:
-                pass
-            if eval_result:
+                eval_result = None
+            if eval_result and "error" not in eval_result:
                 cp_loss = eval_result["centipawn_loss"]
             else:
                 cp_loss = 0
+                analysis.evaluation_errors += 1
             classification = _classify_move(cp_loss)
             phase = _detect_phase(ply)
             was_in_check = board.is_check()

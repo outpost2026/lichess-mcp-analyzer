@@ -26,6 +26,11 @@ async def lichess_fetch_games(
         source: Platforma - 'lichess' nebo 'chesscom'
         result: Filtr dle vysledku - 'all', 'win', 'loss', 'draw'
     """
+    if source == "chesscom":
+        return {
+            "error": "source='chesscom' not supported yet; only 'lichess' is implemented. "
+            "Use source='lichess' (chesscom fetch would return lichess data silently).",
+        }
     if source not in ("lichess", "chesscom"):
         return {"error": "source must be 'lichess' or 'chesscom'"}
     if result not in ("all", "win", "loss", "draw"):

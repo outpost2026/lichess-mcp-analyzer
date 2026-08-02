@@ -72,6 +72,7 @@ class GameAnalysis:
     inaccuracies: list[MoveAnalysis] = field(default_factory=list)
     phase_stats: dict = field(default_factory=dict)
     blunder_fact_sheets: list[BlunderFactSheet] = field(default_factory=list)
+    evaluation_errors: int = 0
 
     def to_dict(self) -> dict:
         return {
@@ -84,6 +85,7 @@ class GameAnalysis:
             "inaccuracies": [m.to_dict() for m in self.inaccuracies],
             "phase_stats": self.phase_stats,
             "blunder_fact_sheets": [bfs.to_dict() for bfs in self.blunder_fact_sheets],
+            "evaluation_errors": self.evaluation_errors,
         }
 
     def auto_annotate(self) -> None:
@@ -145,4 +147,5 @@ class GameAnalysis:
             blunder_fact_sheets=[
                 BlunderFactSheet.from_dict(bfs) for bfs in d.get("blunder_fact_sheets", [])
             ],
+            evaluation_errors=d.get("evaluation_errors", 0),
         )

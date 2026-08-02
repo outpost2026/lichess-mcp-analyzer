@@ -117,6 +117,11 @@ def _build_game_prompt(game_data: dict) -> str:
         "",
     ]
 
+    eval_errors = game_data.get("evaluation_errors", 0)
+    if eval_errors:
+        lines.append(f"Eval errors: {eval_errors} (ACPL may be optimistic)")
+        lines.append("")
+
     if phase_stats:
         lines.append("Phase breakdown:")
         for phase, stats in sorted(phase_stats.items()):
