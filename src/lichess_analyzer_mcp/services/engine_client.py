@@ -133,31 +133,30 @@ def analyze_position(fen: str, depth: int = 0, multipv: int = 3) -> list[dict]:
     try:
 
         def _do_analysis():
+            # Use engine.analyse() with multipv — returns results at exact target depth
+            results = engine.analyse(board, chess.engine.Limit(depth=depth), multipv=multipv)
             items = []
-            with engine.analysis(board, chess.engine.Limit(depth=depth)) as analysis:
-                for line in analysis:
-                    if "pv" not in line or "score" not in line:
-                        continue
-                    score = line["score"].relative
-                    moves_san = []
-                    tb = board.copy()
-                    for m in line["pv"][:5]:
-                        try:
-                            moves_san.append(tb.san(m))
-                            tb.push(m)
-                        except (AssertionError, ValueError):
-                            break
-                    items.append(
-                        {
-                            "depth": line.get("depth", 0),
-                            "score_cp": score.score() if score.score() is not None else None,
-                            "mate": score.mate() if score.mate() is not None else None,
-                            "pv": line["pv"][:5],
-                            "pv_san": moves_san,
-                        }
-                    )
-                    if len(items) >= multipv:
+            for info in results:
+                if "pv" not in info or "score" not in info:
+                    continue
+                score = info["score"].relative
+                moves_san = []
+                tb = board.copy()
+                for m in info["pv"][:5]:
+                    try:
+                        moves_san.append(tb.san(m))
+                        tb.push(m)
+                    except (AssertionError, ValueError):
                         break
+                items.append(
+                    {
+                        "depth": info.get("depth", depth),
+                        "score_cp": score.score() if score.score() is not None else None,
+                        "mate": score.mate() if score.mate() is not None else None,
+                        "pv": info["pv"][:5],
+                        "pv_san": moves_san,
+                    }
+                )
             return items
 
         res = _run_engine_call(_do_analysis)
@@ -336,19 +335,16 @@ def check_blunder_sanity(
     engine = get_engine()
     _acquire_analysis_lock()
     try:
-        with engine.analysis(board, chess.engine.Limit(depth=14)) as analysis:
-            top_moves = []
-            for line in analysis:
-                if "pv" not in line:
-                    continue
-                top_moves.append(line["pv"][0])
-                if len(top_moves) >= 3:
-                    break
-            if any(m.uci() == move_uci for m in top_moves):
-                warnings.append(
-                    f"BLUNDER_IS_TOP_MOVE: {move_uci} classified as blunder ({cp_loss} cp) "
-                    f"but is in top engine choices"
-                )
+        results = engine.analyse(board, chess.engine.Limit(depth=14), multipv=3)
+        top_moves = []
+        for info in results:
+            if "pv" in info and info["pv"]:
+                top_moves.append(info["pv"][0])
+        if any(m.uci() == move_uci for m in top_moves):
+            warnings.append(
+                f"BLUNDER_IS_TOP_MOVE: {move_uci} classified as blunder ({cp_loss} cp) "
+                f"but is in top engine choices"
+            )
     finally:
         _analysis_lock.release()
 
