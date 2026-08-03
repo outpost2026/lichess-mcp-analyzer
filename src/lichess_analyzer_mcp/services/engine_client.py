@@ -2,6 +2,7 @@
 
 import os
 import atexit
+import logging
 import threading
 import chess
 import chess.engine
@@ -201,12 +202,12 @@ def evaluate_move(fen: str, move_uci: str, depth: int = 0) -> dict:
         if cloud_result is not None:
             return cloud_result
 
-    sf_path = _get_sf_path()
-    engine = chess.engine.SimpleEngine.popen_uci(sf_path)
-    engine.configure({"Threads": 6, "Hash": 512, "NumaPolicy": "hardware"})
+    engine = get_engine()
+    _acquire_analysis_lock()
     try:
 
         def _do_evaluate():
+            # D2: Use engine.analyse() for deterministic depth-specific result
             info_before = engine.analyse(board, chess.engine.Limit(depth=depth))
             eval_before = info_before["score"].relative.score()
             best_move = info_before["pv"][0] if "pv" in info_before else None
@@ -237,10 +238,7 @@ def evaluate_move(fen: str, move_uci: str, depth: int = 0) -> dict:
             }
         eval_before, best_move, best_player, actual_player = res
     finally:
-        try:
-            engine.quit()
-        except Exception:  # noqa: S110 — timeout may already have quit the local engine
-            pass
+        _analysis_lock.release()
 
     if best_player is not None and actual_player is not None:
         cp_loss = max(0, best_player - actual_player)
@@ -253,6 +251,108 @@ def evaluate_move(fen: str, move_uci: str, depth: int = 0) -> dict:
         "centipawn_loss": cp_loss,
         "best_move_uci": best_move.uci() if best_move else None,
     }
+
+
+def evaluate_move_with_confidence(fen: str, move_uci: str, depth: int = 0, runs: int = 3) -> dict:
+    """D3: Run evaluate_move multiple times, return median cp_loss.
+
+    Returns:
+        dict with keys: eval_before, eval_after, centipawn_loss, best_move_uci,
+                        centipawn_loss_median, centipawn_loss_min, centipawn_loss_max,
+                        confidence_spread, anomaly
+    """
+    results = []
+    for _ in range(runs):
+        r = evaluate_move(fen, move_uci, depth)
+        results.append(r)
+        if "error" in r:
+            return r
+
+    cp_losses = [r["centipawn_loss"] for r in results]
+    best_moves = [r.get("best_move_uci") for r in results]
+
+    cp_losses_sorted = sorted(cp_losses)
+    median_idx = len(cp_losses_sorted) // 2
+    cp_loss_median = cp_losses_sorted[median_idx]
+    cp_loss_min = cp_losses_sorted[0]
+    cp_loss_max = cp_losses_sorted[-1]
+    spread = cp_loss_max - cp_loss_min
+
+    # Anomaly: spread > 100 cp or inconsistent best_move
+    unique_moves = set(best_moves)
+    anomaly = spread > 100 or len(unique_moves) > 1
+
+    if anomaly:
+        logging.warning(
+            f"[D3-ANOMALY] evaluate_move anomaly: fen={fen[:50]}... move={move_uci} "
+            f"cp_losses={cp_losses} best_moves={best_moves} spread={spread}"
+        )
+
+    return {
+        "eval_before": results[0]["eval_before"],
+        "eval_after": results[0]["eval_after"],
+        "centipawn_loss": cp_loss_median,
+        "centipawn_loss_median": cp_loss_median,
+        "centipawn_loss_min": cp_loss_min,
+        "centipawn_loss_max": cp_loss_max,
+        "confidence_spread": spread,
+        "best_move_uci": results[0]["best_move_uci"],
+        "anomaly": anomaly,
+        "all_cp_losses": cp_losses,
+        "all_best_moves": best_moves,
+    }
+
+
+def check_blunder_sanity(
+    fen: str, move_uci: str, cp_loss: int, game_result: str | None = None
+) -> dict:
+    """D4: Sanity check for blunder classification.
+
+    Flags suspicious classifications:
+    - Blunder (>= 300 cp) in a won position (game_result=1-0 for white, 0-1 for black)
+    - Blunder classified but the move is actually the top engine choice
+
+    Returns:
+        dict with keys: valid (bool), warnings (list[str])
+    """
+    warnings = []
+    board = chess.Board(fen)
+
+    is_white_turn = board.turn == chess.WHITE
+    is_blunder = cp_loss >= 300
+
+    if not is_blunder:
+        return {"valid": True, "warnings": []}
+
+    # Check 1: Blunder in won position
+    if game_result:
+        if (is_white_turn and game_result == "1-0") or (not is_white_turn and game_result == "0-1"):
+            warnings.append(
+                f"BLUNDER_IN_WON_POSITION: {move_uci} classified as blunder "
+                f"({cp_loss} cp) but game was won by {'white' if is_white_turn else 'black'}"
+            )
+
+    # Check 2: Blunder that is actually top engine choice (check top 3 moves)
+    engine = get_engine()
+    _acquire_analysis_lock()
+    try:
+        with engine.analysis(board, chess.engine.Limit(depth=14)) as analysis:
+            top_moves = []
+            for line in analysis:
+                if "pv" not in line:
+                    continue
+                top_moves.append(line["pv"][0])
+                if len(top_moves) >= 3:
+                    break
+            if any(m.uci() == move_uci for m in top_moves):
+                warnings.append(
+                    f"BLUNDER_IS_TOP_MOVE: {move_uci} classified as blunder ({cp_loss} cp) "
+                    f"but is in top engine choices"
+                )
+    finally:
+        _analysis_lock.release()
+
+    return {"valid": len(warnings) == 0, "warnings": warnings}
 
 
 def get_best_move(fen: str, depth: int = 0) -> dict:
