@@ -34,6 +34,51 @@ _logger = get_logger("game_analyzer")
 
 CACHE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "game_cache")
 
+# ── Adaptive Hash (deterministic, zero heuristics) ───────────────────────────
+# Ply = total half-moves from PGN, depth = Stockfish depth.
+# Volba hash podle měření depth 12/14 na 20 hrách systeq (hashfull <10% target).
+# 64 MB stačí pro <40 ply depth 14, 128 pro 40-80 ply, 256 pro 80+ ply nebo depth 18.
+# Deterministická tabulka, žádná heuristika, jen ply+depth → hash.
+
+ADAPTIVE_HASH_TABLE = {
+    # (max_ply, depth): hash_mb
+    # depth 12
+    (40, 12): 64,
+    (80, 12): 64,
+    (999, 12): 64,
+    # depth 14
+    (40, 14): 64,
+    (80, 14): 128,
+    (999, 14): 256,
+    # depth 18
+    (40, 18): 128,
+    (80, 18): 256,
+    (999, 18): 512,
+}
+
+
+def choose_adaptive_hash(ply_count: int, depth: int) -> int:
+    """Deterministická volba hash podle ply a depth. Žádná heuristika."""
+    # depth bucket
+    d = 12 if depth <= 12 else 14 if depth <= 14 else 18
+    for max_ply, d_key in sorted(ADAPTIVE_HASH_TABLE):
+        if d_key == d and ply_count <= max_ply:
+            return ADAPTIVE_HASH_TABLE[(max_ply, d_key)]
+    return 64
+
+
+def _ply_count_from_pgn(pgn: str) -> int:
+    try:
+        import chess.pgn
+        import io
+
+        game = chess.pgn.read_game(io.StringIO(pgn))
+        if game is None:
+            return 30
+        return sum(1 for _ in game.mainline_moves())
+    except Exception:
+        return 30
+
 
 def _sanitize_id(raw: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_-]", "", raw)
@@ -270,6 +315,14 @@ def _win_prob_from_cp(cp: float) -> float:
 def _run_analyze_pgn(pgn: str, player_color: str = "white", depth: int = 0) -> GameAnalysis:
     if depth == 0:
         depth = DEPTH_DEFAULTS["standard"]["single_game"]
+    # Adaptive hash — deterministic, zero heuristics (ply+depth → hash)
+    try:
+        ply_cnt = _ply_count_from_pgn(pgn)
+        h = choose_adaptive_hash(ply_cnt, depth)
+        engine_client.get_engine(hash_mb=h)
+        _logger.info("adaptive hash %d MB for ply %d depth %d", h, ply_cnt, depth)
+    except Exception:
+        pass
     import chess.pgn
     import io
 
@@ -464,4 +517,9 @@ def _run_analyze_pgn(pgn: str, player_color: str = "white", depth: int = 0) -> G
         after.sort(key=lambda x: x.ply)
         bfs.context_window = ContextWindow(moves_before=before, moves_after=after)
     analysis.auto_annotate()
+    # Clear hash deterministically for next game (prevent pollution, keep <10% hashfull)
+    try:
+        engine_client.clear_hash()
+    except Exception:
+        pass
     return analysis

@@ -10,6 +10,7 @@ from typing import Optional
 from lichess_analyzer_mcp.config.depth import DEPTH_DEFAULTS
 
 _engine: Optional[chess.engine.SimpleEngine] = None
+_engine_hash_mb: Optional[int] = None
 _engine_init_lock = threading.Lock()
 _analysis_lock = threading.Lock()
 _ENGINE_LOCK_TIMEOUT = 120.0  # seconds — recovery from zombie lock
@@ -45,15 +46,47 @@ def _find_stockfish() -> str:
     return "stockfish"
 
 
-def get_engine() -> chess.engine.SimpleEngine:
-    global _engine
+def get_engine(hash_mb: Optional[int] = None) -> chess.engine.SimpleEngine:
+    global _engine, _engine_hash_mb
+    # Adaptive hash: if requested hash differs, reconfigure or restart
+    requested = hash_mb if hash_mb is not None else 512
     if _engine is None:
         with _engine_init_lock:
             if _engine is None:
                 sf_path = _find_stockfish()
                 _engine = chess.engine.SimpleEngine.popen_uci(sf_path)
-                _engine.configure({"Threads": 6, "Hash": 512, "NumaPolicy": "hardware"})
+                _engine.configure({"Threads": 4, "Hash": requested, "NumaPolicy": "hardware"})
+                _engine_hash_mb = requested
+                return _engine
+    # Engine exists but hash differs -> reconfigure if possible, else restart
+    if _engine_hash_mb is not None and _engine_hash_mb != requested:
+        try:
+            _engine.configure({"Hash": requested})
+            _engine_hash_mb = requested
+        except Exception:
+            # Fallback: restart engine with new hash
+            try:
+                _engine.quit()
+            except Exception:
+                pass
+            _engine = None
+            _engine_hash_mb = None
+            return get_engine(hash_mb=requested)
     return _engine
+
+
+def clear_hash() -> None:
+    """Clear transposition table without reallocating (deterministic, fast)."""
+    global _engine
+    if _engine is not None:
+        try:
+            _engine.configure({"Clear Hash": True})
+        except Exception:
+            pass
+
+
+def get_current_hash() -> Optional[int]:
+    return _engine_hash_mb
 
 
 def _acquire_analysis_lock() -> bool:
