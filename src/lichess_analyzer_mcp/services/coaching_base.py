@@ -78,11 +78,46 @@ def _weakness_to_dict(wr) -> dict:
     }
 
 
+def _strip_instructions(prompt: str) -> str:
+    """Remove instruction boilerplate from prompt for fallback display."""
+    for marker in ("=== INSTRUCTIONS ===", "PRAVIDLA:", "STRUKTURA:"):
+        if marker in prompt:
+            prompt = prompt.split(marker)[0]
+    return prompt.strip()
+
+
+def _is_valid_coaching_content(content: str | None) -> bool:
+    """Validate LLM output is actual coaching, not echoed instructions or empty."""
+    if content is None:
+        return False
+    stripped = content.strip()
+    if not stripped:
+        return False
+    if len(stripped) < 50:
+        return False
+    # LLM echoed back the prompt instructions instead of generating coaching
+    instruction_markers = ("=== INSTRUCTIONS ===", "PRAVIDLA:", "STRUKTURA:", "K DISPOZICI:")
+    for marker in instruction_markers:
+        # If content contains instruction header verbatim it is likely an echo
+        if marker in stripped and stripped.count(marker) >= 1:
+            # Allow data quoting but reject content that IS the instruction template
+            if (
+                "Vytvo\u0159 coaching report pro hru" in stripped
+                and "[DATA]" in stripped
+                and "[IM]" in stripped
+            ):
+                return False
+            if marker == "=== INSTRUCTIONS ===":
+                return False
+    return True
+
+
 def safe_llm_call(prompt: str, context: str = "") -> tuple[str, list[dict]]:
     """LLM call with cascade fallback + token tracking.
 
     Sends pre-built prompt directly to LLM providers in cascade order.
-    Falls back to raw prompt dump if no LLM is available.
+    Falls back to structured data dump (without instructions) if no LLM is available.
+    Validates LLM output — echo or empty responses are treated as failures.
     """
     from lichess_analyzer_mcp.services.llm_client import (
         PROVIDERS,
@@ -104,10 +139,24 @@ def safe_llm_call(prompt: str, context: str = "") -> tuple[str, list[dict]]:
             continue
         content, token_log = _call_llm(COACHING_SYSTEM_PROMPT, prompt, prov_cfg)
         cascade_log.append(token_log)
-        if content is not None:
+        if _is_valid_coaching_content(content):
             return content, cascade_log
+        # Invalid content (echo, empty, too short) — treat as provider failure
+        if content is not None:
+            token_log["error"] = (
+                token_log.get("error") or "Invalid LLM output (echo/empty) — trying next provider"
+            )
+            # mark as not usable; continue cascade
 
-    fallback = f"# Coaching Report\n\n_LLM unavailable after cascade._\n\n## Data\n\n{prompt}"
+    data_part = _strip_instructions(prompt)
+    fallback = (
+        "# Coaching Report\n\n"
+        "_LLM coaching unavailable after cascade — all providers failed or returned invalid output._\n\n"
+        "## Deterministic Data (Stockfish + Pattern Detection)\n\n"
+        f"{data_part}\n\n"
+        "---\n\n"
+        "_No LLM synthesis was performed. Review the data above or retry when a provider is available._"
+    )
     return fallback, cascade_log
 
 

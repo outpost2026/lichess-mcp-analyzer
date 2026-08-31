@@ -1,4 +1,4 @@
-﻿"""LLM reasoning layer for coaching report generation.
+"""LLM reasoning layer for coaching report generation.
 
 Transforms deterministic pipeline output (PatternMatch[], WeaknessReport)
 into human-readable coaching analysis. Never invents evidence — only
@@ -140,13 +140,19 @@ def _call_llm(
         content = None
         if "choices" in data and len(data["choices"]) > 0:
             msg = data["choices"][0]["message"]
-            content = msg.get("content") or msg.get("reasoning")
+            # Use only 'content' — 'reasoning' is internal chain-of-thought, not coaching report (GT: reasoning leak)
+            content = msg.get("content")
+            # Fallback to reasoning only if content is truly absent (not just empty)
+            if content is None:
+                content = msg.get("reasoning")
+                if content is not None:
+                    token_log["reasoning_fallback"] = True
         elif "content" in data and len(data.get("content", [])) > 0:
             content = data["content"][0]["text"]
         else:
             content = str(data)
 
-        if content:
+        if content and content.strip():
             token_log["output_chars"] = len(content)
             if not token_log.get("completion_tokens"):
                 token_log["completion_tokens"] = len(content) // 4
@@ -365,8 +371,19 @@ def generate_coaching_report_with_logs(
             continue
         content, token_log = _call_llm(COACHING_SYSTEM_PROMPT, user_prompt, provider_config)
         cascade_log.append(token_log)
-        if content is not None:
-            return content, cascade_log
+        # Validate: reject empty/echo responses, try next provider
+        if content is not None and content.strip() and len(content.strip()) >= 50:
+            if "=== INSTRUCTIONS ===" not in content:
+                return content, cascade_log
+            token_log["error"] = (
+                token_log.get("error")
+                or "Invalid LLM output (echoed instructions) — trying next provider"
+            )
+        elif content is not None:
+            token_log["error"] = (
+                token_log.get("error")
+                or "Invalid LLM output (empty/too short) — trying next provider"
+            )
 
     fallback = _fallback_report(username, games_analyzed, patterns, weakness_report)
     return fallback, cascade_log

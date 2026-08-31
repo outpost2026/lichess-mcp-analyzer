@@ -112,7 +112,25 @@ def _build_md(kind: str, ref: str, result: dict) -> str:
         lines.append("")
 
     lines += ["---", "", "## LLM Report", ""]
-    lines.append(result.get("report", "_empty report_"))
+    report_text = result.get("report", "_empty report_")
+    # Sanitization: detect instruction leak in persisted report
+    if (
+        "=== INSTRUCTIONS ===" in report_text
+        or "PRAVIDLA:" in report_text
+        and "Vytvo\u0159 coaching report pro hru" in report_text
+    ):
+        # Strip leaked instructions — keep only data part before marker
+        for marker in ("=== INSTRUCTIONS ===", "PRAVIDLA:"):
+            if marker in report_text:
+                report_text = report_text.split(marker)[0].rstrip()
+                report_text += "\n\n> \u26a0\ufe0f _LLM output contained instruction echo — stripped. Deterministic data above is authoritative._"
+                break
+    # Empty/too short report detection
+    if not report_text.strip() or len(report_text.strip()) < 50:
+        report_text = report_text.strip() or "_empty report_"
+        if report_text == "_empty report_":
+            report_text += "\n\n> \u26a0\ufe0f _No coaching synthesis available — all LLM providers failed. Deterministic Stockfish data above remains valid._"
+    lines.append(report_text)
 
     cascade_log = result.get("cascade_log") or []
     if cascade_log:
