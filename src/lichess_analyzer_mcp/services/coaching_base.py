@@ -148,6 +148,24 @@ def safe_llm_call(prompt: str, context: str = "") -> tuple[str, list[dict]]:
             )
             # mark as not usable; continue cascade
 
+    # ── IDE fallback (Muse Spark / Cursor / opencode) — high ROI, 0 cost ──
+    try:
+        from lichess_analyzer_mcp.services.ide_fallback import (
+            generate_ide_report,
+            is_ide_available,
+        )
+
+        if is_ide_available():
+            ide_content, ide_log = generate_ide_report(prompt, COACHING_SYSTEM_PROMPT)
+            if _is_valid_coaching_content(ide_content):
+                cascade_log.append(ide_log)
+                return ide_content, cascade_log
+            # IDE returned invalid — log and continue to data dump
+            ide_log["error"] = "IDE fallback returned invalid content"
+            cascade_log.append(ide_log)
+    except Exception as e:
+        cascade_log.append({"provider": "IDE (Muse Spark)", "error": f"IDE fallback failed: {e}"})
+
     data_part = _strip_instructions(prompt)
     fallback = (
         "# Coaching Report\n\n"

@@ -385,6 +385,24 @@ def generate_coaching_report_with_logs(
                 or "Invalid LLM output (empty/too short) — trying next provider"
             )
 
+    # ── IDE fallback (Muse Spark) — before data dump ──
+    try:
+        from lichess_analyzer_mcp.services.ide_fallback import (
+            generate_ide_report as _ide_report,
+        )
+        from lichess_analyzer_mcp.services.ide_fallback import (
+            is_ide_available as _ide_avail,
+        )
+
+        if _ide_avail():
+            ide_content, ide_log = _ide_report(user_prompt, COACHING_SYSTEM_PROMPT)
+            if ide_content and ide_content.strip() and len(ide_content.strip()) >= 50:
+                if "=== INSTRUCTIONS ===" not in ide_content:
+                    cascade_log.append(ide_log)
+                    return ide_content, cascade_log
+    except Exception as e:
+        cascade_log.append({"provider": "IDE (Muse Spark)", "error": f"IDE fallback failed: {e}"})
+
     fallback = _fallback_report(username, games_analyzed, patterns, weakness_report)
     return fallback, cascade_log
 
@@ -407,7 +425,15 @@ def generate_coaching_report(
 
 
 def is_llm_available() -> bool:
-    return any(os.environ.get(p["api_key_var"], "") for p in PROVIDERS)
+    if any(os.environ.get(p["api_key_var"], "") for p in PROVIDERS):
+        return True
+    # IDE fallback counts as available in opencode/Cursor
+    try:
+        from lichess_analyzer_mcp.services.ide_fallback import is_ide_available
+
+        return is_ide_available()
+    except Exception:
+        return False
 
 
 def verify_api_keys() -> list[dict]:
@@ -503,6 +529,18 @@ def get_llm_status() -> dict:
         if os.environ.get(p["api_key_var"], ""):
             active = p["name"]
             break
+    # IDE fallback as virtual provider
+    try:
+        from lichess_analyzer_mcp.services.ide_fallback import is_ide_available
+
+        if is_ide_available():
+            available.append(
+                {"provider": "IDE (Muse Spark)", "model": "muse-spark-1.2", "key_set": True}
+            )
+            if active is None:
+                active = "IDE (Muse Spark)"
+    except Exception:
+        pass
     mode = os.environ.get("PIPELINE_MODE", "auto")
     return {
         "available": available,
