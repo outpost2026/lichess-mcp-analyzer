@@ -70,7 +70,7 @@ def generate_ide_report(prompt: str, system_prompt: str = "") -> tuple[str, dict
     lines = [
         "# Coaching Report (IDE Fallback — Muse Spark)",
         "",
-        f"_Syntéza generována lokálním IDE modelem (muse-spark) — externí API nedostupné. Deterministická data níže jsou autoritativní._",
+        "_Syntéza generována lokálním IDE modelem (muse-spark) — externí API nedostupné. Deterministická data níže jsou autoritativní._",
         "",
         "## Summary",
         f"Hra {result} v zahájení {opening}, ACPL {acpl}. Pipeline detekovala chyby viz data níže. Tento report vznikl fallbackem na IDE model, protože kaskáda NVIDIA→Cerebras→DeepSeek selhala (timeout/402).",

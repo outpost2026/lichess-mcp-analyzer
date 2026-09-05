@@ -20,7 +20,6 @@ from lichess_analyzer_mcp.models.analysis import (
     DETECTOR_VERSION,
 )
 from lichess_analyzer_mcp.services import engine_client
-from lichess_analyzer_mcp.services.lichess_client import fetch_game_pgn
 from lichess_analyzer_mcp.services.logger import get_logger
 from lichess_analyzer_mcp.services.pattern_detector import (
     THRESHOLD_GRAB_CP,
@@ -224,8 +223,6 @@ def _detect_tactical_motif(
 
     Returns (is_tactical, motif_type). Heuristic — not exhaustive.
     """
-    san = board.san(move)
-
     # Escape from check — defensive, not tactical motif
     if was_in_check and not gives_check:
         return False, None

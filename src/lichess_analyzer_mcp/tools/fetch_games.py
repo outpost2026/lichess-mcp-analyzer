@@ -1,5 +1,4 @@
-﻿import json
-from datetime import datetime
+﻿from datetime import datetime
 from lichess_analyzer_mcp.app import app
 from lichess_analyzer_mcp.services.audit import auditable
 from lichess_analyzer_mcp.services.lichess_client import fetch_user_games, fetch_user_games_metadata

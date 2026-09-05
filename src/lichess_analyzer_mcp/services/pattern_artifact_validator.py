@@ -4,8 +4,6 @@ Checks for inconsistent, missing, or anomalous data before output.
 Maps to KALIBRACE_PLAN v2.3 task K7.1.
 """
 
-import math
-from typing import Any
 
 VALID_SEVERITIES = {"low", "medium", "high", "critical"}
 

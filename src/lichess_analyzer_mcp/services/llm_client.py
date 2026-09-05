@@ -11,7 +11,6 @@ Token usage is tracked per call.
 """
 
 import os
-import json
 from typing import Optional
 
 # ── Provider cascade configuration ────────────────────────────────────────
@@ -498,7 +497,7 @@ def verify_api_keys() -> list[dict]:
                         "provider": prov["name"],
                         "key_set": True,
                         "valid": False,
-                        f"error": f"HTTP {resp.status_code}",
+                        "error": f"HTTP {resp.status_code}",
                     }
                 )
         except httpx.TimeoutException:

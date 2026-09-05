@@ -13,7 +13,6 @@ from lichess_analyzer_mcp.services.engine_client import (
     evaluate_move_with_confidence,
     check_blunder_sanity,
     close_engine,
-    _ENGINE_LOCK_TIMEOUT,
 )
 
 

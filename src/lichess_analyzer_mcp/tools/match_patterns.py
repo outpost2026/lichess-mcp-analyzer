@@ -10,7 +10,6 @@ from lichess_analyzer_mcp.services.pattern_detector import PatternDetector
 from lichess_analyzer_mcp.services.compressibility_validator import compute_compression
 from lichess_analyzer_mcp.services.pattern_artifact_validator import (
     validate_pattern_artifact,
-    ValidationError,
 )
 from lichess_analyzer_mcp.kb.schemas import validate_against_schema
 from lichess_analyzer_mcp.services.logger import get_logger

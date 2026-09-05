@@ -83,7 +83,6 @@ async def lichess_coaching_opponent_pool(
                 if "White" not in pgn.split("\n\n")[0]:
                     continue
 
-                headers_line = pgn.split("\n\n")[0]
                 import chess.pgn
                 import io
 

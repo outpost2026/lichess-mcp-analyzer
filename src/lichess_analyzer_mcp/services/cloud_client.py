@@ -6,7 +6,6 @@ Rate limit: 1 request per 100ms per API docs.
 """
 
 import os
-import json
 from typing import Optional
 
 CLOUD_ENABLED = os.environ.get("CHESS_API_CLOUD", "0") == "1"

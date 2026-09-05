@@ -9,7 +9,7 @@ Each collector:
 import os
 
 from lichess_analyzer_mcp.config.depth import DEPTH_DEFAULTS
-from lichess_analyzer_mcp.services.game_analyzer import analyze_pgn, _load_cached_analysis
+from lichess_analyzer_mcp.services.game_analyzer import analyze_pgn
 from lichess_analyzer_mcp.services.lichess_client import fetch_game_pgn
 from lichess_analyzer_mcp.services.logger import get_logger
 

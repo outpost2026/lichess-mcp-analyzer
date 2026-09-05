@@ -7,8 +7,8 @@ sys.path.insert(0, "src")
 from lichess_analyzer_mcp.models.game import GameSummary, MoveAnalysis, GameAnalysis
 from lichess_analyzer_mcp.models.analysis import WeaknessReport
 from lichess_analyzer_mcp.models.pattern import PatternDef, PatternMatch, PatternLibrary
-from lichess_analyzer_mcp.models.srs_card import SRSCard, FSRSState
-from lichess_analyzer_mcp.models.player_profile import PlayerProfile, OpeningStats
+from lichess_analyzer_mcp.models.srs_card import SRSCard
+from lichess_analyzer_mcp.models.player_profile import PlayerProfile
 from lichess_analyzer_mcp.services.compressibility_validator import (
     compute_compression,
     compression_score,
@@ -17,7 +17,6 @@ from lichess_analyzer_mcp.services.compressibility_validator import (
 )
 from lichess_analyzer_mcp.services.pattern_artifact_validator import (
     validate_pattern_artifact,
-    ValidationError,
 )
 from lichess_analyzer_mcp.kb.schemas import validate_against_schema
 

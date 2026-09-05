@@ -8,7 +8,6 @@ Requires ~20 reviews for calibration, then outperforms SM-2 by ~30% fewer review
 import json
 import os
 from datetime import datetime, timedelta
-from typing import Optional
 
 from lichess_analyzer_mcp.models.srs_card import SRSCard, FSRSState
 

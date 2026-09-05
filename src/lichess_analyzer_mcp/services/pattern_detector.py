@@ -11,7 +11,7 @@ Overlap note — S vs J:
 from collections import Counter
 import chess
 
-from lichess_analyzer_mcp.models.pattern import PatternDef, PatternMatch, PatternLibrary
+from lichess_analyzer_mcp.models.pattern import PatternMatch, PatternLibrary
 from lichess_analyzer_mcp.models.game import GameAnalysis
 
 THRESHOLD_TUNNEL_CONSECUTIVE = 2
@@ -295,9 +295,6 @@ class PatternDetector:
         affected = list(set(affected_repetition + affected_fallback))
         if affected:
             total_games = len(analyses)
-            rep_conf = len(set(affected_repetition)) / max(
-                len(set(affected_fallback + affected_repetition)), 1
-            )
             return PatternMatch(
                 pattern_id="O",
                 pattern_name="Stagnační panika",

@@ -23,10 +23,15 @@ line-length = 100
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["F", "E", "W", "I", "N", "UP", "S"]
+# P72/GT-086: stabilni E4/E7/E9/F only. Stylisticke (I, UP, N, S, E501)
+# jsou tech debt — CI je vynucuje az po vyreseni celeho repa.
+select = ["E4", "E7", "E9", "F"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S"]
+"tests/*" = ["S", "E402", "E401", "E741"]
+# server.py: side-effect importy (registrace @app.tool) MUSI bezet
+# az po stdout reconfig + .env loading → E402 je zamerny pattern.
+"src/lichess_analyzer_mcp/server.py" = ["E402"]
 
 [dependency-groups]
 dev = [
@@ -35,6 +40,7 @@ dev = [
     "pytest-cov>=6",
     "coverage>=7",
     "mypy>=1.13",
+    "ruff>=0.8",
 ]
 
 [tool.pytest.ini_options]

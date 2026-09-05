@@ -107,12 +107,10 @@ async def lichess_analyze_pending(
             errors += 1
 
     # After batch is done, update index for each successfully analyzed game
-    updated_index = False
     for r in results:
         if r["status"] == "ok":
             try:
                 update_games_index_with_game(username, r["game_id"])
-                updated_index = True
             except Exception:
                 pass
 

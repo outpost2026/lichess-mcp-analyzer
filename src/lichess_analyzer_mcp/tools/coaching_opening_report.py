@@ -122,12 +122,6 @@ async def lichess_coaching_opening_report(
                     if (side == "white" and g["result"] == "1-0")
                     or (side == "black" and g["result"] == "0-1")
                 )
-                losses = sum(
-                    1
-                    for g in games_list
-                    if (side == "white" and g["result"] == "0-1")
-                    or (side == "black" and g["result"] == "1-0")
-                )
                 wr = wins / n if n else 0
                 lines.append(f"  - {opening} ({n} her): win_rate={wr:.0%}, ACPL={avg_acpl:.0f}")
             return "\n".join(lines) or "  (žádná data)"

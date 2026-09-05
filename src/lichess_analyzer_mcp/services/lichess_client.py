@@ -253,7 +253,6 @@ def _game_result_for_player(game: dict, username: str) -> str | None:
     if winner is None:
         return "draw"
     white_name = game.get("players", {}).get("white", {}).get("user", {}).get("name", "") or ""
-    black_name = game.get("players", {}).get("black", {}).get("user", {}).get("name", "") or ""
     player_is_white = white_name.lower() == username.lower()
     player_won = (winner == "white" and player_is_white) or (
         winner == "black" and not player_is_white

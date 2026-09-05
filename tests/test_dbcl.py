@@ -18,7 +18,6 @@ from lichess_analyzer_mcp.models.analysis import (
 )
 from lichess_analyzer_mcp.services.game_analyzer import _win_prob_from_cp
 from lichess_analyzer_mcp.services.narrative_validator import (
-    validate_narrative,
     has_unsupported_claims,
     extract_unsupported_claims,
     check_piece_on_square,

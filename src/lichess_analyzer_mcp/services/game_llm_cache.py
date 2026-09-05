@@ -5,7 +5,9 @@ These per-game analyses are cached and reused in aggregate coaching reports.
 New games trigger per-game LLM only for themselves, not the entire dataset.
 """
 
-import os, json, hashlib
+import os
+import json
+import hashlib
 from typing import Optional
 from datetime import datetime, timezone
 from lichess_analyzer_mcp.config.depth import DEPTH_DEFAULTS
@@ -219,7 +221,6 @@ def analyze_game_llm(
     # Import here to avoid circular imports
     from lichess_analyzer_mcp.services.llm_client import (
         PROVIDERS,
-        COACHING_SYSTEM_PROMPT,
         _call_llm,
     )
 
@@ -227,7 +228,6 @@ def analyze_game_llm(
     user = _build_game_prompt(game_data)
 
     # Try providers in cascade
-    from lichess_analyzer_mcp.services.llm_client import list_available_providers
 
     tag = _compute_content_tag(game_data)
     for prov_cfg in PROVIDERS:
