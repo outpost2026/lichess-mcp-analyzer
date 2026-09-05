@@ -193,23 +193,26 @@ def _write_kb(kind: str, ref: str, result: dict) -> list[dict]:
     return artifacts
 
 
-async def _run_tool(kind: str, params: dict) -> dict:
+async def _run_tool(kind: str, params: dict, ctx=None) -> dict:
     if kind == "single_game":
         from lichess_analyzer_mcp.tools.coaching_single_game import lichess_coaching_single_game
 
         return await lichess_coaching_single_game(
-            params.get("game_id", ""),
-            params.get("color", "white"),
-            params.get("depth", 0),
+            game_id=params.get("game_id", ""),
+            username=params.get("username", ""),
+            color=params.get("color", ""),
+            depth=params.get("depth", 0),
+            ctx=ctx,
         )
     if kind == "cross_game":
         from lichess_analyzer_mcp.tools.coaching_cross_game import lichess_coaching_cross_game
 
         return await lichess_coaching_cross_game(
-            params.get("username", ""),
-            params.get("max_games", 20),
-            params.get("depth", 0),
-            params.get("result", "all"),
+            username=params.get("username", ""),
+            max_games=params.get("max_games", 20),
+            depth=params.get("depth", 0),
+            result=params.get("result", "all"),
+            ctx=ctx,
         )
     if kind == "opponent_pool":
         from lichess_analyzer_mcp.tools.coaching_opponent_pool import lichess_coaching_opponent_pool
@@ -222,12 +225,12 @@ async def _run_tool(kind: str, params: dict) -> dict:
         from lichess_analyzer_mcp.tools.coaching_training_plan import lichess_coaching_training_plan
 
         return await lichess_coaching_training_plan(
-            params.get("username", ""),
-            params.get("max_games", 20),
-            params.get("hours_per_week", 5),
-            params.get("rating", 0),
-            params.get("depth", 0),
-            params.get("result", "all"),
+            username=params.get("username", ""),
+            max_games=params.get("max_games", 20),
+            hours_per_week=params.get("hours_per_week", 5),
+            rating=params.get("rating", 0),
+            depth=params.get("depth", 0),
+            result=params.get("result", "all"),
         )
     if kind == "opening_report":
         from lichess_analyzer_mcp.tools.coaching_opening_report import (
@@ -235,10 +238,10 @@ async def _run_tool(kind: str, params: dict) -> dict:
         )
 
         return await lichess_coaching_opening_report(
-            params.get("username", ""),
-            params.get("max_games", 20),
-            params.get("depth", 0),
-            params.get("result", "all"),
+            username=params.get("username", ""),
+            max_games=params.get("max_games", 20),
+            depth=params.get("depth", 0),
+            result=params.get("result", "all"),
         )
     raise ValueError(f"unsupported kind: {kind}")
 
@@ -306,7 +309,9 @@ async def _run_diagnosis(params: dict) -> dict:
     }
 
 
-async def persist_report(kind: str, params: dict, fmt: str = "both", target: str = "docs") -> dict:
+async def persist_report(
+    kind: str, params: dict, fmt: str = "both", target: str = "docs", ctx=None
+) -> dict:
     """Generate (via LLM cascade) and persist coaching output.
 
     Returns artifact metadata; raises on write verification failure.
@@ -321,7 +326,7 @@ async def persist_report(kind: str, params: dict, fmt: str = "both", target: str
     if kind == "diagnosis":
         result = await _run_diagnosis(params)
     else:
-        result = await _run_tool(kind, params)
+        result = await _run_tool(kind, params, ctx=ctx)
     if not isinstance(result, dict) or "error" in result:
         return result if isinstance(result, dict) else {"error": str(result)}
 

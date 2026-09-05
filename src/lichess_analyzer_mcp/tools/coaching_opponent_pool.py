@@ -172,7 +172,9 @@ async def lichess_coaching_opponent_pool(
         }
 
         prompt = build_prompt(3, prompt_data)
-        report, cascade_log = safe_llm_call(prompt, f"opponent_pool:{','.join(ids)}")
+        report, cascade_log, _cascade_exhausted = safe_llm_call(
+            prompt, f"opponent_pool:{','.join(ids)}"
+        )
 
         return {
             "ids": ids,

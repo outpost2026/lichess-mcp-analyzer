@@ -28,6 +28,7 @@ async def lichess_persist_report(
     result: str = "all",
     format: str = "both",
     target: str = "docs",
+    ctx=None,
 ):
     """Generate a coaching report via LLM cascade and persist it to disk (on demand).
 
@@ -65,7 +66,7 @@ async def lichess_persist_report(
             "rating": rating,
             "result": result,
         }
-        return await persist_report(kind, params, fmt=format, target=target)
+        return await persist_report(kind, params, fmt=format, target=target, ctx=ctx)
     except Exception as e:
         log.exception("persist report error | kind=%s", kind)
         return {"error": f"{type(e).__name__}: {e}", "kind": kind}

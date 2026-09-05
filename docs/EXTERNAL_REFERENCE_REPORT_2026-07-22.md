@@ -138,7 +138,7 @@ Obsahuje:
 - Architektonicka rozhodnuti (FastMCP > mcp[cli], berserk > raw HTTP)
 - Phase 2-4 plan
 
-### 5.2 MCP_GROUND_TRUTH_postmortem_agregovany_v1.md (04_KNOWLEDGE_BASE/01_MCP/)
+### 5.2 MCP_GROUND_TRUTH_postmortem_agregovany_v2.md (04_KNOWLEDGE_BASE/01_MCP/)
 
 Obsahuje:
 - Agregovane post-mortem napric vsemi MCP servery

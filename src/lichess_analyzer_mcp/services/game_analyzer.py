@@ -217,6 +217,45 @@ def _extract_legal_moves(board: chess.Board) -> LegalMovesSummary:
     )
 
 
+def _detect_tactical_motif(
+    board, move, gives_check: bool, is_capture: bool, is_promotion: bool, was_in_check: bool
+) -> tuple[bool, str | None]:
+    """Detect basic tactical motifs from move context.
+
+    Returns (is_tactical, motif_type). Heuristic — not exhaustive.
+    """
+    san = board.san(move)
+
+    # Escape from check — defensive, not tactical motif
+    if was_in_check and not gives_check:
+        return False, None
+
+    # Promotion
+    if is_promotion:
+        return True, "promotion"
+
+    # Check + capture = potentially discovered attack or fork
+    if gives_check and is_capture:
+        return True, "discovered_check_capture"
+
+    # Gives check (without capture) — could be fork or simple check
+    if gives_check:
+        return True, "check"
+
+    # Capture of higher-value piece
+    if is_capture:
+        captured_piece = board.piece_at(move.to_square)
+        if captured_piece and captured_piece.piece_type in (chess.QUEEN, chess.ROOK):
+            return True, "high_value_capture"
+        return True, "capture"
+
+    return False, None
+    if is_capture:
+        return True, "capture"
+
+    return False, None
+
+
 def _classify_move(cp_loss: float) -> str:
     if cp_loss >= 300:
         return "blunder"
@@ -390,6 +429,12 @@ def _run_analyze_pgn(pgn: str, player_color: str = "white", depth: int = 0) -> G
             classification = _classify_move(cp_loss)
             phase = _detect_phase(ply)
             was_in_check = board.is_check()
+            gives_check = board.gives_check(move)
+            is_capture = board.is_capture(move)
+            is_promotion = move.promotion is not None
+            tactical, motif = _detect_tactical_motif(
+                board, move, gives_check, is_capture, is_promotion, was_in_check
+            )
             eval_before_val = eval_result.get("eval_before", 0) if eval_result else 0
             eval_after_val = eval_result.get("eval_after", 0) if eval_result else 0
             move_analysis = MoveAnalysis(
@@ -404,8 +449,8 @@ def _run_analyze_pgn(pgn: str, player_color: str = "white", depth: int = 0) -> G
                 classification=classification,
                 best_move_uci=eval_result.get("best_move_uci", "") if eval_result else "",
                 best_move_san="",
-                is_tactical_motif=False,
-                motif_type=None,
+                is_tactical_motif=tactical,
+                motif_type=motif,
                 phase=phase,
                 fen=fen_before,
                 was_in_check=was_in_check,

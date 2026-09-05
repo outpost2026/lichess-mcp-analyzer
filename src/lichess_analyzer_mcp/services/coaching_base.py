@@ -16,9 +16,66 @@ from lichess_analyzer_mcp.services.logger import get_logger
 log = get_logger("coaching_base")
 
 
-def collect_single_game(game_id: str, color: str = "white", depth: int = 0) -> dict:
+def detect_player_color(game_id: str, username: str) -> str:
+    """Detect player color from game metadata or PGN headers.
+
+    Priority:
+    1. Game metadata via Lichess API (fetch_game_by_id)
+    2. PGN headers ([White]/[Black])
+    3. Default 'white'
+    """
+    if not username:
+        return "white"
+
+    # 1) API metadata (most reliable)
+    try:
+        from lichess_analyzer_mcp.services.lichess_client import fetch_game_by_id
+
+        raw = fetch_game_by_id(game_id)
+        if isinstance(raw, dict):
+            players = raw.get("players", {})
+            for color_key in ("white", "black"):
+                player_name = players.get(color_key, {}).get("user", {}).get("name", "").lower()
+                if player_name == username.lower():
+                    return color_key
+    except Exception:
+        pass
+
+    # 2) Fallback: parse PGN headers
+    try:
+        import io
+        import chess.pgn
+
+        from lichess_analyzer_mcp.services.lichess_client import fetch_game_pgn
+
+        pgn = fetch_game_pgn(game_id)
+        game_node = chess.pgn.read_game(io.StringIO(pgn))
+        if game_node is not None:
+            white_name = game_node.headers.get("White", "").lower()
+            black_name = game_node.headers.get("Black", "").lower()
+            if username.lower() == black_name:
+                return "black"
+            if username.lower() == white_name:
+                return "white"
+    except Exception:
+        pass
+
+    return "white"
+
+
+def collect_single_game(
+    game_id: str,
+    color: str = "white",
+    depth: int = 0,
+    username: str = "",
+) -> dict:
     if depth == 0:
         depth = DEPTH_DEFAULTS["standard"]["single_game"]
+
+    # Auto-detect color from username if provided
+    if username:
+        color = detect_player_color(game_id, username)
+
     pgn = fetch_game_pgn(game_id)
     analysis = analyze_pgn(pgn, color, depth, game_id, strict_depth=True)
     return {
@@ -63,7 +120,39 @@ def collect_weakness_report(analyses: list, username: str) -> dict | None:
     if not analyses:
         return None
     wr = diagnose(analyses, username)
-    return _weakness_to_dict(wr)
+    result = _weakness_to_dict(wr)
+
+    # Aggregate tactical motif data from per-move analysis
+    tactical_count = 0
+    positional_count = 0
+    motif_counts: dict[str, int] = {}
+    for a in analyses:
+        moves = a.get("moves", []) if isinstance(a, dict) else getattr(a, "moves", [])
+        for m in moves:
+            if isinstance(m, dict):
+                is_tac = m.get("is_tactical_motif", False)
+                motif = m.get("motif_type")
+                cl = m.get("classification", "")
+            else:
+                is_tac = getattr(m, "is_tactical_motif", False)
+                motif = getattr(m, "motif_type", None)
+                cl = getattr(m, "classification", "")
+            if cl in ("blunder", "mistake", "inaccuracy"):
+                if is_tac:
+                    tactical_count += 1
+                    if motif:
+                        motif_counts[motif] = motif_counts.get(motif, 0) + 1
+                else:
+                    positional_count += 1
+
+    total_classified = tactical_count + positional_count
+    result["tactical_summary"] = {
+        "tactical_count": tactical_count,
+        "positional_count": positional_count,
+        "tactical_ratio": round(tactical_count / total_classified, 2) if total_classified else 0,
+        "motif_distribution": motif_counts,
+    }
+    return result
 
 
 def _weakness_to_dict(wr) -> dict:
@@ -112,12 +201,16 @@ def _is_valid_coaching_content(content: str | None) -> bool:
     return True
 
 
-def safe_llm_call(prompt: str, context: str = "") -> tuple[str, list[dict]]:
+def safe_llm_call(prompt: str, context: str = "") -> tuple[str, list[dict], bool]:
     """LLM call with cascade fallback + token tracking.
 
     Sends pre-built prompt directly to LLM providers in cascade order.
     Falls back to structured data dump (without instructions) if no LLM is available.
     Validates LLM output — echo or empty responses are treated as failures.
+
+    Returns:
+        (report, cascade_log, cascade_exhausted)
+        cascade_exhausted=True means all providers failed — caller can try MCP sampling.
     """
     from lichess_analyzer_mcp.services.llm_client import (
         PROVIDERS,
@@ -140,7 +233,7 @@ def safe_llm_call(prompt: str, context: str = "") -> tuple[str, list[dict]]:
         content, token_log = _call_llm(COACHING_SYSTEM_PROMPT, prompt, prov_cfg)
         cascade_log.append(token_log)
         if _is_valid_coaching_content(content):
-            return content, cascade_log
+            return content, cascade_log, False  # cascade_exhausted = False
         # Invalid content (echo, empty, too short) — treat as provider failure
         if content is not None:
             token_log["error"] = (
@@ -159,7 +252,7 @@ def safe_llm_call(prompt: str, context: str = "") -> tuple[str, list[dict]]:
             ide_content, ide_log = generate_ide_report(prompt, COACHING_SYSTEM_PROMPT)
             if _is_valid_coaching_content(ide_content):
                 cascade_log.append(ide_log)
-                return ide_content, cascade_log
+                return ide_content, cascade_log, False  # cascade_exhausted = False
             # IDE returned invalid — log and continue to data dump
             ide_log["error"] = "IDE fallback returned invalid content"
             cascade_log.append(ide_log)
@@ -175,7 +268,7 @@ def safe_llm_call(prompt: str, context: str = "") -> tuple[str, list[dict]]:
         "---\n\n"
         "_No LLM synthesis was performed. Review the data above or retry when a provider is available._"
     )
-    return fallback, cascade_log
+    return fallback, cascade_log, True  # cascade_exhausted = True
 
 
 def extract_game_id_color_from_analysis(analysis) -> tuple[str, str]:
@@ -183,3 +276,32 @@ def extract_game_id_color_from_analysis(analysis) -> tuple[str, str]:
     gid = getattr(analysis, "game_id", "") or ""
     color = getattr(analysis, "player_color", "white")
     return gid, color
+
+
+async def mcp_sample_fallback(ctx, prompt: str, system_prompt: str = "") -> tuple[str, dict]:
+    """MCP sampling fallback — uses the IDE's current LLM via ctx.sample().
+
+    Called when all external API providers are exhausted.
+    Requires MCP Context object from the tool function.
+    """
+    messages = []
+    if system_prompt:
+        messages.append({"role": "user", "content": f"System: {system_prompt}\n\n{prompt}"})
+    else:
+        messages.append({"role": "user", "content": prompt})
+
+    response = await ctx.sample(messages=messages)
+    content = response.text if hasattr(response, "text") else str(response)
+
+    token_log = {
+        "provider": "MCP Sampling (IDE model)",
+        "model": getattr(response, "model", "unknown"),
+        "input_chars": len(prompt) + len(system_prompt),
+        "output_chars": len(content),
+        "estimated_input_tokens": (len(prompt) + len(system_prompt)) // 4,
+        "completion_tokens": len(content) // 4,
+        "total_tokens": (len(prompt) + len(system_prompt)) // 4 + len(content) // 4,
+        "cost_usd": 0.0,
+        "error": None,
+    }
+    return content, token_log

@@ -167,7 +167,9 @@ async def lichess_coaching_opening_report(
             "best_openings": top_best({**dict(white_by_opening), **dict(black_by_opening)}),
         }
         prompt = build_prompt(5, prompt_data)
-        report, cascade_log = safe_llm_call(prompt, f"opening_report:{username}")
+        report, cascade_log, _cascade_exhausted = safe_llm_call(
+            prompt, f"opening_report:{username}"
+        )
 
         return {
             "username": username,

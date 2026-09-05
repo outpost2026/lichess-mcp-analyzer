@@ -9,7 +9,9 @@ from lichess_analyzer_mcp.services.coaching_base import (
     collect_patterns_for_games,
     collect_weakness_report,
     safe_llm_call,
+    mcp_sample_fallback,
 )
+from lichess_analyzer_mcp.services.llm_client import COACHING_SYSTEM_PROMPT
 from lichess_analyzer_mcp.services.prompt_builder import build_prompt
 from lichess_analyzer_mcp.services.logger import get_logger
 
@@ -24,6 +26,7 @@ async def lichess_coaching_cross_game(
     depth: int = 0,
     result: str = "all",
     max_seconds: int = 0,
+    ctx=None,
 ):
     """Cross-game pattern analysis with LLM coaching report.
 
@@ -103,7 +106,22 @@ async def lichess_coaching_cross_game(
             "pattern_ranking": pattern_ranking,
         }
         prompt = build_prompt(2, prompt_data)
-        report, cascade_log = safe_llm_call(prompt, f"cross_game:{username}")
+        report, cascade_log, cascade_exhausted = safe_llm_call(prompt, f"cross_game:{username}")
+
+        # MCP sampling fallback — use IDE's LLM when external APIs are exhausted
+        if cascade_exhausted and ctx is not None:
+            try:
+                mcp_content, mcp_log = await mcp_sample_fallback(
+                    ctx, prompt, COACHING_SYSTEM_PROMPT
+                )
+                from lichess_analyzer_mcp.services.coaching_base import _is_valid_coaching_content
+
+                if _is_valid_coaching_content(mcp_content):
+                    report = mcp_content
+                    cascade_log.append(mcp_log)
+            except Exception as e:
+                log.warning("MCP sampling fallback failed: %s", e)
+                cascade_log.append({"provider": "MCP Sampling", "error": str(e)})
 
         return {
             "username": username,

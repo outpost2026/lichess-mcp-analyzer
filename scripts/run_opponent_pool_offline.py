@@ -123,7 +123,7 @@ def main():
     }
 
     prompt = build_prompt(3, prompt_data)
-    report, cascade_log = safe_llm_call(prompt, f"opponent_pool:offline_{n}")
+    report, cascade_log, _cascade_exhausted = safe_llm_call(prompt, f"opponent_pool:offline_{n}")
 
     result = {
         "ids": [g["id"] for g in games],

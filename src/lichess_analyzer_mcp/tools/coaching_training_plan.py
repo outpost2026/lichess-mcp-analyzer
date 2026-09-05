@@ -111,7 +111,7 @@ async def lichess_coaching_training_plan(
             "top_weaknesses": top_weaknesses_str,
         }
         prompt = build_prompt(4, prompt_data)
-        report, cascade_log = safe_llm_call(prompt, f"training_plan:{username}")
+        report, cascade_log, _cascade_exhausted = safe_llm_call(prompt, f"training_plan:{username}")
 
         return {
             "username": username,

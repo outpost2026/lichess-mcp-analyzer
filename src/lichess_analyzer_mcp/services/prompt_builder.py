@@ -9,9 +9,12 @@ PROMPT_TEMPLATES: dict[int, str] = {
 
 K DISPOZICI:
 - Výsledek: {result}, barva: {color}, zahájení: {opening}
+- Time control: {time_control}, Rating: {player_rating} vs {opponent_rating}
 - Celková ACPL: {acpl}
 - Počet chyb: {blunders_count} blunderů, {mistakes_count} chyb, {inaccuracies_count} nepřesností
-- Blundry: {blunders_list}
+- Blundry (s detaily): {blunders_list}
+- Chyby (s detaily): {mistakes_list}
+- Nepřesnosti: {inacc_list}
 - Fázový breakdown: {phase_breakdown}
 - Pattern detection: {patterns_json}
 - BlunderFactSheet podrobnosti: {bfs_json}
@@ -21,6 +24,7 @@ PRAVIDLA:
 2. Pokud tool nevrátí affected_games pro pattern — neuváděj konkrétní game_id.
 3. Pokud nemáš data — NEVYMÝŠLEJ. Nahraď obecným popisem.
 4. [DATA] a [IM] oddělené sekce.
+5. KAŽDÝ blunder/mistake MUSÍ být klasifikován jako taktický nebo poziční — použij FEN, motif, check, engine lines.
 
 STRUKTURA:
 [DATA] Základní info: výsledek, barva, zahájení, celková ACPL, accuracy %
@@ -29,19 +33,19 @@ STRUKTURA:
   - Middlegame: ACPL, kritické momenty
   - Endgame: ACPL, konverze/obrana
 [DATA] Error klasifikace:
-  - Blunders: každý s ply, cp_loss, fází, popis
-  - Mistakes: seznam
-  - Inaccuracies: počet
+  - Blunders: každý s ply, SAN, cp_loss, fází, FEN, motif, check, zda je taktický/poziční
+  - Mistakes: každý s ply, SAN, cp_loss, fází, motivem
+  - Inaccuracies: počet + přehled
 [DATA] Pattern detection výsledky pro tuto hru
 [DATA] BlunderFactSheet: engine_lines top3, legal_moves, board_state pro každý blunder
 
 [IM] Heisman-style error analýza:
-  - Která chyba byla nejkritičtější
-  - Taktická nebo poziční?
-  - Time trouble?
+  - Která chyba byla nejkritičtější (dle cp_loss × win_prob_delta)
+  - Taktická nebo poziční? (ODŮVODNI z FEN/motif/check/engine lines)
+  - Time trouble? (odhadni z time control + pozice v partii)
 [IM] Tři věci co hráč udělal dobře
 [IM] Jedna věc na zlepšení do příště
-[IM] Tréninková doporučení""",
+[IM] Tréninková doporučení (specifická pro nalezené chyby)""",
     2: """Vytvoř cross-game pattern analysis pro {N} her hráče.
 
 K DISPOZICI:
@@ -50,12 +54,14 @@ K DISPOZICI:
 - Cache všech her: data/game_cache/*.json (ACPL per game, blunder rate)
 - BlunderFactSheets pro všechny blundry napříč hrami
 - Weakness report: {weakness_json}
+  obsahuje: tactical_summary (tactical_count, positional_count, tactical_ratio, motif_distribution)
 
 PRAVIDLA:
 1. Každé tvrzení o pattern frekvenci, ACPL, blunder rate musí být ověřeno z cache/tool.
 2. Pokud pattern nemá affected_games — uveď "N her s tímto patternem", NE game_id.
 3. [DATA] = ověřitelná fakta, [IM] = interpretace a doporučení.
 4. NEVYMÝŠLEJ příklady — pokud nemáš affected_games, nepoužívej konkrétní herní scénáře.
+5. Tactical vs positional klasifikaci ber z weakness_json → tactical_summary.
 
 STRUKTURA:
 [DATA] Agregované statistiky:
@@ -63,19 +69,21 @@ STRUKTURA:
   - Rozložení dle barvy (bílý/černý ACPL, win rate)
   - Průměrný počet blunderů/mistakes/inaccuracies na hru
   - ACPL trend (první polovina her vs druhá)
+[DATA] Tactical vs positional breakdown (z tactical_summary):
+  - Počet taktických chyb vs pozičních chyb
+  - Tactical ratio (poměr taktických chyb)
+  - Motif distribution (check, capture, high_value_capture, ...)
 [DATA] Pattern ranking (sestupně dle composite_score = frequency * severity):
   {pattern_ranking}
 [DATA] Phase breakdown:
   - Opening ACPL, % errors in opening
   - Middlegame ACPL, % errors in middlegame
   - Endgame ACPL, % errors in endgame
-[DATA] Error distribution:
-  - Tactical errors (forks, pins, skewers, discovered attacks) vs positional errors
-  - Poměr: kolik % chyb je taktických
 
 [IM] Heisman-style diagnostika:
   - Který pattern je nejkritičtější (ne podle frequency, ale podle dopadu na výsledek)
   - Kde hráč ztrácí nejvíc ELO (např. "endgame conversion" pokud 60% proher pochází z vyhraných endgame)
+  - Jsou chyby převážně taktické nebo poziční? (odůvodni z tactical_summary)
 [IM] Silman-style assessment:
   - Jaké imbalances hráč systematicky přehlíží? (např. "nikdy nebere v úvahu bishop pair")
   - V jakých typech pozic hráč exceluje a kde selhává?
@@ -104,6 +112,7 @@ PRAVIDLA:
 2. OZNAČ perspektivu: každý pattern/game id uveď "opponent:" nebo "author:" prefix.
 3. Pokud n2 < 3 hry: statistika n2 je indikativní, ne průkazná — explicitně uveď.
 4. Countermeasures musí být konkrétní a ověřitelné z dat.
+5. Tactical vs positional klasifikaci ber z weakness_json → tactical_summary (pokud dostupné).
 
 STRUKTURA:
 [DATA] Opponent aggregate:
