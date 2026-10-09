@@ -201,7 +201,7 @@ def _is_valid_coaching_content(content: str | None) -> bool:
     return True
 
 
-def safe_llm_call(prompt: str, context: str = "") -> tuple[str, list[dict], bool]:
+def safe_llm_call(prompt: str, context: str = "") -> tuple[str | None, list[dict], bool]:
     """LLM call with cascade fallback + token tracking.
 
     Sends pre-built prompt directly to LLM providers in cascade order.
