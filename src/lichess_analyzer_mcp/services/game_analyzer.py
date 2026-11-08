@@ -192,7 +192,17 @@ def analyze_pgn(
     analysis._cache_layer = "none"
 
     if use_cache and game_id:
-        _save_cached_analysis(game_id, depth, analysis)
+        # A partial analysis must never become the cached truth — otherwise
+        # every later run silently replays the gap (observed: 13 of 25 moves
+        # lost after one engine timeout).
+        if analysis.unanalyzed_plies:
+            _logger.warning(
+                "not caching partial analysis for %s: %d unanalyzed plies",
+                game_id,
+                len(analysis.unanalyzed_plies),
+            )
+        else:
+            _save_cached_analysis(game_id, depth, analysis)
 
     return analysis
 
@@ -362,6 +372,22 @@ def _win_prob_from_cp(cp: float) -> float:
     if cp is None:
         return 0.5
     return 1.0 / (1.0 + 10 ** (-cp / 400.0))
+
+
+_DEAD_ENGINE_MARKERS = (
+    "event loop dead",
+    "engine terminated",
+    "engine died",
+    "not ready",
+)
+
+
+def _engine_is_dead(result: dict | None) -> bool:
+    """True when the engine process itself failed (not a slow position)."""
+    if not result or "error" not in result:
+        return False
+    text = str(result.get("error", "")).lower()
+    return any(marker in text for marker in _DEAD_ENGINE_MARKERS)
 
 
 def _engine_lines_to_dicts(lines: list[dict]) -> list[dict]:
@@ -559,7 +585,14 @@ def _run_analyze_pgn(
                 continue
 
             per_move_s = remaining_engine / remaining_moves
-            call_cap = max(MIN_USEFUL_ENGINE_S, min(remaining_engine, per_move_s * 1.2))
+            # One `evaluate_move` costs up to three depth-limited analyses
+            # (before / best / played). A cap of ~3 s was routinely exceeded
+            # in sharp middlegames; the timeout then killed the engine. Floor
+            # at 6 s per move, still bounded by what is actually left.
+            call_cap = max(
+                MIN_USEFUL_ENGINE_S,
+                min(remaining_engine, max(6.0, per_move_s * 1.5)),
+            )
             eval_result = None
             t_engine = time.perf_counter()
             try:
@@ -571,6 +604,27 @@ def _run_analyze_pgn(
                 eval_result = {"error": str(e)}
             engine_time_s += time.perf_counter() - t_engine
             analysis.engine_calls += 1
+
+            # A dead engine may cost one move at most, never the rest of the
+            # game: restart it and retry the same move once.
+            if _engine_is_dead(eval_result):
+                remaining_retry = max(0.0, engine_deadline - time.perf_counter())
+                if remaining_retry >= MIN_USEFUL_ENGINE_S:
+                    engine_client.reset_engine()
+                    retry_cap = max(
+                        MIN_USEFUL_ENGINE_S,
+                        min(remaining_retry, max(6.0, per_move_s * 1.5)),
+                    )
+                    t_engine = time.perf_counter()
+                    try:
+                        eval_result = engine_client.evaluate_move(
+                            fen_before, move.uci(), depth=depth, timeout_s=retry_cap
+                        )
+                    except Exception as e:
+                        eval_result = {"error": str(e)}
+                    engine_time_s += time.perf_counter() - t_engine
+                    analysis.engine_calls += 1
+                    analysis.engine_retries += 1
 
             if (
                 not eval_result
@@ -640,7 +694,7 @@ def _run_analyze_pgn(
                 if remaining_engine >= MIN_USEFUL_ENGINE_S and bfs_engine_lines_calls < 10:
                     bfs_cap = max(
                         MIN_USEFUL_ENGINE_S,
-                        min(remaining_engine, max(0.5, per_move_s * 2.0)),
+                        min(remaining_engine, max(5.0, per_move_s * 2.0)),
                     )
                     t_engine = time.perf_counter()
                     engine_lines_raw, lines_error = engine_client.analyze_position_ex(
@@ -676,6 +730,25 @@ def _run_analyze_pgn(
                         move_analysis, move_analysis.engine_lines
                     )
                     move_analysis.explanation_source = "deterministic"
+                elif move_analysis.best_move_uci:
+                    # The multi-PV call timed out, but the main evaluation did
+                    # measure a best move. Say that, instead of dropping the
+                    # explanation for a flagged move (P0.5).
+                    best_san = ""
+                    try:
+                        best_san = board.san(chess.Move.from_uci(move_analysis.best_move_uci))
+                    except Exception:
+                        best_san = ""
+                    if best_san:
+                        move_analysis.best_move_san = best_san
+                        move_analysis.explanation = (
+                            f"Hráno {move_analysis.move_san}; motor preferuje {best_san}. "
+                            f"Ztráta {cp_loss:.0f} cp oproti nejlepšímu tahu."
+                        )
+                        move_analysis.explanation_source = "deterministic"
+                    else:
+                        move_analysis.explanation = ""
+                        move_analysis.explanation_source = "none"
                 else:
                     move_analysis.explanation = ""
                     move_analysis.explanation_source = "none"

@@ -74,6 +74,7 @@
         "budget_used": { "type": ["number", "null"], "minimum": 0 },
         "engine_calls": { "type": "integer", "minimum": 0 },
         "engine_timeouts": { "type": "integer", "minimum": 0 },
+        "engine_retries": { "type": "integer", "minimum": 0 },
         "cache_hit": { "type": "boolean" }
       }
     },

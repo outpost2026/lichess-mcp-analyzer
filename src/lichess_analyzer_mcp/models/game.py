@@ -90,6 +90,7 @@ class GameAnalysis:
     timings: dict = field(default_factory=dict)
     engine_calls: int = 0
     engine_timeouts: int = 0
+    engine_retries: int = 0
     deadline_s: float = 0.0
     deadline_hit: bool = False
     mode: str = "fast"
@@ -111,6 +112,7 @@ class GameAnalysis:
             "timings": self.timings,
             "engine_calls": self.engine_calls,
             "engine_timeouts": self.engine_timeouts,
+            "engine_retries": self.engine_retries,
             "deadline_s": self.deadline_s,
             "deadline_hit": self.deadline_hit,
             "mode": self.mode,
@@ -187,4 +189,3 @@ class GameAnalysis:
             deadline_hit=d.get("deadline_hit", False),
             mode=d.get("mode", "fast"),
         )
-

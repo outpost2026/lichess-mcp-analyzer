@@ -718,3 +718,25 @@ Před implementací potvrdit:
   `DEEP_DIVE_SINGLE_GAME_PATTERNS_2026-08-02.md`, `.ai_state.json`.
 - GT: GT-051 / P36 (model ID discovery), GT-057 / P42 (cascade resilience),
   GT-087 / P13 (long-running operations).
+
+---
+
+## 11. Nález z testu #5 (anonymní hra NxKgE4l8, 2026-11-08)
+
+První běh na nové hře odhalil defekt, který plán nepředjímal:
+
+| Symptom | Root cause | Fix |
+|---|---|---|
+| `status=partial`, 12/25 tahů, 13× `ENGINE_ERROR: engine event loop dead` | `evaluate_move()` předával vlastní referenci do `_run_engine_call()`; timeout engine zabil, ale `_engine` zůstal ukazovat na mrtvý proces → všech 13 následujících tahů selhalo | `_run_engine_call()` čistí `_engine`, kdykoli zabil sdílený engine; `reset_engine()` + jeden retry tahu v `game_analyzer` |
+| timeout na ply 25 už při 3 s | `evaluate_move` = až 3 analýzy (before/best/played); cap `per_move_s × 1.2` byl pod reálnou potřebou | floor 6 s na tah (BFS lines floor 5 s), vždy omezeno zbytkem budgetu |
+| vlajkovaný tah bez vysvětlení (BFS timeout) | vysvětlení se stavělo jen z multi-PV linií | fallback: SAN z `best_move_uci` + naměřený cp_loss → `explanation_source=deterministic` |
+| částečný výsledek se uložil do cache | `_save_cached_analysis()` bez kontroly `unanalyzed_plies` | partial se necachuje (jinak by se mezera replikovala navždy) |
+
+Měření po opravě (stejná hra, cold/warm): 25/25 tahů, 0 timeoutů, 7 vlajkovaných tahů,
+všechny s vysvětlením, 28,7 s / 2,5 s.
+
+**Otevřený nález (nedeterminismus):** dva cold běhy stejné hry daly ACPL 47,6 a 41,6
+a jinou množinu vlajkovaných tahů (5 vs 7). Příčina: `Threads=4` + transposition table
+se mezi tahy nečistí (clear jen na konci hry). Reprodukovatelnost by vyžadovala
+`Threads=1` + `Clear Hash` před každým tahem; to je kalibrační rozhodnutí, ne bug —
+zatím nezvoleno.

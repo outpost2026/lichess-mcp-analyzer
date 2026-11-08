@@ -281,6 +281,7 @@ async def lichess_coaching_single_game(
         engine_s = 0.0 if cache_hit else float(analysis_timings.get("engine_s", 0.0))
         engine_calls = 0 if cache_hit else int(analysis.get("engine_calls", 0))
         engine_timeouts = 0 if cache_hit else int(analysis.get("engine_timeouts", 0))
+        engine_retries = 0 if cache_hit else int(analysis.get("engine_retries", 0))
         overhead_s = max(0.0, total_s - io_s - engine_s - llm_s)
         timings = {
             "io_s": round(io_s, 3),
@@ -292,6 +293,7 @@ async def lichess_coaching_single_game(
             "budget_used": round(total_s / deadline_s, 3) if deadline_s else None,
             "engine_calls": engine_calls,
             "engine_timeouts": engine_timeouts,
+            "engine_retries": engine_retries,
             "cache_hit": cache_hit,
         }
 
@@ -399,6 +401,7 @@ async def lichess_coaching_single_game(
                 "budget_used": None,
                 "engine_calls": 0,
                 "engine_timeouts": 0,
+                "engine_retries": 0,
                 "cache_hit": False,
             },
             "engine": {

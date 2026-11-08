@@ -108,6 +108,15 @@ def _acquire_analysis_lock() -> bool:
     return True
 
 
+def reset_engine() -> None:
+    """Drop the shared engine so the next `get_engine()` starts a fresh process.
+
+    Used by callers that saw an engine-level failure and want one retry
+    without losing the rest of the game.
+    """
+    _kill_engine()
+
+
 def _kill_engine():
     """Terminate the shared engine immediately (timeout recovery)."""
     global _engine
@@ -156,7 +165,11 @@ def _run_engine_call(fn, timeout_s: float | None = None, engine=None):
                 target.quit()
             except Exception:  # noqa: S110 — engine already failing; quit is best-effort
                 pass
-            if engine is None:
+            if target is _engine:
+                # The shared engine is dead. Clear the global even when the
+                # caller passed its own reference, otherwise every following
+                # call gets the corpse and fails with "engine event loop dead"
+                # (observed: 13 lost moves after one 3 s timeout).
                 _engine = None
         return {"error": f"engine call timed out after {timeout_s:.0f}s"}
     if "error" in result:
