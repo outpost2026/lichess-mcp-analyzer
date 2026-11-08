@@ -73,7 +73,7 @@ def _estimate_cost(provider_name: str, prompt_tokens: int, completion_tokens: in
 
 
 def _call_llm(
-    system_prompt: str, user_prompt: str, provider_config: dict
+    system_prompt: str, user_prompt: str, provider_config: dict, timeout_s: float | None = None
 ) -> tuple[Optional[str], dict]:
     import httpx
 
@@ -81,6 +81,7 @@ def _call_llm(
     model = os.environ.get(provider_config["model_var"], provider_config["default_model"])
     base_url = provider_config["base_url"]
     provider_name = provider_config["name"]
+    effective_timeout = LLM_TIMEOUT if timeout_s is None else max(0.5, float(timeout_s))
 
     token_log = {
         "provider": provider_name,
@@ -113,7 +114,10 @@ def _call_llm(
 
     try:
         resp = httpx.post(
-            f"{base_url}/chat/completions", headers=headers, json=payload, timeout=LLM_TIMEOUT
+            f"{base_url}/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=effective_timeout,
         )
         token_log["http_status"] = resp.status_code
 
@@ -368,7 +372,17 @@ def generate_coaching_report_with_logs(
         if not api_key:
             cascade_log.append({"provider": order_name, "skipped": True, "error": "No API key"})
             continue
+        from lichess_analyzer_mcp.services import provider_health
+
+        if not provider_health.should_attempt(order_name):
+            cascade_log.append(
+                {"provider": order_name, "skipped": True, "error": "Negative cache (recent 4xx)"}
+            )
+            continue
         content, token_log = _call_llm(COACHING_SYSTEM_PROMPT, user_prompt, provider_config)
+        provider_health.record_result(
+            order_name, token_log.get("http_status"), token_log.get("error")
+        )
         cascade_log.append(token_log)
         # Validate: reject empty/echo responses, try next provider
         if content is not None and content.strip() and len(content.strip()) >= 50:
@@ -384,23 +398,23 @@ def generate_coaching_report_with_logs(
                 or "Invalid LLM output (empty/too short) — trying next provider"
             )
 
-    # ── IDE fallback (Muse Spark) — before data dump ──
+    # ── Deterministic report — not an LLM, explicitly labelled ──
     try:
         from lichess_analyzer_mcp.services.ide_fallback import (
-            generate_ide_report as _ide_report,
+            generate_deterministic_report as _det_report,
         )
         from lichess_analyzer_mcp.services.ide_fallback import (
             is_ide_available as _ide_avail,
         )
 
         if _ide_avail():
-            ide_content, ide_log = _ide_report(user_prompt, COACHING_SYSTEM_PROMPT)
-            if ide_content and ide_content.strip() and len(ide_content.strip()) >= 50:
-                if "=== INSTRUCTIONS ===" not in ide_content:
-                    cascade_log.append(ide_log)
-                    return ide_content, cascade_log
+            det_content, det_log = _det_report(user_prompt, COACHING_SYSTEM_PROMPT)
+            if det_content and det_content.strip() and len(det_content.strip()) >= 50:
+                if "=== INSTRUCTIONS ===" not in det_content:
+                    cascade_log.append(det_log)
+                    return det_content, cascade_log
     except Exception as e:
-        cascade_log.append({"provider": "IDE (Muse Spark)", "error": f"IDE fallback failed: {e}"})
+        cascade_log.append({"provider": "Deterministic report", "error": f"fallback failed: {e}"})
 
     fallback = _fallback_report(username, games_analyzed, patterns, weakness_report)
     return fallback, cascade_log
@@ -424,15 +438,17 @@ def generate_coaching_report(
 
 
 def is_llm_available() -> bool:
-    if any(os.environ.get(p["api_key_var"], "") for p in PROVIDERS):
-        return True
-    # IDE fallback counts as available in opencode/Cursor
-    try:
-        from lichess_analyzer_mcp.services.ide_fallback import is_ide_available
+    """True only when a real LLM provider is configured and not in negative cache.
 
-        return is_ide_available()
-    except Exception:
-        return False
+    The deterministic report is NOT an LLM and must never make this return True
+    (P0.3).
+    """
+    from lichess_analyzer_mcp.services import provider_health
+
+    return any(
+        os.environ.get(p["api_key_var"], "") and provider_health.should_attempt(p["name"])
+        for p in PROVIDERS
+    )
 
 
 def verify_api_keys() -> list[dict]:
@@ -522,29 +538,30 @@ def verify_api_keys() -> list[dict]:
 
 
 def get_llm_status() -> dict:
-    available = list_available_providers()
+    from lichess_analyzer_mcp.services import provider_health
+
+    health = provider_health.snapshot()
+    available = []
+    for p in PROVIDERS:
+        entry = {"provider": p["name"], "model": os.environ.get(p["model_var"], p["default_model"])}
+        entry["key_set"] = bool(os.environ.get(p["api_key_var"], ""))
+        entry["healthy"] = provider_health.should_attempt(p["name"])
+        if p["name"] in health:
+            entry["health"] = health[p["name"]]
+        available.append(entry)
+
     active = None
     for p in PROVIDERS:
-        if os.environ.get(p["api_key_var"], ""):
+        if os.environ.get(p["api_key_var"], "") and provider_health.should_attempt(p["name"]):
             active = p["name"]
             break
-    # IDE fallback as virtual provider
-    try:
-        from lichess_analyzer_mcp.services.ide_fallback import is_ide_available
 
-        if is_ide_available():
-            available.append(
-                {"provider": "IDE (Muse Spark)", "model": "muse-spark-1.2", "key_set": True}
-            )
-            if active is None:
-                active = "IDE (Muse Spark)"
-    except Exception:
-        pass
     mode = os.environ.get("PIPELINE_MODE", "auto")
     return {
         "available": available,
-        "total_configured": len(available),
+        "total_configured": sum(1 for p in PROVIDERS if os.environ.get(p["api_key_var"], "")),
         "active_provider": active,
+        "deterministic_fallback": True,
         "pipeline_mode": mode,
     }
 

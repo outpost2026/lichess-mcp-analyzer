@@ -7,13 +7,14 @@ from lichess_analyzer_mcp.services.lichess_client import fetch_cloud_eval
 
 @app.tool("lichess_analyze_position")
 @auditable
-async def lichess_analyze_position(fen: str, depth: int = 0, use_cloud: bool = True):
+async def lichess_analyze_position(fen: str, depth: int = 0, use_cloud: bool = False):
     """Analyzes a chess position using Stockfish or Lichess cloud eval.
 
     Args:
         fen: FEN string of the position
-        depth: Stockfish analysis depth (8-24, default 18 — 0=auto)
-        use_cloud: Try Lichess cloud eval first (faster if cached)
+        depth: Stockfish analysis depth (8-24, default 14 — 0=auto)
+        use_cloud: Try Lichess cloud eval first (off by default — the cloud
+            endpoint 404s for most positions and each miss costs a round-trip)
     """
     if depth == 0:
         depth = DEPTH_DEFAULTS["standard"]["position"]

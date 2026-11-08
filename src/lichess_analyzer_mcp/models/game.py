@@ -51,9 +51,20 @@ class MoveAnalysis:
     phase: str
     fen: str = ""
     was_in_check: bool = False
+    # P0.2: an analytical result is either measured or explicitly absent.
+    analyzed: bool = True
+    # P0.5: deterministic explanation surface for every flagged move.
+    engine_lines: list[dict] = field(default_factory=list)
+    played_rank: int = 0
+    explanation: str = ""
+    explanation_source: str = "none"
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        data = asdict(self)
+        # Contract v1.1: an unmeasured move must never look like a perfect one.
+        if not self.analyzed:
+            data["centipawn_loss"] = None
+        return data
 
     @staticmethod
     def from_dict(d: dict) -> "MoveAnalysis":
@@ -73,6 +84,15 @@ class GameAnalysis:
     phase_stats: dict = field(default_factory=dict)
     blunder_fact_sheets: list[BlunderFactSheet] = field(default_factory=list)
     evaluation_errors: int = 0
+    # P0.1/P0.2: observable contract fields.
+    unanalyzed_plies: list[int] = field(default_factory=list)
+    errors: list[dict] = field(default_factory=list)
+    timings: dict = field(default_factory=dict)
+    engine_calls: int = 0
+    engine_timeouts: int = 0
+    deadline_s: float = 0.0
+    deadline_hit: bool = False
+    mode: str = "fast"
 
     def to_dict(self) -> dict:
         return {
@@ -86,13 +106,22 @@ class GameAnalysis:
             "phase_stats": self.phase_stats,
             "blunder_fact_sheets": [bfs.to_dict() for bfs in self.blunder_fact_sheets],
             "evaluation_errors": self.evaluation_errors,
+            "unanalyzed_plies": self.unanalyzed_plies,
+            "errors": self.errors,
+            "timings": self.timings,
+            "engine_calls": self.engine_calls,
+            "engine_timeouts": self.engine_timeouts,
+            "deadline_s": self.deadline_s,
+            "deadline_hit": self.deadline_hit,
+            "mode": self.mode,
         }
 
     def auto_annotate(self) -> None:
         capture_blunders = [
             m
             for m in self.moves
-            if m.classification in ("blunder", "mistake")
+            if m.analyzed
+            and m.classification in ("blunder", "mistake")
             and "x" in m.move_san
             and m.centipawn_loss >= 100
         ]
@@ -109,15 +138,16 @@ class GameAnalysis:
         self.phase_stats = self._compute_phase_stats()
 
     def _compute_accuracy(self) -> float:
-        if not self.moves:
+        measured = [m for m in self.moves if m.analyzed]
+        if not measured:
             return 0.0
-        total = sum(max(0, 100 - m.centipawn_loss * 0.15) for m in self.moves)
-        return round(max(0, min(100, total / len(self.moves))), 1)
+        total = sum(max(0, 100 - m.centipawn_loss * 0.15) for m in measured)
+        return round(max(0, min(100, total / len(measured))), 1)
 
     def _compute_phase_stats(self) -> dict:
         stats = {}
         for phase in ("opening", "middlegame", "endgame"):
-            phase_moves = [m for m in self.moves if m.phase == phase]
+            phase_moves = [m for m in self.moves if m.analyzed and m.phase == phase]
             if not phase_moves:
                 continue
             acpl = sum(m.centipawn_loss for m in phase_moves) / len(phase_moves)
@@ -148,4 +178,13 @@ class GameAnalysis:
                 BlunderFactSheet.from_dict(bfs) for bfs in d.get("blunder_fact_sheets", [])
             ],
             evaluation_errors=d.get("evaluation_errors", 0),
+            unanalyzed_plies=d.get("unanalyzed_plies", []),
+            errors=d.get("errors", []),
+            timings=d.get("timings", {}),
+            engine_calls=d.get("engine_calls", 0),
+            engine_timeouts=d.get("engine_timeouts", 0),
+            deadline_s=d.get("deadline_s", 0.0),
+            deadline_hit=d.get("deadline_hit", False),
+            mode=d.get("mode", "fast"),
         )
+

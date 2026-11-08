@@ -570,3 +570,157 @@ class PatternDetector:
                 hypothesis="Hypothesis: player fails to recognize when their piece is pinned, treating it as free to move -- overlooking the higher-value piece behind it.",
             )
         return None
+
+
+# ── Single-game pattern surface (P0.4) ───────────────────────────────────────
+# Cross-game detectors above answer questions such as "do you play worse versus
+# anonymous opponents?" — they have no denominator for one game and must not be
+# unlocked by lowering `min_games`. This function only reuses per-move signals
+# that exist inside a single game and labels its output with scope=single_game.
+
+
+def _single_game_candidate(move, prev_move) -> list[dict]:
+    """Return zero or more per-move pattern candidates for one flagged move."""
+    cp = float(move.centipawn_loss or 0)
+    out: list[dict] = []
+
+    if "x" in (move.move_san or "") and cp >= THRESHOLD_GRAB_CP:
+        out.append(
+            {
+                "pattern_id": "B",
+                "pattern_name": "Automatic grab",
+                "confidence": min(cp / 500, 0.95),
+                "detail": f"capture with cp_loss={cp:.0f}",
+            }
+        )
+
+    if move.was_in_check and "x" not in (move.move_san or "") and cp >= THRESHOLD_BLOCK_CP:
+        out.append(
+            {
+                "pattern_id": "J",
+                "pattern_name": "Impulsive check block",
+                "confidence": min(cp / 600, 0.85),
+                "detail": f"check block with cp_loss={cp:.0f}",
+            }
+        )
+
+    if (
+        move.phase == "endgame"
+        and (move.eval_before or 0) > THRESHOLD_ENDGAME_EVAL
+        and cp >= THRESHOLD_ENDGAME_CP
+    ):
+        out.append(
+            {
+                "pattern_id": "R",
+                "pattern_name": "Endgame relaxation",
+                "confidence": min(cp / 1000, 0.85),
+                "detail": f"endgame eval_before={move.eval_before:.0f}, cp_loss={cp:.0f}",
+            }
+        )
+
+    if move.was_in_check and cp >= THRESHOLD_S_CAPTURE_AVERSION_CP:
+        try:
+            board = chess.Board(move.fen)
+            played = chess.Move.from_uci(move.move_uci)
+            king_captures = [
+                mv
+                for mv in board.legal_moves
+                if board.piece_at(mv.from_square).piece_type == chess.KING and board.is_capture(mv)
+            ]
+            played_piece = board.piece_at(played.from_square)
+            played_king_capture = (
+                played_piece is not None
+                and played_piece.piece_type == chess.KING
+                and board.is_capture(played)
+            )
+            if king_captures and not played_king_capture:
+                out.append(
+                    {
+                        "pattern_id": "S",
+                        "pattern_name": "Capture aversion under check",
+                        "confidence": 0.4,
+                        "detail": "king capture available but not played",
+                    }
+                )
+        except Exception:  # malformed FEN must not break the report
+            pass
+
+    if prev_move is not None and prev_move.classification in ("blunder", "mistake") and cp >= 200:
+        out.append(
+            {
+                "pattern_id": "C",
+                "pattern_name": "Attention tunneling",
+                "confidence": min(cp / 500, 0.8),
+                "detail": f"consecutive error after ply={prev_move.ply} cp_loss={cp:.0f}",
+            }
+        )
+
+    if move.is_tactical_motif and cp >= 50:
+        out.append(
+            {
+                "pattern_id": "T",
+                "pattern_name": "Tactical oversight",
+                "confidence": min(cp / 400, 0.8),
+                "detail": f"motif={move.motif_type or 'tactical'} cp_loss={cp:.0f}",
+            }
+        )
+
+    return out
+
+
+def detect_single_game(analysis: GameAnalysis) -> list[dict]:
+    """Deterministic per-game pattern surface.
+
+    Only per-move evidence is aggregated. Cross-game detectors are explicitly
+    not run; the caller reports `cross_game_suppressed`.
+    """
+    library = PatternLibrary().load_baseline().patterns
+    aggregated: dict[str, dict] = {}
+
+    for idx, move in enumerate(analysis.moves):
+        if not move.analyzed or move.centipawn_loss is None:
+            continue
+        if move.classification not in ("blunder", "mistake", "inaccuracy"):
+            continue
+        prev_move = analysis.moves[idx - 1] if idx > 0 else None
+        for cand in _single_game_candidate(move, prev_move):
+            pid = cand["pattern_id"]
+            entry = aggregated.get(pid)
+            if entry is None:
+                pdef = library.get(pid)
+                entry = {
+                    "pattern_id": pid,
+                    "pattern_name": cand["pattern_name"],
+                    "confidence": 0.0,
+                    "frequency": 0,
+                    "severity": pdef.severity if pdef else "medium",
+                    "scope": "single_game",
+                    "evidence": [],
+                    "affected_games": [analysis.game.id] if analysis.game.id else [],
+                }
+                entry["mitigation"] = (
+                    pdef.mitigation
+                    if pdef is not None
+                    else (
+                        "Review the engine line for each occurrence and compare the "
+                        "played move with the top engine choice."
+                    )
+                )
+                aggregated[pid] = entry
+            entry["frequency"] += 1
+            entry["confidence"] = round(max(entry["confidence"], cand["confidence"]), 2)
+            entry["evidence"].append(
+                {
+                    "ply": move.ply,
+                    "san": move.move_san,
+                    "cp_loss": round(float(move.centipawn_loss), 1),
+                    "phase": move.phase,
+                    "detail": cand["detail"],
+                }
+            )
+
+    order = {"B": 0, "J": 1, "S": 2, "C": 3, "R": 4, "T": 5}
+    return sorted(
+        aggregated.values(),
+        key=lambda x: (order.get(x["pattern_id"], 99), -x["confidence"]),
+    )

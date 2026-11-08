@@ -4,11 +4,13 @@ import glob
 import json
 import os
 import re
+import time
 
 import chess
 
 from lichess_analyzer_mcp.models.game import GameSummary, MoveAnalysis, GameAnalysis
-from lichess_analyzer_mcp.config.depth import DEPTH_DEFAULTS
+from lichess_analyzer_mcp.config.depth import DEPTH_DEFAULTS, MIN_USEFUL_ENGINE_S
+from lichess_analyzer_mcp.services.budget import Budget, budget_for_mode
 from lichess_analyzer_mcp.models.analysis import (
     BlunderFactSheet,
     BoardState,
@@ -155,7 +157,17 @@ def analyze_pgn(
     game_id: str | None = None,
     use_cache: bool = True,
     strict_depth: bool = False,
+    deadline_s: float | None = None,
+    mode: str = "legacy",
 ) -> GameAnalysis:
+    """Analyze one PGN.
+
+    `deadline_s` is a hard wall-clock budget for the whole call (P0.2).
+    Batch callers keep `mode="legacy"` (no stage deadline) so their
+    behaviour is unchanged; the single-game tool passes `fast` or `deep`.
+    A cache hit returns early and is marked on the object as `_cache_hit`
+    (not serialized, so it cannot leak into the cache file).
+    """
     if depth == 0:
         depth = DEPTH_DEFAULTS["standard"]["single_game"]
     if use_cache:
@@ -171,9 +183,13 @@ def analyze_pgn(
         if game_id:
             cached = _load_cached_analysis(game_id, depth, player_color, exact_depth=strict_depth)
             if cached is not None:
+                cached._cache_hit = True
+                cached._cache_layer = "game"
                 return cached
 
-    analysis = _run_analyze_pgn(pgn, player_color, depth)
+    analysis = _run_analyze_pgn(pgn, player_color, depth, deadline_s=deadline_s, mode=mode)
+    analysis._cache_hit = False
+    analysis._cache_layer = "none"
 
     if use_cache and game_id:
         _save_cached_analysis(game_id, depth, analysis)
@@ -348,9 +364,106 @@ def _win_prob_from_cp(cp: float) -> float:
     return 1.0 / (1.0 + 10 ** (-cp / 400.0))
 
 
-def _run_analyze_pgn(pgn: str, player_color: str = "white", depth: int = 0) -> GameAnalysis:
+def _engine_lines_to_dicts(lines: list[dict]) -> list[dict]:
+    """Normalize raw engine lines into the contract shape."""
+    out = []
+    for rank, el in enumerate(lines, start=1):
+        pv_san = list(el.get("pv_san") or [])
+        out.append(
+            {
+                "rank": rank,
+                "san": pv_san[0] if pv_san else "",
+                "eval_cp": el.get("score_cp"),
+                "pv": pv_san,
+            }
+        )
+    return out
+
+
+def _build_explanation(move: MoveAnalysis, engine_lines: list[dict]) -> str:
+    """Deterministic explanation from measured data only (P0.5).
+
+    No inference beyond the engine lines and the move context; returns an
+    empty string when there is nothing measured to say.
+    """
+    if not engine_lines:
+        return ""
+    best = engine_lines[0]
+    best_san = best.get("san") or "?"
+    best_cp = best.get("eval_cp")
+    best_cp_txt = f"{best_cp:+.0f}" if isinstance(best_cp, (int, float)) else "?"
+    parts = [f"Hráno {move.move_san}; motor preferuje {best_san} (hodnocení {best_cp_txt} cp)."]
+    if move.played_rank > 1:
+        parts.append(f"Tah byl {move.played_rank}. v pořadí kandidátů.")
+    if move.centipawn_loss is not None:
+        parts.append(f"Ztráta {move.centipawn_loss:.0f} cp oproti nejlepšímu tahu.")
+    if move.was_in_check:
+        parts.append("Pozice byla v šachu.")
+    if move.is_tactical_motif and move.motif_type:
+        parts.append(f"Motiv: {move.motif_type}.")
+    return " ".join(parts)
+
+
+def _unanalyzed_move(
+    ply: int, board: chess.Board, move: chess.Move, fen_before: str
+) -> MoveAnalysis:
+    """Explicit placeholder for a move the engine never measured.
+
+    `analyzed=False` + `cp_loss=None` in the output; never a silent zero.
+    """
+    return MoveAnalysis(
+        ply=ply,
+        move_uci=move.uci(),
+        move_san=board.san(move),
+        eval_before=0.0,
+        eval_after=0.0,
+        win_prob_before=0.5,
+        win_prob_after=0.5,
+        centipawn_loss=0.0,
+        classification="unanalyzed",
+        best_move_uci="",
+        best_move_san="",
+        is_tactical_motif=False,
+        motif_type=None,
+        phase=_detect_phase(ply),
+        fen=fen_before,
+        was_in_check=board.is_check(),
+        analyzed=False,
+        explanation_source="none",
+    )
+
+
+def _run_analyze_pgn(
+    pgn: str,
+    player_color: str = "white",
+    depth: int = 0,
+    deadline_s: float | None = None,
+    mode: str = "legacy",
+) -> GameAnalysis:
     if depth == 0:
         depth = DEPTH_DEFAULTS["standard"]["single_game"]
+
+    t_start = time.perf_counter()
+    if mode == "legacy":
+        # Batch/legacy callers: no per-game stage deadline (pre-2026-11
+        # behaviour). Engine calls still use the 15 s guard.
+        total_s = (
+            float(deadline_s) if deadline_s else float(DEPTH_DEFAULTS["limits"]["max_time_single"])
+        )
+        engine_budget_s = total_s
+    else:
+        budget_cfg = budget_for_mode(mode)
+        total_s = float(deadline_s) if deadline_s else float(budget_cfg["total_s"])
+        total_s = max(1.0, total_s)
+        engine_budget_s = min(
+            float(budget_cfg["engine_s"]),
+            max(0.5, total_s - float(budget_cfg["reserve_s"])),
+        )
+    _budget = Budget(total_s, label=f"single_game:{mode}")
+    engine_deadline = t_start + engine_budget_s
+    engine_time_s = 0.0
+    bfs_engine_lines_calls = 0
+
     # Adaptive hash — deterministic, zero heuristics (ply+depth → hash)
     try:
         ply_cnt = _ply_count_from_pgn(pgn)
@@ -400,8 +513,23 @@ def _run_analyze_pgn(pgn: str, player_color: str = "white", depth: int = 0) -> G
         url=site,
     )
     analysis = GameAnalysis(game=game_summary)
+    analysis.mode = mode
+    analysis.deadline_s = round(total_s, 3)
     board = game_node.board()
     player_side = chess.WHITE if player_color == "white" else chess.BLACK
+
+    # Pre-count player plies so the per-move cap is derived from what is left
+    # of the game budget, not from a constant (the "15 s × N" failure mode).
+    player_plies_total = 0
+    _probe = game_node.board()
+    _pnode = game_node
+    while _pnode.variations:
+        _pnode = _pnode.variations[0]
+        if _probe.turn == player_side:
+            player_plies_total += 1
+        _probe.push(_pnode.move)
+    player_plies_seen = 0
+
     ply = 0
     total_cp = 0
     move_count = 0
@@ -412,17 +540,56 @@ def _run_analyze_pgn(pgn: str, player_color: str = "white", depth: int = 0) -> G
         ply += 1
         fen_before = board.fen()
         if board.turn == player_side:
+            player_plies_seen += 1
+            remaining_moves = max(1, player_plies_total - player_plies_seen + 1)
+            remaining_engine = max(0.0, engine_deadline - time.perf_counter())
+
+            if remaining_engine < MIN_USEFUL_ENGINE_S:
+                analysis.deadline_hit = True
+                analysis.unanalyzed_plies.append(ply)
+                analysis.errors.append(
+                    {
+                        "code": "BUDGET_EXHAUSTED",
+                        "ply": ply,
+                        "message": f"no engine time left ({remaining_engine:.2f}s, budget {_budget.remaining():.2f}s)",
+                    }
+                )
+                analysis.moves.append(_unanalyzed_move(ply, board, move, fen_before))
+                board.push(move)
+                continue
+
+            per_move_s = remaining_engine / remaining_moves
+            call_cap = max(MIN_USEFUL_ENGINE_S, min(remaining_engine, per_move_s * 1.2))
             eval_result = None
+            t_engine = time.perf_counter()
             try:
                 if move in board.legal_moves:
-                    eval_result = engine_client.evaluate_move(fen_before, move.uci(), depth=depth)
-            except Exception:
-                eval_result = None
-            if eval_result and "error" not in eval_result:
-                cp_loss = eval_result["centipawn_loss"]
-            else:
-                cp_loss = 0
+                    eval_result = engine_client.evaluate_move(
+                        fen_before, move.uci(), depth=depth, timeout_s=call_cap
+                    )
+            except Exception as e:
+                eval_result = {"error": str(e)}
+            engine_time_s += time.perf_counter() - t_engine
+            analysis.engine_calls += 1
+
+            if (
+                not eval_result
+                or "error" in eval_result
+                or eval_result.get("centipawn_loss") is None
+            ):
                 analysis.evaluation_errors += 1
+                err_text = str((eval_result or {}).get("error", "no evaluation"))
+                code = "ENGINE_TIMEOUT" if "timed out" in err_text else "ENGINE_ERROR"
+                if code == "ENGINE_TIMEOUT":
+                    analysis.engine_timeouts += 1
+                    analysis.deadline_hit = True
+                analysis.unanalyzed_plies.append(ply)
+                analysis.errors.append({"code": code, "ply": ply, "message": err_text})
+                analysis.moves.append(_unanalyzed_move(ply, board, move, fen_before))
+                board.push(move)
+                continue
+
+            cp_loss = float(eval_result["centipawn_loss"])
             classification = _classify_move(cp_loss)
             phase = _detect_phase(ply)
             was_in_check = board.is_check()
@@ -461,51 +628,72 @@ def _run_analyze_pgn(pgn: str, player_color: str = "white", depth: int = 0) -> G
             total_cp += cp_loss
             move_count += 1
             analysis.moves.append(move_analysis)
-            # DBCL: build BlunderFactSheet for blunders and deep mistakes
-            if classification in ("blunder", "mistake") and cp_loss >= 150:
+            # DBCL: every flagged move gets a fact sheet (P0.5).
+            # Inaccuracies receive the same light surface from the top-3 lines.
+            if classification in ("blunder", "mistake", "inaccuracy"):
                 legal = _extract_legal_moves(board)
                 prev_move = analysis.moves[-2] if len(analysis.moves) >= 2 else None
                 patterns = _per_blunder_patterns(move_analysis, legal, was_in_check, prev_move)
-                engine_lines_raw = []
-                try:
-                    engine_lines_raw = engine_client.analyze_position(
-                        fen_before, depth=depth, multipv=3
+
+                engine_lines_raw: list[dict] = []
+                remaining_engine = max(0.0, engine_deadline - time.perf_counter())
+                if remaining_engine >= MIN_USEFUL_ENGINE_S and bfs_engine_lines_calls < 10:
+                    bfs_cap = max(
+                        MIN_USEFUL_ENGINE_S,
+                        min(remaining_engine, max(0.5, per_move_s * 2.0)),
                     )
-                except Exception as e:
-                    _logger.warning(
-                        "analyze_position failed for %s ply %d: %s",
-                        game_id,
-                        ply,
-                        e,
+                    t_engine = time.perf_counter()
+                    engine_lines_raw, lines_error = engine_client.analyze_position_ex(
+                        fen_before, depth=depth, multipv=3, timeout_s=bfs_cap
                     )
-                engine_lines = []
-                for rank, el in enumerate(engine_lines_raw, start=1):
-                    score_cp = el.get("score_cp") or 0
-                    pv_san = el.get("pv_san", [])
-                    engine_lines.append(
-                        EngineLine(
-                            rank=rank,
-                            move_san=pv_san[0] if pv_san else "",
-                            eval_cp=score_cp,
-                            win_prob=_win_prob_from_cp(score_cp),
-                            pv=pv_san,
+                    engine_time_s += time.perf_counter() - t_engine
+                    analysis.engine_calls += 1
+                    bfs_engine_lines_calls += 1
+                    if lines_error:
+                        analysis.engine_timeouts += 1
+                        analysis.errors.append(
+                            {
+                                "code": "ENGINE_LINES_ERROR",
+                                "ply": ply,
+                                "message": lines_error,
+                            }
                         )
+
+                move_analysis.engine_lines = _engine_lines_to_dicts(engine_lines_raw)
+                played_move_rank = 0
+                for entry in move_analysis.engine_lines:
+                    if entry["san"] == move_analysis.move_san:
+                        played_move_rank = entry["rank"]
+                        break
+                if played_move_rank == 0 and move_analysis.engine_lines:
+                    played_move_rank = len(move_analysis.engine_lines) + 1
+                move_analysis.played_rank = played_move_rank
+                if move_analysis.engine_lines and not move_analysis.best_move_san:
+                    move_analysis.best_move_san = move_analysis.engine_lines[0]["san"]
+
+                if move_analysis.engine_lines:
+                    move_analysis.explanation = _build_explanation(
+                        move_analysis, move_analysis.engine_lines
                     )
+                    move_analysis.explanation_source = "deterministic"
+                else:
+                    move_analysis.explanation = ""
+                    move_analysis.explanation_source = "none"
+
+                engine_lines = [
+                    EngineLine(
+                        rank=e["rank"],
+                        move_san=e["san"],
+                        eval_cp=e["eval_cp"] if e["eval_cp"] is not None else 0,
+                        win_prob=_win_prob_from_cp(e["eval_cp"]),
+                        pv=e["pv"],
+                    )
+                    for e in move_analysis.engine_lines
+                ]
                 eval_before = move_analysis.eval_before or 0
                 eval_after = move_analysis.eval_after or 0
                 win_before = _win_prob_from_cp(eval_before)
                 win_after = _win_prob_from_cp(eval_after)
-                played_move_rank = 0
-                for el in engine_lines:
-                    if el.move_san == move_analysis.move_san:
-                        played_move_rank = el.rank
-                        break
-                if played_move_rank == 0:
-                    played_move_rank = (
-                        len(engine_lines) + 1
-                        if engine_lines
-                        else len(legal.captures) + len(legal.king_moves) + 1
-                    )
                 bfs = BlunderFactSheet(
                     game_id=game_id,
                     ply=ply,
@@ -544,7 +732,7 @@ def _run_analyze_pgn(pgn: str, player_color: str = "white", depth: int = 0) -> G
         after = []
         bfs_ply = bfs.ply
         for m in analysis.moves:
-            if abs(m.ply - bfs_ply) <= 3 and m.ply != bfs_ply:
+            if m.analyzed and abs(m.ply - bfs_ply) <= 3 and m.ply != bfs_ply:
                 cwm = ContextWindowMove(
                     ply=m.ply,
                     move_san=m.move_san,
@@ -558,6 +746,12 @@ def _run_analyze_pgn(pgn: str, player_color: str = "white", depth: int = 0) -> G
         before.sort(key=lambda x: x.ply)
         after.sort(key=lambda x: x.ply)
         bfs.context_window = ContextWindow(moves_before=before, moves_after=after)
+    elapsed = time.perf_counter() - t_start
+    analysis.timings = {
+        "engine_s": round(engine_time_s, 3),
+        "parse_s": round(max(0.0, elapsed - engine_time_s), 3),
+    }
+    analysis.deadline_hit = analysis.deadline_hit or bool(analysis.unanalyzed_plies)
     analysis.auto_annotate()
     # Clear hash deterministically for next game (prevent pollution, keep <10% hashfull)
     try:

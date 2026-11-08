@@ -106,7 +106,9 @@ async def lichess_coaching_cross_game(
             "pattern_ranking": pattern_ranking,
         }
         prompt = build_prompt(2, prompt_data)
-        report, cascade_log, cascade_exhausted = safe_llm_call(prompt, f"cross_game:{username}")
+        report, cascade_log, cascade_exhausted, report_source = safe_llm_call(
+            prompt, f"cross_game:{username}"
+        )
 
         # MCP sampling fallback — use IDE's LLM when external APIs are exhausted
         if cascade_exhausted and ctx is not None:

@@ -183,7 +183,7 @@ async def lichess_analyze_anonymous_session(
                     "inaccuracies": ilen,
                     "moves": mcount,
                     "top_blunders": [
-                        f"Move {m.ply}: {m.move_san} (loss {m.centipawn_loss:.0f}cp, {m.phase})"
+                        f"Move {m.ply}: {m.move_san} (loss {round(m.centipawn_loss) if m.centipawn_loss is not None else 'n/a'}cp, {m.phase})"
                         for m in analysis.blunders[:5]
                     ],
                 }

@@ -117,7 +117,7 @@ async def lichess_analyze_game(
                 "total_moves": len(result.moves),
             },
             "blunders": [
-                f"Move {m.ply}: {m.move_san} (loss {m.centipawn_loss:.0f}cp, phase={m.phase})"
+                f"Move {m.ply}: {m.move_san} (loss {round(m.centipawn_loss) if m.centipawn_loss is not None else 'n/a'}cp, phase={m.phase})"
                 for m in result.blunders[:10]
             ],
         }

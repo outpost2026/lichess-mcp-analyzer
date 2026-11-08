@@ -68,7 +68,12 @@ def collect_single_game(
     color: str = "white",
     depth: int = 0,
     username: str = "",
+    deadline_s: float | None = None,
+    mode: str = "fast",
+    include_obj: bool = False,
 ) -> dict:
+    import time
+
     if depth == 0:
         depth = DEPTH_DEFAULTS["standard"]["single_game"]
 
@@ -76,14 +81,31 @@ def collect_single_game(
     if username:
         color = detect_player_color(game_id, username)
 
+    t_io = time.perf_counter()
     pgn = fetch_game_pgn(game_id)
-    analysis = analyze_pgn(pgn, color, depth, game_id, strict_depth=True)
-    return {
+    io_s = time.perf_counter() - t_io
+
+    analysis = analyze_pgn(
+        pgn,
+        color,
+        depth,
+        game_id,
+        strict_depth=True,
+        deadline_s=deadline_s,
+        mode=mode,
+    )
+    result = {
         "game_id": game_id,
         "analysis": analysis.to_dict() if analysis else {},
         "depth": depth,
         "color": color,
+        "timings": {"io_s": round(io_s, 3)},
+        "mode": mode,
+        "deadline_s": deadline_s,
     }
+    if include_obj:
+        result["analysis_obj"] = analysis
+    return result
 
 
 def collect_patterns_for_games(analyses: list, username: str) -> list[dict]:
@@ -201,39 +223,63 @@ def _is_valid_coaching_content(content: str | None) -> bool:
     return True
 
 
-def safe_llm_call(prompt: str, context: str = "") -> tuple[str | None, list[dict], bool]:
+def safe_llm_call(
+    prompt: str, context: str = "", timeout_s: float | None = None
+) -> tuple[str | None, list[dict], bool, str]:
     """LLM call with cascade fallback + token tracking.
 
     Sends pre-built prompt directly to LLM providers in cascade order.
-    Falls back to structured data dump (without instructions) if no LLM is available.
-    Validates LLM output — echo or empty responses are treated as failures.
+    Falls back to a deterministic report, then to a raw data dump.
 
     Returns:
-        (report, cascade_log, cascade_exhausted)
-        cascade_exhausted=True means all providers failed — caller can try MCP sampling.
+        (report, cascade_log, cascade_exhausted, source)
+        `source` is one of: provider name, "deterministic", "data_dump", "none".
+        `cascade_exhausted` is True whenever no real LLM produced the text —
+        including the deterministic fallback — so callers can still try MCP
+        sampling (P0.3).
     """
+    from lichess_analyzer_mcp.services import provider_health
     from lichess_analyzer_mcp.services.llm_client import (
         PROVIDERS,
         COACHING_SYSTEM_PROMPT,
         _call_llm,
     )
 
-    cascade_log = []
+    cascade_log: list[dict] = []
+    configured = [p for p in PROVIDERS if os.environ.get(p["api_key_var"], "")]
+    per_provider_timeout = None
+    if timeout_s is not None and configured:
+        per_provider_timeout = max(1.0, float(timeout_s) / len(configured))
+
     for prov_cfg in PROVIDERS:
+        name = prov_cfg["name"]
         api_key = os.environ.get(prov_cfg["api_key_var"], "")
         if not api_key:
             cascade_log.append(
                 {
-                    "provider": prov_cfg["name"],
+                    "provider": name,
                     "skipped": True,
                     "error": "No API key",
                 }
             )
             continue
-        content, token_log = _call_llm(COACHING_SYSTEM_PROMPT, prompt, prov_cfg)
+        if not provider_health.should_attempt(name):
+            cascade_log.append(
+                {
+                    "provider": name,
+                    "skipped": True,
+                    "error": "Negative cache (recent 4xx)",
+                    "health": provider_health.snapshot().get(name, {}),
+                }
+            )
+            continue
+        content, token_log = _call_llm(
+            COACHING_SYSTEM_PROMPT, prompt, prov_cfg, timeout_s=per_provider_timeout
+        )
+        provider_health.record_result(name, token_log.get("http_status"), token_log.get("error"))
         cascade_log.append(token_log)
         if _is_valid_coaching_content(content):
-            return content, cascade_log, False  # cascade_exhausted = False
+            return content, cascade_log, False, name
         # Invalid content (echo, empty, too short) — treat as provider failure
         if content is not None:
             token_log["error"] = (
@@ -241,23 +287,23 @@ def safe_llm_call(prompt: str, context: str = "") -> tuple[str | None, list[dict
             )
             # mark as not usable; continue cascade
 
-    # ── IDE fallback (Muse Spark / Cursor / opencode) — high ROI, 0 cost ──
+    # ── Deterministic report — NOT an LLM, always labelled as such ──
     try:
         from lichess_analyzer_mcp.services.ide_fallback import (
-            generate_ide_report,
+            generate_deterministic_report,
             is_ide_available,
         )
 
         if is_ide_available():
-            ide_content, ide_log = generate_ide_report(prompt, COACHING_SYSTEM_PROMPT)
-            if _is_valid_coaching_content(ide_content):
-                cascade_log.append(ide_log)
-                return ide_content, cascade_log, False  # cascade_exhausted = False
-            # IDE returned invalid — log and continue to data dump
-            ide_log["error"] = "IDE fallback returned invalid content"
-            cascade_log.append(ide_log)
+            det_content, det_log = generate_deterministic_report(prompt, COACHING_SYSTEM_PROMPT)
+            if _is_valid_coaching_content(det_content):
+                cascade_log.append(det_log)
+                # exhausted=True: a real LLM may still be available via MCP sampling
+                return det_content, cascade_log, True, "deterministic"
+            det_log["error"] = "Deterministic fallback returned invalid content"
+            cascade_log.append(det_log)
     except Exception as e:
-        cascade_log.append({"provider": "IDE (Muse Spark)", "error": f"IDE fallback failed: {e}"})
+        cascade_log.append({"provider": "Deterministic report", "error": f"fallback failed: {e}"})
 
     data_part = _strip_instructions(prompt)
     fallback = (
@@ -268,7 +314,7 @@ def safe_llm_call(prompt: str, context: str = "") -> tuple[str | None, list[dict
         "---\n\n"
         "_No LLM synthesis was performed. Review the data above or retry when a provider is available._"
     )
-    return fallback, cascade_log, True  # cascade_exhausted = True
+    return fallback, cascade_log, True, "data_dump"
 
 
 def extract_game_id_color_from_analysis(analysis) -> tuple[str, str]:

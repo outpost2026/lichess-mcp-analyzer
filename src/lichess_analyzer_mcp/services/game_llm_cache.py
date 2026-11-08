@@ -143,7 +143,8 @@ def _build_game_prompt(game_data: dict) -> str:
         for label, m in all_errors:
             ply = m.get("ply", "?")
             san = m.get("move_san", "?")
-            loss = m.get("centipawn_loss", "?")
+            loss = m.get("centipawn_loss")
+            loss_txt = f"{loss:.0f}" if isinstance(loss, (int, float)) else "n/a"
             phase = m.get("phase", "?")
             fen = m.get("fen", "")
             in_check = m.get("was_in_check", False)
@@ -156,7 +157,7 @@ def _build_game_prompt(game_data: dict) -> str:
 
             lines.append(f"{label} ply={ply}: {san}")
             lines.append(
-                f"  loss: {loss}cp | phase: {phase} | in_check: {'yes' if in_check else 'no'}"
+                f"  loss: {loss_txt}cp | phase: {phase} | in_check: {'yes' if in_check else 'no'}"
             )
             lines.append(f"  fen: {fen_short}")
             lines.append(f"  eval: {eval_swing}")

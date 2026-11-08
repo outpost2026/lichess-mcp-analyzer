@@ -18,6 +18,8 @@ def diagnose(analyses: list[GameAnalysis], username: str) -> WeaknessReport:
         total_mistakes += len(analysis.mistakes)
         total_inaccuracies += len(analysis.inaccuracies)
         for m in analysis.moves:
+            if not m.analyzed or m.centipawn_loss is None:
+                continue
             total_acpl_sum += m.centipawn_loss
             move_count += 1
             phase_acpl.setdefault(m.phase, []).append(m.centipawn_loss)

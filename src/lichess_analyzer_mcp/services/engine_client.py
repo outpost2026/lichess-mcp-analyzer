@@ -119,7 +119,7 @@ def _kill_engine():
         _engine = None
 
 
-def _run_engine_call(fn, timeout_s: float = _ENGINE_CALL_TIMEOUT, engine=None):
+def _run_engine_call(fn, timeout_s: float | None = None, engine=None):
     """Run a blocking engine call with a hard timeout.
 
     The engine call runs in a daemon thread; if it does not finish within
@@ -129,8 +129,15 @@ def _run_engine_call(fn, timeout_s: float = _ENGINE_CALL_TIMEOUT, engine=None):
     engine gets terminated — callers with a LOCAL engine pass it so the
     shared engine is never killed as collateral.
     A worker exception is converted to an error dict as well.
+
+    `timeout_s=None` keeps the legacy 15 s guard for callers without a
+    game budget (batch tools, tests). The single-game path always passes
+    a value derived from the remaining budget (P0.2).
     """
     global _engine
+    if timeout_s is None:
+        timeout_s = _ENGINE_CALL_TIMEOUT
+    timeout_s = max(0.1, float(timeout_s))
     result = {}
 
     def _worker():
@@ -157,7 +164,15 @@ def _run_engine_call(fn, timeout_s: float = _ENGINE_CALL_TIMEOUT, engine=None):
     return result["value"]
 
 
-def analyze_position(fen: str, depth: int = 0, multipv: int = 3) -> list[dict]:
+def analyze_position_ex(
+    fen: str, depth: int = 0, multipv: int = 3, timeout_s: float | None = None
+) -> tuple[list[dict], str | None]:
+    """Analyze a position and return `(lines, error)`.
+
+    P0.2: the caller must be able to distinguish "no lines because the
+    position is empty" from "no lines because the engine timed out".
+    `analyze_position()` keeps the legacy list-only signature.
+    """
     if depth == 0:
         depth = DEPTH_DEFAULTS["standard"]["position"]
     engine = get_engine()
@@ -192,12 +207,19 @@ def analyze_position(fen: str, depth: int = 0, multipv: int = 3) -> list[dict]:
                 )
             return items
 
-        res = _run_engine_call(_do_analysis)
+        res = _run_engine_call(_do_analysis, timeout_s=timeout_s)
         if isinstance(res, dict) and "error" in res:
-            return []
-        return res
+            return [], res["error"]
+        return res, None
     finally:
         _analysis_lock.release()
+
+
+def analyze_position(
+    fen: str, depth: int = 0, multipv: int = 3, timeout_s: float | None = None
+) -> list[dict]:
+    lines, _error = analyze_position_ex(fen, depth=depth, multipv=multipv, timeout_s=timeout_s)
+    return lines
 
 
 _SF_PATH = None
@@ -210,7 +232,7 @@ def _get_sf_path() -> str:
     return _SF_PATH
 
 
-def evaluate_move(fen: str, move_uci: str, depth: int = 0) -> dict:
+def evaluate_move(fen: str, move_uci: str, depth: int = 0, timeout_s: float | None = None) -> dict:
     if depth == 0:
         depth = DEPTH_DEFAULTS["standard"]["position"]
 
@@ -219,9 +241,9 @@ def evaluate_move(fen: str, move_uci: str, depth: int = 0) -> dict:
 
     if move not in board.legal_moves:
         return {
-            "eval_before": 0,
-            "eval_after": 0,
-            "centipawn_loss": 0,
+            "eval_before": None,
+            "eval_after": None,
+            "centipawn_loss": None,
             "best_move_uci": None,
             "error": f"Move {move_uci} not legal in position {fen}",
         }
@@ -238,33 +260,43 @@ def evaluate_move(fen: str, move_uci: str, depth: int = 0) -> dict:
     _acquire_analysis_lock()
     try:
 
+        def _cp_from_score(score):
+            """Mate scores become a finite cp value instead of `None`."""
+            cp = score.score()
+            if cp is not None:
+                return cp
+            mate = score.mate()
+            if mate is None:
+                return None
+            return 10000 - abs(mate) if mate > 0 else -(10000 - abs(mate))
+
         def _do_evaluate():
             # D2: Use engine.analyse() for deterministic depth-specific result
             info_before = engine.analyse(board, chess.engine.Limit(depth=depth))
-            eval_before = info_before["score"].relative.score()
+            eval_before = _cp_from_score(info_before["score"].relative)
             best_move = info_before["pv"][0] if "pv" in info_before else None
 
             if best_move:
                 board_best = board.copy()
                 board_best.push(best_move)
                 best_res = engine.analyse(board_best, chess.engine.Limit(depth=depth))
-                best_score = best_res["score"].relative.score()
+                best_score = _cp_from_score(best_res["score"].relative)
                 best_player = -best_score if best_score is not None else None
             else:
                 best_player = eval_before
 
             board.push(move)
             actual_res = engine.analyse(board, chess.engine.Limit(depth=depth))
-            actual_score = actual_res["score"].relative.score()
+            actual_score = _cp_from_score(actual_res["score"].relative)
             actual_player = -actual_score if actual_score is not None else None
             return eval_before, best_move, best_player, actual_player
 
-        res = _run_engine_call(_do_evaluate, engine=engine)
+        res = _run_engine_call(_do_evaluate, timeout_s=timeout_s, engine=engine)
         if isinstance(res, dict) and "error" in res:
             return {
-                "eval_before": 0,
-                "eval_after": 0,
-                "centipawn_loss": 0,
+                "eval_before": None,
+                "eval_after": None,
+                "centipawn_loss": None,
                 "best_move_uci": None,
                 "error": res["error"],
             }
@@ -275,11 +307,11 @@ def evaluate_move(fen: str, move_uci: str, depth: int = 0) -> dict:
     if best_player is not None and actual_player is not None:
         cp_loss = max(0, best_player - actual_player)
     else:
-        cp_loss = 0
+        cp_loss = None
 
     return {
         "eval_before": eval_before,
-        "eval_after": actual_player if actual_player is not None else 0,
+        "eval_after": actual_player,
         "centipawn_loss": cp_loss,
         "best_move_uci": best_move.uci() if best_move else None,
     }
@@ -298,10 +330,27 @@ def evaluate_move_with_confidence(fen: str, move_uci: str, depth: int = 0, runs:
         r = evaluate_move(fen, move_uci, depth)
         results.append(r)
         if "error" in r:
-            return r
+            break
 
-    cp_losses = [r["centipawn_loss"] for r in results]
+    cp_losses = [r["centipawn_loss"] for r in results if r.get("centipawn_loss") is not None]
     best_moves = [r.get("best_move_uci") for r in results]
+
+    if not cp_losses:
+        first = results[0] if results else {}
+        return {
+            "eval_before": first.get("eval_before"),
+            "eval_after": first.get("eval_after"),
+            "centipawn_loss": None,
+            "centipawn_loss_median": None,
+            "centipawn_loss_min": None,
+            "centipawn_loss_max": None,
+            "confidence_spread": None,
+            "best_move_uci": first.get("best_move_uci"),
+            "anomaly": True,
+            "all_cp_losses": [],
+            "all_best_moves": best_moves,
+            "error": first.get("error", "no usable evaluation"),
+        }
 
     cp_losses_sorted = sorted(cp_losses)
     median_idx = len(cp_losses_sorted) // 2
@@ -412,6 +461,12 @@ def get_best_move(fen: str, depth: int = 0) -> dict:
 
 def close_engine():
     global _engine
-    if _engine is not None:
-        _engine.quit()
-        _engine = None
+    engine, _engine = _engine, None
+    if engine is not None:
+        try:
+            engine.quit()
+        except Exception:  # noqa: S110 — engine may already be dead; cleanup is best-effort
+            try:
+                engine.close()
+            except Exception:  # noqa: S110
+                pass

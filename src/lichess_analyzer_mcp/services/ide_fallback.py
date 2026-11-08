@@ -1,11 +1,8 @@
-"""IDE fallback — Muse Spark / Cursor / opencode local LLM.
+"""Deterministic report fallback (formerly "IDE fallback — Muse Spark").
 
-Poslední článek kaskády před data-dump. Využívá LLM běžící v IDE
-(muse-spark-1.2) přes deterministickou syntézu z promptu.
-
-V produkci by zde bylo `await ctx.sample(...)` (MCP sampling).
-V offline/test módu generuje strukturovaný coaching z prompt dat
-bez externí HTTP — garantuje validní output pro _is_valid_coaching_content().
+This module does NOT call any LLM. It builds a structured coaching summary
+from the prompt data. It is the last cascade step before a raw data dump and
+must always be labelled as deterministic — never as an LLM output (P0.3).
 """
 
 import os
@@ -68,12 +65,12 @@ def generate_ide_report(prompt: str, system_prompt: str = "") -> tuple[str, dict
 
     # Sestav IDE syntézu — musí být >50 znaků a bez instrukčních markerů
     lines = [
-        "# Coaching Report (IDE Fallback — Muse Spark)",
+        "# Coaching Report (deterministický souhrn)",
         "",
-        "_Syntéza generována lokálním IDE modelem (muse-spark) — externí API nedostupné. Deterministická data níže jsou autoritativní._",
+        "_Tento report sestavila pipeline deterministicky z dat. Nebyl generován jazykovým modelem — externí poskytovatel nebyl dostupný. Deterministická data níže jsou autoritativní._",
         "",
         "## Summary",
-        f"Hra {result} v zahájení {opening}, ACPL {acpl}. Pipeline detekovala chyby viz data níže. Tento report vznikl fallbackem na IDE model, protože kaskáda NVIDIA→Cerebras→DeepSeek selhala (timeout/402).",
+        f"Hra {result} v zahájení {opening}, ACPL {acpl}. Pipeline detekovala chyby viz data níže.",
         "",
         "## Priority Issues (z dat)",
     ]
@@ -105,8 +102,8 @@ def generate_ide_report(prompt: str, system_prompt: str = "") -> tuple[str, dict
     ]
     content = "\n".join(lines)
     token_log = {
-        "provider": "IDE (Muse Spark)",
-        "model": os.environ.get("IDE_MODEL", "muse-spark-1.2"),
+        "provider": "Deterministic report",
+        "model": "rule-based-v1",
         "input_chars": len(prompt) + len(system_prompt),
         "output_chars": len(content),
         "estimated_input_tokens": (len(prompt) + len(system_prompt)) // 4,
@@ -115,13 +112,19 @@ def generate_ide_report(prompt: str, system_prompt: str = "") -> tuple[str, dict
         "cost_usd": 0.0,
         "error": None,
         "fallback": True,
+        "source": "deterministic",
+        "degraded": True,
     }
     return content, token_log
 
 
 def is_ide_available() -> bool:
-    """IDE fallback je vždy dostupný v opencode/Cursor kontextu."""
+    """Deterministic fallback is always available unless explicitly disabled."""
     # Gating via env — umožní vypnout v CI
     if os.environ.get("IDE_FALLBACK_DISABLED", "").strip().lower() in ("1", "true", "yes"):
         return False
     return True
+
+
+# Backward-compatible alias; new code should use the explicit name.
+generate_deterministic_report = generate_ide_report
