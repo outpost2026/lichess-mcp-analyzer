@@ -22,6 +22,35 @@ def _extract_field(prompt: str, key: str) -> str:
     return m.group(1).strip() if m else ""
 
 
+def _bullet_value(prompt: str, label_prefix: str) -> str:
+    """Value of a `- Label ...: value` bullet, including continuation lines.
+
+    Template labels are not stable ("Blundry:" vs "Blundry (s detaily):"), so
+    match the label prefix instead of the exact line. Matching the full line
+    silently produced an empty value and the report then claimed "no blunder"
+    even when blunders existed (DATA-FABRICATION-001).
+    """
+    lines = prompt.splitlines()
+    for idx, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped.startswith("- "):
+            continue
+        body = stripped[2:]
+        if not body.lower().startswith(label_prefix.lower()):
+            continue
+        if ":" not in body:
+            continue
+        value = body.split(":", 1)[1].strip()
+        parts = [value] if value else []
+        for follow in lines[idx + 1 :]:
+            follow_stripped = follow.strip()
+            if not follow_stripped or follow_stripped.startswith("- "):
+                break
+            parts.append(follow_stripped)
+        return " ".join(parts).strip()
+    return ""
+
+
 def generate_ide_report(prompt: str, system_prompt: str = "") -> tuple[str, dict]:
     """Vygeneruj coaching report deterministicky — IDE fallback.
 
@@ -38,24 +67,10 @@ def generate_ide_report(prompt: str, system_prompt: str = "") -> tuple[str, dict
     result_m = re.search(r"Výsledek[:\s]+([^\n,]+)", prompt, re.I)
     result = result_m.group(1).strip() if result_m else "?"
     # Blunder line count — strip instructions to avoid leak
-    blunder_section = ""
-    if "Blundry:" in prompt:
-        try:
-            after = prompt.split("Blundry:")[1]
-            for cut in [
-                "Fázový breakdown",
-                "Fazovy",
-                "PRAVIDLA:",
-                "STRUKTURA:",
-                "=== INSTRUCTIONS ===",
-            ]:
-                if cut in after:
-                    after = after.split(cut)[0]
-            blunder_section = after.strip()[:400]
-            # extra sanitization
-            blunder_section = _strip_instructions(blunder_section)
-        except Exception:
-            blunder_section = ""
+    blunder_section = _bullet_value(prompt, "Blundry")
+    blunder_section = _strip_instructions(blunder_section)[:400]
+    count_m = re.search(r"Počet chyb:\s*(\d+)\s*blunder", prompt, re.I)
+    blunder_count = int(count_m.group(1)) if count_m else None
 
     # Fázový breakdown
     phase_m = re.search(r"Fázový breakdown[:\s]+([^\n]+)", prompt, re.I)
@@ -74,8 +89,10 @@ def generate_ide_report(prompt: str, system_prompt: str = "") -> tuple[str, dict
         "",
         "## Priority Issues (z dat)",
     ]
-    if blunder_section and blunder_section != "(žádné)":
+    if blunder_section and blunder_section.strip() not in ("(žádné)", "žádné", "-"):
         lines.append(f"- Kritický moment: {blunder_section[:200]}")
+    elif blunder_count:
+        lines.append(f"- Blunderů: {blunder_count} — detaily v datech níže.")
     else:
         lines.append("- Žádný blunder — chyby jsou nepřesnosti/mistakes, viz ACPL per fáze.")
     if phase_line:

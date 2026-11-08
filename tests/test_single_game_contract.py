@@ -167,9 +167,7 @@ def test_timeout_clears_shared_engine_even_when_caller_passed_reference(monkeypa
     fake = FakeEngine()
     monkeypatch.setattr(engine_client, "_engine", fake)
 
-    result = engine_client._run_engine_call(
-        lambda: time.sleep(0.5), timeout_s=0.1, engine=fake
-    )
+    result = engine_client._run_engine_call(lambda: time.sleep(0.5), timeout_s=0.1, engine=fake)
 
     assert "error" in result
     assert engine_client._engine is None
@@ -250,3 +248,31 @@ def test_partial_analysis_is_not_cached(monkeypatch):
 
     assert analysis.unanalyzed_plies
     assert saved["n"] == 0
+
+
+def test_explanation_does_not_invent_rank_beyond_measured_candidates():
+    """Played move outside the top-3 must not be labelled "4th"."""
+    move = _move(11, "Bg5", 95.0, classification="inaccuracy")
+    move.best_move_san = "Ne2"
+    move.played_rank = 4
+    move.engine_lines = [
+        {"rank": 1, "san": "Ne2", "eval_cp": 260, "pv": ["Ne2"]},
+        {"rank": 2, "san": "a3", "eval_cp": 250, "pv": ["a3"]},
+        {"rank": 3, "san": "h4", "eval_cp": 240, "pv": ["h4"]},
+    ]
+    text = game_analyzer._build_explanation(move, move.engine_lines)
+    assert "nebyl v top 3" in text
+    assert "4. v pořadí" not in text
+
+
+def test_explanation_keeps_measured_rank():
+    move = _move(39, "O-O", 75.0, classification="inaccuracy")
+    move.best_move_san = "Qf5+"
+    move.played_rank = 2
+    move.engine_lines = [
+        {"rank": 1, "san": "Qf5+", "eval_cp": 719, "pv": ["Qf5+"]},
+        {"rank": 2, "san": "O-O", "eval_cp": 644, "pv": ["O-O"]},
+        {"rank": 3, "san": "Kh1", "eval_cp": 600, "pv": ["Kh1"]},
+    ]
+    text = game_analyzer._build_explanation(move, move.engine_lines)
+    assert "2. v pořadí" in text

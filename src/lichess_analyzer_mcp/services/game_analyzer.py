@@ -420,7 +420,12 @@ def _build_explanation(move: MoveAnalysis, engine_lines: list[dict]) -> str:
     best_cp_txt = f"{best_cp:+.0f}" if isinstance(best_cp, (int, float)) else "?"
     parts = [f"Hráno {move.move_san}; motor preferuje {best_san} (hodnocení {best_cp_txt} cp)."]
     if move.played_rank > 1:
-        parts.append(f"Tah byl {move.played_rank}. v pořadí kandidátů.")
+        # We only measured len(engine_lines) candidates. Claiming a concrete
+        # rank beyond that would be invented precision (DATA-FABRICATION-001).
+        if move.engine_lines and move.played_rank > len(move.engine_lines):
+            parts.append(f"Tah nebyl v top {len(move.engine_lines)}.")
+        else:
+            parts.append(f"Tah byl {move.played_rank}. v pořadí kandidátů.")
     if move.centipawn_loss is not None:
         parts.append(f"Ztráta {move.centipawn_loss:.0f} cp oproti nejlepšímu tahu.")
     if move.was_in_check:
