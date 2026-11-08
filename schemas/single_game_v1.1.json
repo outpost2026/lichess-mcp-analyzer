@@ -1,0 +1,238 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lichess-analyzer-mcp/schemas/single_game_v1.1.json",
+  "title": "lichess_coaching_single_game response",
+  "description": "Contract v1.1 — plan docs/PLAN_SINGLE_GAME_CALIBRATION_2026-11-07.md",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "game_id",
+    "username",
+    "color",
+    "mode",
+    "depth",
+    "status",
+    "partial",
+    "errors",
+    "unanalyzed_plies",
+    "timings",
+    "engine",
+    "cache",
+    "analysis",
+    "flagged_moves",
+    "patterns",
+    "patterns_meta",
+    "llm",
+    "report",
+    "report_meta",
+    "cascade_log"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.1" },
+    "game_id": { "type": "string", "minLength": 1 },
+    "username": { "type": "string" },
+    "color": { "enum": ["white", "black"] },
+    "mode": { "enum": ["fast", "deep"] },
+    "depth": { "type": "integer", "minimum": 8, "maximum": 24 },
+    "status": { "enum": ["ok", "degraded", "partial", "error"] },
+    "partial": { "type": "boolean" },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["code"],
+        "properties": {
+          "code": { "type": "string" },
+          "ply": { "type": ["integer", "null"] },
+          "message": { "type": "string" }
+        }
+      }
+    },
+    "unanalyzed_plies": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 1 }
+    },
+    "timings": {
+      "type": "object",
+      "required": [
+        "io_s",
+        "engine_s",
+        "llm_s",
+        "overhead_s",
+        "total_s",
+        "deadline_s",
+        "engine_calls",
+        "engine_timeouts"
+      ],
+      "properties": {
+        "io_s": { "type": "number", "minimum": 0 },
+        "engine_s": { "type": "number", "minimum": 0 },
+        "llm_s": { "type": "number", "minimum": 0 },
+        "overhead_s": { "type": "number", "minimum": 0 },
+        "total_s": { "type": "number", "minimum": 0 },
+        "deadline_s": { "type": "number", "exclusiveMinimum": 0 },
+        "budget_used": { "type": ["number", "null"], "minimum": 0 },
+        "engine_calls": { "type": "integer", "minimum": 0 },
+        "engine_timeouts": { "type": "integer", "minimum": 0 },
+        "cache_hit": { "type": "boolean" }
+      }
+    },
+    "engine": {
+      "type": "object",
+      "required": ["limit", "depth", "nodes_cap", "hash_mb", "threads"],
+      "properties": {
+        "limit": { "type": "string" },
+        "depth": { "type": "integer" },
+        "nodes_cap": { "type": ["integer", "null"] },
+        "hash_mb": { "type": ["integer", "null"] },
+        "threads": { "type": ["integer", "null"] }
+      }
+    },
+    "cache": {
+      "type": "object",
+      "required": ["hit", "layer", "key"],
+      "properties": {
+        "hit": { "type": "boolean" },
+        "layer": { "type": "string" },
+        "key": { "type": ["string", "null"] }
+      }
+    },
+    "analysis": {
+      "type": "object",
+      "required": [
+        "acpl",
+        "accuracy",
+        "moves_analyzed",
+        "moves_total",
+        "evaluation_errors",
+        "phase_stats"
+      ],
+      "properties": {
+        "acpl": { "type": ["number", "null"], "minimum": 0 },
+        "accuracy": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
+        "moves_analyzed": { "type": "integer", "minimum": 0 },
+        "moves_total": { "type": "integer", "minimum": 0 },
+        "evaluation_errors": { "type": "integer", "minimum": 0 },
+        "phase_stats": { "type": "object" }
+      }
+    },
+    "flagged_moves": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "ply",
+          "san",
+          "classification",
+          "cp_loss",
+          "phase",
+          "engine_lines",
+          "explanation",
+          "explanation_source"
+        ],
+        "properties": {
+          "ply": { "type": "integer" },
+          "san": { "type": "string" },
+          "uci": { "type": "string" },
+          "classification": { "enum": ["blunder", "mistake", "inaccuracy"] },
+          "cp_loss": { "type": "number", "minimum": 0 },
+          "eval_before": { "type": ["number", "null"] },
+          "eval_after": { "type": ["number", "null"] },
+          "win_prob_before": { "type": ["number", "null"] },
+          "win_prob_after": { "type": ["number", "null"] },
+          "phase": { "type": "string" },
+          "best_move_san": { "type": ["string", "null"] },
+          "played_rank": { "type": ["integer", "null"] },
+          "engine_lines": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["rank", "san", "eval_cp", "pv"],
+              "properties": {
+                "rank": { "type": "integer", "minimum": 1 },
+                "san": { "type": "string" },
+                "eval_cp": { "type": ["number", "null"] },
+                "pv": { "type": "array", "items": { "type": "string" } }
+              }
+            }
+          },
+          "motif": { "type": ["string", "null"] },
+          "explanation": { "type": "string" },
+          "explanation_source": { "enum": ["deterministic", "llm", "none"] }
+        }
+      }
+    },
+    "patterns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["pattern_id", "pattern_name", "confidence", "frequency", "scope"],
+        "properties": {
+          "pattern_id": { "type": "string" },
+          "pattern_name": { "type": "string" },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+          "frequency": { "type": "integer", "minimum": 1 },
+          "severity": { "type": "string" },
+          "scope": { "const": "single_game" },
+          "evidence": { "type": "array" },
+          "affected_games": { "type": "array", "items": { "type": "string" } },
+          "mitigation": { "type": "string" }
+        }
+      }
+    },
+    "patterns_meta": {
+      "type": "object",
+      "required": ["scope", "cross_game_suppressed", "reason"],
+      "properties": {
+        "scope": { "const": "single_game" },
+        "cross_game_suppressed": { "const": true },
+        "reason": { "type": "string", "minLength": 1 },
+        "detector_version": { "type": "string" }
+      }
+    },
+    "llm": {
+      "type": "object",
+      "required": ["status", "provider", "degraded", "reason", "attempts", "timeout_s", "tokens"],
+      "properties": {
+        "status": { "enum": ["ok", "degraded", "disabled"] },
+        "provider": { "type": ["string", "null"] },
+        "degraded": { "type": "boolean" },
+        "reason": { "type": "string" },
+        "attempts": { "type": "array" },
+        "configured_providers": { "type": "integer", "minimum": 0 },
+        "timeout_s": { "type": "number", "minimum": 0 },
+        "tokens": {
+          "type": "object",
+          "required": ["input", "output"],
+          "properties": {
+            "input": { "type": "integer", "minimum": 0 },
+            "output": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "report": { "type": "string" },
+    "report_meta": {
+      "type": "object",
+      "required": ["source", "format", "chars"],
+      "properties": {
+        "source": { "enum": ["llm", "deterministic", "data_dump", "none"] },
+        "format": { "const": "markdown" },
+        "chars": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "cascade_log": { "type": "array" },
+    "flags": { "type": "object" },
+    "error": { "type": "string" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "llm": { "properties": { "status": { "not": { "const": "ok" } } } } } },
+      "then": {
+        "properties": {
+          "report_meta": { "properties": { "source": { "not": { "const": "llm" } } } }
+        }
+      }
+    }
+  ]
+}
