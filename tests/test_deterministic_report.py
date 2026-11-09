@@ -77,4 +77,26 @@ def test_long_blunder_detail_is_clipped_at_field_boundary():
     line = next(ln for ln in content.splitlines() if ln.startswith("- Kritický moment:"))
     assert len(line) <= 220
     assert "ply 41" in line
-    assert line.endswith(tuple("0123456789"))
+    assert "Qf5+" in line
+
+
+def test_report_never_truncated_mid_structure():
+    """FIX-011: raw JSON in the prompt must never be sliced mid-array."""
+    raw_bfs = (
+        "- Blundry (s detaily): - ply 41 Qf5+ (loss 308cp) "
+        '{"fen":"r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/2N2N2/PPPP1PPP/R1BQK2R w KQkq - 6 5",'
+        '"engine_lines":[{"rank":1,"san":"Qd6","eval_cp":208,"pv":["Qd6","Rf3","Bxc3"],'
+        '"pattern_matches":[]}],"context_window":{"moves_before":[{"ply":40}]}},'
+        '"moves_after":['
+    )
+    prompt = f"""K DISPOZICI:
+- Počet chyb: 1 blunderů, 0 chyb, 0 nepřesností
+{raw_bfs}
+- Fázový breakdown: middlegame ACPL 56.3
+"""
+    content, _ = generate_deterministic_report(prompt)
+    assert content.count("[") == content.count("]")
+    assert content.count("{") == content.count("}")
+    assert "moves_after" not in content
+    line = next(ln for ln in content.splitlines() if ln.startswith("- Kritický moment:"))
+    assert "ply 41" in line and "308cp" in line

@@ -34,6 +34,30 @@ def _clip(text: str, limit: int = 200) -> str:
     return window
 
 
+def _critical_moments(value: str, max_items: int = 3) -> str:
+    """Compact, structure-safe summary of flagged moves from the prompt.
+
+    The prompt contains one line per move with prose and (for flagged moves)
+    a JSON snippet. Slicing that text at a fixed offset produced reports that
+    ended mid-array (FIX-011). Here only `ply`, SAN and cp loss are extracted,
+    so the result can never contain a half-written structure.
+    """
+    seen: set[int] = set()
+    parts: list[str] = []
+    for m in re.finditer(r"ply\s+(\d+)\s*:?\s*([^\s,(;]+)", value):
+        ply = int(m.group(1))
+        if ply in seen:
+            continue
+        seen.add(ply)
+        san = m.group(2)
+        tail = value[m.end() : m.end() + 160]
+        cp_m = re.search(r"(?:loss|cp_loss)\s*[=:]?\s*([\d.]+)", tail)
+        parts.append(f"ply {ply} {san} {cp_m.group(1)}cp" if cp_m else f"ply {ply} {san}")
+        if len(parts) >= max_items:
+            break
+    return "; ".join(parts)
+
+
 def _bullet_value(prompt: str, label_prefix: str) -> str:
     """Value of a `- Label ...: value` bullet, including continuation lines.
 
@@ -68,8 +92,6 @@ def generate_ide_report(prompt: str, system_prompt: str = "") -> tuple[str, dict
 
     Returns (content, token_log). Nikdy nevrací None — vždy validní coaching.
     """
-    data_part = _strip_instructions(prompt)
-
     # Extrahuj klíčové metriky z promptu pro syntézu
     # Prompt pro single_game obsahuje: Výsledek, barva, zahájení, ACPL, Počet chyb, Blundry, Fázový breakdown
     acpl_m = re.search(r"ACPL[:\s]+([\d\.]+)", prompt)
@@ -80,7 +102,8 @@ def generate_ide_report(prompt: str, system_prompt: str = "") -> tuple[str, dict
     result = result_m.group(1).strip() if result_m else "?"
     # Blunder line count — strip instructions to avoid leak
     blunder_section = _bullet_value(prompt, "Blundry")
-    blunder_section = _strip_instructions(blunder_section)[:400]
+    # Structure-safe: only ply/SAN/cp, never a slice of the raw JSON blob.
+    moments = _critical_moments(blunder_section)
     count_m = re.search(r"Počet chyb:\s*(\d+)\s*blunder", prompt, re.I)
     blunder_count = int(count_m.group(1)) if count_m else None
 
@@ -101,8 +124,8 @@ def generate_ide_report(prompt: str, system_prompt: str = "") -> tuple[str, dict
         "",
         "## Priority Issues (z dat)",
     ]
-    if blunder_section and blunder_section.strip() not in ("(žádné)", "žádné", "-"):
-        lines.append(f"- Kritický moment: {_clip(blunder_section, 200)}")
+    if moments:
+        lines.append(f"- Kritický moment: {_clip(moments, 200)}")
     elif blunder_count:
         lines.append(f"- Blunderů: {blunder_count} — detaily v datech níže.")
     else:
@@ -125,9 +148,8 @@ def generate_ide_report(prompt: str, system_prompt: str = "") -> tuple[str, dict
         "",
         "---",
         "",
-        "## Deterministic Data (Stockfish + Pattern Detection)",
-        "",
-        data_part,
+        "_Plná data (flagged moves, engine lines, FEN) jsou ve strukturovaném JSON, "
+        "ne v tomto textu._",
     ]
     content = "\n".join(lines)
     token_log = {
