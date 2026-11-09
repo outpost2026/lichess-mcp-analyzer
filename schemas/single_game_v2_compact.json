@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lichess-analyzer-mcp/schemas/single_game_v2_compact.json",
+  "title": "single_game_v2_compact",
+  "description": "Compact single-game output for LLM self-coaching. Derived from contract v1.1; instrumentation and derivable fields are omitted. Null is used when a value was not measured - it is never replaced by a guessed number.",
+  "type": "object",
+  "required": ["v", "game", "summary", "flags", "patterns"],
+  "additionalProperties": false,
+  "properties": {
+    "v": { "const": "2.0" },
+    "game": {
+      "type": "object",
+      "required": ["id", "color", "result", "opening", "depth"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "color": { "enum": ["white", "black"] },
+        "result": { "type": "string", "pattern": "^(1-0|0-1|1/2-1/2|\\*)$" },
+        "opening": { "type": "string" },
+        "tc": { "type": "string" },
+        "date": { "type": "string" },
+        "depth": { "type": "integer", "minimum": 8, "maximum": 24 }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["acpl", "acc", "phases"],
+      "additionalProperties": false,
+      "properties": {
+        "acpl": { "type": ["number", "null"], "minimum": 0 },
+        "acc": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
+        "phases": {
+          "type": "object",
+          "required": ["opening", "middlegame", "endgame"],
+          "additionalProperties": false,
+          "properties": {
+            "opening": { "$ref": "#/$defs/phase" },
+            "middlegame": { "$ref": "#/$defs/phase" },
+            "endgame": { "$ref": "#/$defs/phase" }
+          }
+        }
+      }
+    },
+    "flags": {
+      "type": "array",
+      "description": "One entry per flagged move (blunder, mistake, inaccuracy), ordered by ply ascending.",
+      "items": {
+        "type": "object",
+        "required": ["ply", "move", "class", "cp", "best", "rank"],
+        "additionalProperties": false,
+        "properties": {
+          "ply": { "type": "integer", "minimum": 1 },
+          "move": { "type": "string", "description": "SAN of the move played" },
+          "class": { "enum": ["blunder", "mistake", "inaccuracy"] },
+          "cp": { "type": "number", "description": "centipawn loss vs best" },
+          "best": { "type": "string", "description": "SAN of the engine best move" },
+          "rank": {
+            "type": ["integer", "null"],
+            "minimum": 1,
+            "description": "played move rank among engine candidates; null when not measured"
+          },
+          "motif": { "type": "string", "description": "tactical motif tag, e.g. discovered_check_capture" }
+        }
+      }
+    },
+    "patterns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "conf", "freq", "sev", "plie"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "conf": { "type": "number", "minimum": 0, "maximum": 1 },
+          "freq": { "type": "integer", "minimum": 1 },
+          "sev": { "enum": ["low", "medium", "high", "critical"] },
+          "plie": { "type": "array", "items": { "type": "integer" } }
+        }
+      }
+    },
+    "pv": {
+      "type": "object",
+      "description": "Optional. Map ply (string) -> principal variation SAN moves, max 3. Only for flagged plies.",
+      "additionalProperties": { "type": "array", "items": { "type": "string" }, "minItems": 1, "maxItems": 3 }
+    },
+    "fen_before": {
+      "type": "object",
+      "description": "Optional. Map ply (string) -> FEN before the flagged move. Only for cp_loss > 100.",
+      "additionalProperties": { "type": "string" }
+    },
+    "report": {
+      "type": ["string", "null"],
+      "maxLength": 1200,
+      "description": "Optional short deterministic summary. Never truncated mid-structure."
+    },
+    "llm": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["status", "provider"],
+      "properties": {
+        "status": { "enum": ["ok", "degraded", "failed"] },
+        "provider": { "type": "string" },
+        "reason": { "type": ["string", "null"] }
+      }
+    }
+  },
+  "$defs": {
+    "phase": {
+      "type": "array",
+      "description": "[acpl, flagged_count]; acpl is null when the phase had no measured moves.",
+      "minItems": 2,
+      "maxItems": 2,
+      "prefixItems": [
+        { "type": ["number", "null"], "minimum": 0 },
+        { "type": "integer", "minimum": 0 }
+      ],
+      "items": false
+    }
+  }
+}
