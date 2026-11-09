@@ -121,6 +121,12 @@ def main():
     print("\n=== REPORT ===")
     print(report)
 
+    # Start a fresh process per game; release the engine before exit so a
+    # wedged UCI handshake cannot keep the process (and the shell) alive.
+    from lichess_analyzer_mcp.services.engine_client import close_engine
+
+    close_engine()
+
 
 if __name__ == "__main__":
     main()
