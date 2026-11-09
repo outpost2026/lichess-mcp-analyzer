@@ -31,6 +31,21 @@ SCHEMA_VERSION = "1.1"
 _FLAGGED = ("blunder", "mistake", "inaccuracy")
 
 
+def _report_truncated(text: str) -> bool:
+    """True when the text ends inside an unclosed JSON-like structure.
+
+    FIX-011: a report must never end mid-array/object. A deterministic report
+    built by `ide_fallback._critical_moments()` cannot, but an LLM or a future
+    formatter might truncate; the flag makes that observable instead of silent.
+    """
+    stripped = text.rstrip()
+    if not stripped:
+        return False
+    if stripped[-1] in "[{,:":
+        return True
+    return stripped.count("[") != stripped.count("]") or stripped.count("{") != stripped.count("}")
+
+
 def _node_cap(depth: int) -> int:
     """Fixed node ceiling for this depth (0 = depth-only, legacy policy)."""
     return int(NODE_CAPS.get(depth) or 0)
@@ -148,6 +163,8 @@ async def lichess_coaching_single_game(
     color: str = "",
     depth: int = 0,
     mode: str = "fast",
+    output_format: str = "full",
+    use_llm: bool = True,
     ctx=None,
 ):
     """Deep coaching report for a single game.
@@ -173,6 +190,9 @@ async def lichess_coaching_single_game(
         color: Your color ('white' or 'black', fallback if no username)
         depth: Stockfish analysis depth (8-24, 0=auto)
         mode: Budget profile — 'fast' (60 s hard deadline) or 'deep' (120 s)
+        output_format: 'full' (contract v1.1, default), 'compact' (schema 2.0)
+            or 'both' -> {"full": ..., "compact": ...}
+        use_llm: False skips every LLM provider (deterministic report only)
     """
     call_started = time.perf_counter()
     mode = mode if mode in BUDGETS else "fast"
@@ -263,15 +283,25 @@ async def lichess_coaching_single_game(
             max(0.5, deadline_s - elapsed - float(budget_cfg["reserve_s"])),
         )
         t_llm = time.perf_counter()
-        report, cascade_log, cascade_exhausted, report_source = safe_llm_call(
-            prompt, f"single_game:{game_id}", timeout_s=llm_timeout
-        )
+        if use_llm:
+            report, cascade_log, cascade_exhausted, report_source = safe_llm_call(
+                prompt, f"single_game:{game_id}", timeout_s=llm_timeout
+            )
+        else:
+            # Offline ETL contract: no provider is contacted. The report is the
+            # deterministic summary, never labelled as LLM output.
+            from lichess_analyzer_mcp.services.ide_fallback import generate_ide_report
+
+            report, token_log = generate_ide_report(prompt, COACHING_SYSTEM_PROMPT)
+            cascade_log = [token_log]
+            cascade_exhausted = True
+            report_source = "deterministic"
         llm_s = time.perf_counter() - t_llm
 
         # MCP sampling fallback — use IDE's LLM when external APIs are exhausted.
         # `cascade_exhausted` is also True for the deterministic fallback, so a
         # real LLM gets a chance before the deterministic text is final.
-        if cascade_exhausted and ctx is not None:
+        if use_llm and cascade_exhausted and ctx is not None:
             try:
                 mcp_content, mcp_log = await mcp_sample_fallback(
                     ctx, prompt, COACHING_SYSTEM_PROMPT
@@ -384,7 +414,9 @@ async def lichess_coaching_single_game(
                 "status": "ok" if llm_ok else "degraded",
                 "provider": report_source,
                 "degraded": not llm_ok,
-                "reason": "ok" if llm_ok else "all_providers_failed",
+                "reason": (
+                    "ok" if llm_ok else ("llm_disabled" if not use_llm else "all_providers_failed")
+                ),
                 "attempts": _llm_attempts(cascade_log),
                 "configured_providers": llm_status.get("total_configured", 0),
                 "timeout_s": round(llm_timeout, 3),
@@ -395,6 +427,8 @@ async def lichess_coaching_single_game(
                 "source": source_label,
                 "format": "markdown",
                 "chars": len(report_text),
+                "full_chars": len(report_text),
+                "truncated": _report_truncated(report_text),
             },
             # Legacy alias kept for one release (K7).
             "cascade_log": cascade_log,
@@ -403,6 +437,14 @@ async def lichess_coaching_single_game(
                 "bfs_scope": "blunder+mistake+inaccuracy",
             },
         }
+        # ── output format: v1.1 stays the default (backward compatible) ──
+        if output_format in ("compact", "both"):
+            from lichess_analyzer_mcp.services.compact_serializer import to_compact_v2
+
+            compact = to_compact_v2(response, game_meta=game_info, moves=moves)
+            if output_format == "compact":
+                return compact
+            return {"full": response, "compact": compact}
         return response
     except Exception as e:
         log.exception("coaching single game error | game=%s", game_id)
@@ -446,6 +488,8 @@ async def lichess_coaching_single_game(
                 "source": "none",
                 "format": "markdown",
                 "chars": 0,
+                "full_chars": 0,
+                "truncated": False,
             },
             "patterns": [],
             "patterns_meta": {
