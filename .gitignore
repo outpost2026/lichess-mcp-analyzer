@@ -31,3 +31,7 @@ logs/
 
 # Binary documents
 *.docx
+
+# Local repo index artifacts (generated outside the package)
+/index_lichess-analyzer-mcp.md
+/context_indexer_v2.py
