@@ -162,7 +162,39 @@ Poznámky k jednotlivým toolům:
 - `lichess_import_pgn` s dlouhým PGN: použij `ConvertTo-Json -Compress` jako
   v příkladu výše, ať zůstane platný JSON.
 
-## 3. Determinismus a cache
+## 3. Kompaktní JSON 2.0 (ETL bez LLM)
+
+Pro rychlé hodnocení vlastních her existuje offline ETL, které z PGN vytvoří
+kompaktní JSON (schema 2.0, ~1,1–1,8 kB). LLM se při ETL vůbec nevolá.
+
+```powershell
+# hra podle ID
+.\.venv\Scripts\python.exe -X utf8 scripts\pgn_to_compact.py --game-id Sl1s8KmU --color white --out data\reports\compact_Sl1s8KmU.json
+
+# lokální PGN
+.\.venv\Scripts\python.exe -X utf8 scripts\pgn_to_compact.py --pgn-file data\reports\game.pgn --color white --out out.json
+
+# jiný strop uzlů (mění i cache klíč)
+.\.venv\Scripts\python.exe -X utf8 scripts\pgn_to_compact.py --game-id Sl1s8KmU --color white --nodes-cap 200000 --out out.json
+```
+
+| Parametr | Význam |
+|---|---|
+| `--game-id` / `--pgn-file` | vzájemně výlučné, jedno je povinné |
+| `--color white\|black` | strana, kterou hodnotíš |
+| `--depth N` | výchozí 14 |
+| `--nodes-cap N` | přepíše `NODE_CAPS[depth]` jen v tomto procesu |
+| `--mode fast\|deep` | budget |
+| `--out PATH` | výchozí `data\reports\compact_{id}_{ts}.json` |
+| `--no-llm` | kompatibilitní; ETL LLM nikdy nevolá |
+
+Výstup se validuje proti `schemas/single_game_v2_compact.json`. Detaily a
+prompt pro LLM: `docs/COMPACT_JSON_FOR_LLM.md`.
+
+MCP tool `lichess_coaching_single_game` umí totéž přes `output_format`:
+`full` (výchozí, kontrakt 1.1), `compact` (2.0), `both`.
+
+## 4. Determinismus a cache
 
 - Engine politika: `Threads=1`, `Limit(depth, nodes)`, `Clear Hash` před každým
   top-level callem, cloud eval jen opt-in.
@@ -172,7 +204,7 @@ Poznámky k jednotlivým toolům:
   tahů, stejný report (ověřeno dvěma cold běhy na `NxKgE4l8` a `lxO3gwd3`).
 - Čísla z reportů před zavedením politiky nejsou s novými srovnatelná.
 
-## 4. Řešení potíží
+## 5. Řešení potíží
 
 | Symptom | Příčina | Řešení |
 |---|---|---|

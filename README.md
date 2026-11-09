@@ -4,7 +4,7 @@
 
 **MCP server pro analýzu šachových partií, detekci vzorových chyb (pattern library jako kompresní model dle T. Mikolova) a spaced repetition trénink (FSRS/SM-2).**
 
-Verze: `0.1.0` | Stav: **DBCL Phase 2 hotovo** | Testy: **140/140** (bez `test_engine_client.py`) | Nástrojů: **18**
+Verze: `0.1.0` | Stav: **DBCL Phase 2 hotovo** | Testy: **160/160** (bez `test_engine_client.py`) | Nástrojů: **18**
 
 
 ## Proč?
@@ -105,6 +105,12 @@ Pattern O byl původně pojmenován "Repetition avoidance greed", ale kód detek
 | `lichess_coaching_training_plan` | Tréninkový plán podle slabin a dostupného času |
 | `lichess_persist_report` | Generuje a ukládá report na disk (docs / KB) |
 | `lichess_workspace_info` | Vrátí kontext pracovního prostoru |
+
+### Compact JSON 2.0
+`lichess_coaching_single_game(..., output_format="compact")` nebo
+`scripts/pgn_to_compact.py` vygeneruje kompaktní JSON (schema 2.0, ~1,1–1,8 kB)
+pro přímou konzumaci LLM agentem. Plná schema 1.1 zůstává výchozí pro debugging
+a cross-game. Formát, prompt šablona a příklady: `docs/COMPACT_JSON_FOR_LLM.md`.
 
 L2 Resources:
 - `lichess://analysis/{key}` — uložené výsledky analýzy
@@ -360,6 +366,7 @@ lichess-analyzer-mcp/
 │   ├── run_pipeline.py          ← CLI batch pipeline
 │   ├── coach_single.py          ← CLI single-game coaching (bez MCP klienta)
 │   ├── mcp_call.py              ← CLI runner pro všech 18 MCP toolů
+│   ├── pgn_to_compact.py        ← PGN → compact JSON 2.0 (offline ETL)
 │   ├── setup_stockfish.ps1      ← Automatické stažení Stockfish
 │   └── ...                      ← 20+ pomocných scriptů
 ├── tests/
@@ -377,6 +384,7 @@ lichess-analyzer-mcp/
 │   ├── 02_DBCL_meta_evaluation.md ← 3-kanál noise framework
 │   ├── MIKOLOV_KOMPRESE_V_PATTERN_ARCHITEKTURE.md ← Lossy Compression Principle formalizace
 │   ├── CLI_USAGE.md             ← Spouštění bez MCP klienta (PowerShell příklady)
+│   ├── COMPACT_JSON_FOR_LLM.md  ← Schema 2.0: formát + prompt pro LLM agenta
 │   └── coaching_reports/        ← Generované tréninkové reporty
 ├── data/
 │   ├── game_cache/              ← Cache analýz (JSON, Stockfish + LLM)
