@@ -4,7 +4,7 @@
 
 **MCP server pro analýzu šachových partií, detekci vzorových chyb (pattern library jako kompresní model dle T. Mikolova) a spaced repetition trénink (FSRS/SM-2).**
 
-Verze: `0.1.0` | Stav: **DBCL Phase 2 hotovo** | Testy: **68/68** | Nástrojů: **11**
+Verze: `0.1.0` | Stav: **DBCL Phase 2 hotovo** | Testy: **140/140** (bez `test_engine_client.py`) | Nástrojů: **18**
 
 
 ## Proč?
@@ -83,7 +83,7 @@ Pattern O byl původně pojmenován "Repetition avoidance greed", ale kód detek
 **Pravidlo:** Každý pattern musí projít sémantickým auditem (AUD fáze): shoduje se jméno, mechanismus, hypotéza s kódem? Pokud ne — opravit popis nebo opravit kód.
 
 
-## Nástroje (11 MCP toolů)
+## Nástroje (18 MCP toolů)
 
 | Tool | Popis |
 |------|-------|
@@ -98,6 +98,12 @@ Pattern O byl původně pojmenován "Repetition avoidance greed", ale kód detek
 | `lichess_analyze_pending` | Batch analýza nezpracovaných her (pending detection consistency) |
 | `lichess_analyze_anonymous_session` | Dávková analýza anonymních her (URL/ID/txt, label support, agregace) |
 | `lichess_import_pgn` | Importuje PGN z libovolného zdroje do analyzy |
+| `lichess_coaching_single_game` | Coaching report jedné hry (contract v1.1, deterministický fallback) |
+| `lichess_coaching_cross_game` | Cross-game coaching přes více partií |
+| `lichess_coaching_opening_report` | Report zahájení z více partií |
+| `lichess_coaching_opponent_pool` | Analýza poolu soupeřů z game_ids |
+| `lichess_coaching_training_plan` | Tréninkový plán podle slabin a dostupného času |
+| `lichess_persist_report` | Generuje a ukládá report na disk (docs / KB) |
 | `lichess_workspace_info` | Vrátí kontext pracovního prostoru |
 
 L2 Resources:
@@ -343,7 +349,7 @@ lichess-analyzer-mcp/
 │       │   ├── srs_engine.py        ← SM-2 spaced repetition
 │       │   ├── compressibility_validator.py ← compression ratio validation
 │       │   └── pattern_artifact_validator.py ← pattern semantic contract
-│       ├── tools/               ← 11 MCP toolů
+│       ├── tools/               ← 18 MCP toolů
 │       ├── resources/           ← L2 Resources (analysis, patterns)
 │       ├── kb/
 │       │   ├── writer.py        ← KB persistence layer
@@ -352,6 +358,8 @@ lichess-analyzer-mcp/
 │       └── patterns/
 ├── scripts/
 │   ├── run_pipeline.py          ← CLI batch pipeline
+│   ├── coach_single.py          ← CLI single-game coaching (bez MCP klienta)
+│   ├── mcp_call.py              ← CLI runner pro všech 18 MCP toolů
 │   ├── setup_stockfish.ps1      ← Automatické stažení Stockfish
 │   └── ...                      ← 20+ pomocných scriptů
 ├── tests/
@@ -368,6 +376,7 @@ lichess-analyzer-mcp/
 │   ├── 01_DBCL_unity_synthesis.md ← DBCL architektura
 │   ├── 02_DBCL_meta_evaluation.md ← 3-kanál noise framework
 │   ├── MIKOLOV_KOMPRESE_V_PATTERN_ARCHITEKTURE.md ← Lossy Compression Principle formalizace
+│   ├── CLI_USAGE.md             ← Spouštění bez MCP klienta (PowerShell příklady)
 │   └── coaching_reports/        ← Generované tréninkové reporty
 ├── data/
 │   ├── game_cache/              ← Cache analýz (JSON, Stockfish + LLM)

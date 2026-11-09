@@ -751,3 +751,68 @@ Testy: `tests/test_deterministic_report.py` (5). Jde o přesně ten typ vady, kt
 
 **Kosmetika (neopraveno):** šablona promptu generuje „1 blunderů / 2 chyb“; je to
 gramatika, ne datová vada — mimo rozsah této kalibrace.
+
+---
+
+## 12. Determinismus a uzavření handoffu FIX-001..FIX-010 (2026-11-09)
+
+Cíl: stejná hra + stejný vstup ⇒ stejná čísla, stejná množina vlajkovaných tahů,
+stejný report. Bez wall-clock závislosti a bez externího evaluátoru. Řešení musí
+zůstat jednoduché — nástroj slouží k rychlému opakovanému hodnocení vlastních her.
+
+### 12.1 Zvolená politika (FIX-003)
+
+| Prvek | Hodnota | Důvod |
+|---|---|---|
+| `ENGINE_THREADS` | `1` | více vláken = výsledek závisí na plánování vláken (ACPL 47.6 vs 41.6) |
+| limit | `Limit(depth=…, nodes=…)` | oba jsou search counters, žádný wall clock; `depth` rozhoduje v klidných pozicích, `nodes` jen zastropuje patologické |
+| `Clear Hash` | před každým top-level voláním (`evaluate_move`, `analyze_position_ex`) | žádné carry-over z předchozích tahů |
+| cloud eval (`chess-api.com`) | `use_cloud=False` default, jen opt-in | vzdálený engine = nekontrolovaná verze a hloubka |
+| `LLM_TEMPERATURE` | `0.0` (bylo 0.3) | deterministický text, když je LLM dostupné |
+
+`NODE_CAPS = {12: 80_000, 14: 150_000, 16: 400_000, 18: 1_000_000}`.
+Měřeno na `r1bqk2r/...`: 150k = 0.43 s (depth 17), 250k = 0.65 s (depth 20);
+depth 14 s 1 vláknem = 0.10 s / 47.6k nodes. Strop tedy neovlivňuje klidné pozice,
+ale drží worst case na ~0.4 s na jeden engine call.
+
+Politika je součástí cache klíče: `{game}_{color}_d{depth}n{nodes}.json`
+(např. `NxKgE4l8_white_d14n150000.json`). Staré cache bez suffixu se pro novou
+politiku nepoužijí — první běh hry je cold. Batch/legacy volající mají prázdný
+suffix, takže jejich cache zůstává platná.
+
+### 12.2 Měřené ověření
+
+| Hra | Běh 1 | Běh 2 | Shoda |
+|---|---|---|---|
+| `NxKgE4l8` (25 tahů, white) | ACPL 29.6, acc 95.6, 6 flagů, pattern T 0.48 | ACPL 29.6, acc 95.6, 6 flagů, pattern T 0.48 | flagged set + report byte-identical |
+| `lxO3gwd3` (34 tahů, black) | ACPL 18.2, acc 97.3, 4 flagy, pattern T 0.16 | ACPL 18.2, acc 97.3, 4 flagy, pattern T 0.16 | flagged set + report identical |
+
+Oba běhy byly cold (cache přesunuta). Engine 11.4–19.2 s, celkem 14.6–23.5 s
+podle délky hry. LLM cascade je nedostupná (402/404), report je deterministický
+(`report_source=deterministic`), takže běh nevisí na síti.
+
+**Důsledek pro interpretaci:** ACPL 43.3 → 29.6 na `NxKgE4l8` není zlepšení
+algoritmu. Staré číslo vzniklo s `Threads=4` a remote cloud eval; čísla z reportů
+před touto změnou nejsou s novými srovnatelná. Nové reporty mají v `engine`
+bloku `limit=depth+nodes`, `nodes_cap`, `threads=1`.
+
+### 12.3 Ostatní FIX položky
+
+| FIX | Stav | Řešení |
+|---|---|---|
+| FIX-001 | hotovo | report odvozuje počet blunderů z `flagged_moves`, parser `_bullet_value()`; testy `test_deterministic_report.py` |
+| FIX-002 | hotovo | `check` = hraný tah dává šach (odpovídá `motif=check`); předchozí stav je `in_check_before`; schema 1.1 rozšířena |
+| FIX-003 | hotovo | viz 12.1 |
+| FIX-004 | hotovo | jeden retry BFS top-3 linií při timeoutu; žádný exponential backoff ani fallback z předchozího ply |
+| FIX-005 | odloženo | `color=both` by vyžadoval schema 1.2 a 2× náklady; pro hodnocení vlastních her stačí jeden color |
+| FIX-006 | pokryto | deterministický report už uvádí konkrétní ply/SAN/cp_loss/best/rank/FEN; strukturování by nic nepřidalo |
+| FIX-007/008/010 | odloženo (P2) | ACPL→ELO heuristika by fabrikovala přesnost; ostatní je DX |
+| FIX-009 | hotovo | `scripts/coach_single.py` + `scripts/mcp_call.py`, viz `docs/CLI_USAGE.md` |
+
+### 12.4 Zbylé riziko
+
+- `tests/test_engine_client.py` zůstává závislé na sdíleném Stockfish procesu
+  a v suite se přeskakuje; politika je pokryta mockovanými testy v
+  `tests/test_determinism.py`.
+- Starý MCP server proces (spuštěný před změnou) vrací starou politiku, dokud
+  se nerestartuje. CLI skripty spouští vždy aktuální kód v novém procesu.
