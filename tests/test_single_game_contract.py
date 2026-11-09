@@ -110,7 +110,7 @@ def test_deadline_marks_moves_unanalyzed_instead_of_zero(monkeypatch):
 
     calls = {"n": 0}
 
-    def slow_evaluate(fen, move_uci, depth=0, timeout_s=None):
+    def slow_evaluate(fen, move_uci, depth=0, timeout_s=None, **kwargs):
         calls["n"] += 1
         time.sleep(0.15)
         return {
@@ -121,7 +121,7 @@ def test_deadline_marks_moves_unanalyzed_instead_of_zero(monkeypatch):
         }
 
     monkeypatch.setattr(engine_client, "evaluate_move", slow_evaluate)
-    monkeypatch.setattr(engine_client, "get_engine", lambda hash_mb=None: None)
+    monkeypatch.setattr(engine_client, "get_engine", lambda hash_mb=None, **kwargs: None)
     monkeypatch.setattr(engine_client, "clear_hash", lambda: None)
 
     analysis = game_analyzer._run_analyze_pgn(pgn, "white", depth=14, deadline_s=0.5, mode="fast")
@@ -178,7 +178,7 @@ def test_dead_engine_costs_one_retry_not_the_whole_game(monkeypatch):
 
     state = {"dead": True, "resets": 0}
 
-    def flaky_evaluate(fen, move_uci, depth=0, timeout_s=None):
+    def flaky_evaluate(fen, move_uci, depth=0, timeout_s=None, **kwargs):
         if state["dead"]:
             state["dead"] = False
             return {
@@ -200,7 +200,7 @@ def test_dead_engine_costs_one_retry_not_the_whole_game(monkeypatch):
 
     monkeypatch.setattr(engine_client, "evaluate_move", flaky_evaluate)
     monkeypatch.setattr(engine_client, "reset_engine", fake_reset)
-    monkeypatch.setattr(engine_client, "get_engine", lambda hash_mb=None: None)
+    monkeypatch.setattr(engine_client, "get_engine", lambda hash_mb=None, **kwargs: None)
     monkeypatch.setattr(engine_client, "clear_hash", lambda: None)
 
     analysis = game_analyzer._run_analyze_pgn(
@@ -219,7 +219,7 @@ def test_partial_analysis_is_not_cached(monkeypatch):
 
     saved = {"n": 0}
 
-    def slow_evaluate(fen, move_uci, depth=0, timeout_s=None):
+    def slow_evaluate(fen, move_uci, depth=0, timeout_s=None, **kwargs):
         time.sleep(0.15)
         return {
             "eval_before": 20,
@@ -229,7 +229,7 @@ def test_partial_analysis_is_not_cached(monkeypatch):
         }
 
     monkeypatch.setattr(engine_client, "evaluate_move", slow_evaluate)
-    monkeypatch.setattr(engine_client, "get_engine", lambda hash_mb=None: None)
+    monkeypatch.setattr(engine_client, "get_engine", lambda hash_mb=None, **kwargs: None)
     monkeypatch.setattr(engine_client, "clear_hash", lambda: None)
     monkeypatch.setattr(
         game_analyzer,

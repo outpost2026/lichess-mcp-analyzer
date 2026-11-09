@@ -7,10 +7,11 @@ import threading
 import chess
 import chess.engine
 from typing import Optional
-from lichess_analyzer_mcp.config.depth import DEPTH_DEFAULTS
+from lichess_analyzer_mcp.config.depth import DEPTH_DEFAULTS, ENGINE_THREADS
 
 _engine: Optional[chess.engine.SimpleEngine] = None
 _engine_hash_mb: Optional[int] = None
+_engine_threads: Optional[int] = None
 _engine_init_lock = threading.Lock()
 _analysis_lock = threading.Lock()
 _ENGINE_LOCK_TIMEOUT = 120.0  # seconds — recovery from zombie lock
@@ -46,33 +47,61 @@ def _find_stockfish() -> str:
     return "stockfish"
 
 
-def get_engine(hash_mb: Optional[int] = None) -> chess.engine.SimpleEngine:
-    global _engine, _engine_hash_mb
+def get_engine(
+    hash_mb: Optional[int] = None, threads: Optional[int] = None
+) -> chess.engine.SimpleEngine:
+    global _engine, _engine_hash_mb, _engine_threads
     # Adaptive hash: if requested hash differs, reconfigure or restart
     requested = hash_mb if hash_mb is not None else 512
+    requested_threads = threads if threads is not None else ENGINE_THREADS
     if _engine is None:
         with _engine_init_lock:
             if _engine is None:
                 sf_path = _find_stockfish()
                 _engine = chess.engine.SimpleEngine.popen_uci(sf_path)
-                _engine.configure({"Threads": 4, "Hash": requested, "NumaPolicy": "hardware"})
+                _engine.configure({"Threads": requested_threads, "Hash": requested})
                 _engine_hash_mb = requested
+                _engine_threads = requested_threads
                 return _engine
-    # Engine exists but hash differs -> reconfigure if possible, else restart
+    # Engine exists but hash/threads differ -> reconfigure if possible, else restart
+    reconfig: dict = {}
     if _engine_hash_mb is not None and _engine_hash_mb != requested:
+        reconfig["Hash"] = requested
+    if _engine_threads is not None and _engine_threads != requested_threads:
+        reconfig["Threads"] = requested_threads
+    if reconfig:
         try:
-            _engine.configure({"Hash": requested})
+            _engine.configure(reconfig)
             _engine_hash_mb = requested
+            _engine_threads = requested_threads
         except Exception:
-            # Fallback: restart engine with new hash
+            # Fallback: restart engine with new settings
             try:
                 _engine.quit()
             except Exception:
                 pass
             _engine = None
             _engine_hash_mb = None
-            return get_engine(hash_mb=requested)
+            _engine_threads = None
+            return get_engine(hash_mb=requested, threads=requested_threads)
     return _engine
+
+
+def get_current_threads() -> Optional[int]:
+    return _engine_threads
+
+
+def _limit(depth: int, nodes: int = 0) -> chess.engine.Limit:
+    """Search limit without any wall-clock component.
+
+    Both `depth` and `nodes` are search counters, so a single-threaded engine
+    returns the same evaluation for the same position every time. The node
+    ceiling only bounds pathological positions; it never decides the result
+    in quiet ones (depth is reached first).
+    """
+    if nodes and nodes > 0:
+        return chess.engine.Limit(depth=depth, nodes=int(nodes))
+    return chess.engine.Limit(depth=depth)
 
 
 def clear_hash() -> None:
@@ -178,7 +207,11 @@ def _run_engine_call(fn, timeout_s: float | None = None, engine=None):
 
 
 def analyze_position_ex(
-    fen: str, depth: int = 0, multipv: int = 3, timeout_s: float | None = None
+    fen: str,
+    depth: int = 0,
+    multipv: int = 3,
+    timeout_s: float | None = None,
+    nodes: int = 0,
 ) -> tuple[list[dict], str | None]:
     """Analyze a position and return `(lines, error)`.
 
@@ -194,8 +227,12 @@ def analyze_position_ex(
     try:
 
         def _do_analysis():
+            if nodes:
+                # Fresh TT per top-level call: results must depend on the
+                # position only, not on earlier searches in this process.
+                clear_hash()
             # Use engine.analyse() with multipv — returns results at exact target depth
-            results = engine.analyse(board, chess.engine.Limit(depth=depth), multipv=multipv)
+            results = engine.analyse(board, _limit(depth, nodes), multipv=multipv)
             items = []
             for info in results:
                 if "pv" not in info or "score" not in info:
@@ -229,9 +266,11 @@ def analyze_position_ex(
 
 
 def analyze_position(
-    fen: str, depth: int = 0, multipv: int = 3, timeout_s: float | None = None
+    fen: str, depth: int = 0, multipv: int = 3, timeout_s: float | None = None, nodes: int = 0
 ) -> list[dict]:
-    lines, _error = analyze_position_ex(fen, depth=depth, multipv=multipv, timeout_s=timeout_s)
+    lines, _error = analyze_position_ex(
+        fen, depth=depth, multipv=multipv, timeout_s=timeout_s, nodes=nodes
+    )
     return lines
 
 
@@ -245,7 +284,14 @@ def _get_sf_path() -> str:
     return _SF_PATH
 
 
-def evaluate_move(fen: str, move_uci: str, depth: int = 0, timeout_s: float | None = None) -> dict:
+def evaluate_move(
+    fen: str,
+    move_uci: str,
+    depth: int = 0,
+    timeout_s: float | None = None,
+    nodes: int = 0,
+    use_cloud: bool = False,
+) -> dict:
     if depth == 0:
         depth = DEPTH_DEFAULTS["standard"]["position"]
 
@@ -261,8 +307,9 @@ def evaluate_move(fen: str, move_uci: str, depth: int = 0, timeout_s: float | No
             "error": f"Move {move_uci} not legal in position {fen}",
         }
 
-    # D1: Cloud fallback for depth >= 18 (chess-api.com)
-    if depth >= 14:
+    # D1: Cloud fallback (chess-api.com) is opt-in only. A remote engine makes
+    # the evaluation depend on someone else's search — not reproducible.
+    if use_cloud and depth >= 14:
         from lichess_analyzer_mcp.services.cloud_client import cloud_evaluate_move
 
         cloud_result = cloud_evaluate_move(fen, move_uci, depth)
@@ -284,22 +331,25 @@ def evaluate_move(fen: str, move_uci: str, depth: int = 0, timeout_s: float | No
             return 10000 - abs(mate) if mate > 0 else -(10000 - abs(mate))
 
         def _do_evaluate():
+            if nodes:
+                # Deterministic policy: no TT carry-over from earlier moves.
+                clear_hash()
             # D2: Use engine.analyse() for deterministic depth-specific result
-            info_before = engine.analyse(board, chess.engine.Limit(depth=depth))
+            info_before = engine.analyse(board, _limit(depth, nodes))
             eval_before = _cp_from_score(info_before["score"].relative)
             best_move = info_before["pv"][0] if "pv" in info_before else None
 
             if best_move:
                 board_best = board.copy()
                 board_best.push(best_move)
-                best_res = engine.analyse(board_best, chess.engine.Limit(depth=depth))
+                best_res = engine.analyse(board_best, _limit(depth, nodes))
                 best_score = _cp_from_score(best_res["score"].relative)
                 best_player = -best_score if best_score is not None else None
             else:
                 best_player = eval_before
 
             board.push(move)
-            actual_res = engine.analyse(board, chess.engine.Limit(depth=depth))
+            actual_res = engine.analyse(board, _limit(depth, nodes))
             actual_score = _cp_from_score(actual_res["score"].relative)
             actual_player = -actual_score if actual_score is not None else None
             return eval_before, best_move, best_player, actual_player
@@ -475,11 +525,26 @@ def get_best_move(fen: str, depth: int = 0) -> dict:
 def close_engine():
     global _engine
     engine, _engine = _engine, None
-    if engine is not None:
+    if engine is None:
+        return
+    # `quit()` waits for the UCI handshake; a wedged engine would block the
+    # interpreter at exit (observed: process alive long after the report was
+    # written). Give it 2 s, then terminate the process.
+    quitter = threading.Thread(target=_safe_quit, args=(engine,), daemon=True)
+    quitter.start()
+    quitter.join(2.0)
+    if quitter.is_alive():
         try:
-            engine.quit()
-        except Exception:  # noqa: S110 — engine may already be dead; cleanup is best-effort
-            try:
-                engine.close()
-            except Exception:  # noqa: S110
-                pass
+            engine.close()
+        except Exception:  # noqa: S110 — cleanup is best-effort
+            pass
+
+
+def _safe_quit(engine):
+    try:
+        engine.quit()
+    except Exception:  # noqa: S110 — engine may already be dead; cleanup is best-effort
+        try:
+            engine.close()
+        except Exception:  # noqa: S110
+            pass

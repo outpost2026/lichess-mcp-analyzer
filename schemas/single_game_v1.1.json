@@ -158,6 +158,8 @@
             }
           },
           "motif": { "type": ["string", "null"] },
+          "check": { "type": "boolean" },
+          "in_check_before": { "type": "boolean" },
           "explanation": { "type": "string" },
           "explanation_source": { "enum": ["deterministic", "llm", "none"] }
         }

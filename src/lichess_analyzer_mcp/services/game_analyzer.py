@@ -9,7 +9,11 @@ import time
 import chess
 
 from lichess_analyzer_mcp.models.game import GameSummary, MoveAnalysis, GameAnalysis
-from lichess_analyzer_mcp.config.depth import DEPTH_DEFAULTS, MIN_USEFUL_ENGINE_S
+from lichess_analyzer_mcp.config.depth import (
+    DEPTH_DEFAULTS,
+    MIN_USEFUL_ENGINE_S,
+    NODE_CAPS,
+)
 from lichess_analyzer_mcp.services.budget import Budget, budget_for_mode
 from lichess_analyzer_mcp.models.analysis import (
     BlunderFactSheet,
@@ -85,9 +89,22 @@ def _sanitize_id(raw: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_-]", "", raw)
 
 
-def _cache_path(game_id: str, depth: int, color: str = "white") -> str:
+def _policy_token(depth: int, mode: str) -> str:
+    """Cache-key suffix for the engine policy.
+
+    Results depend on the search policy, so a cache entry produced with a
+    different policy must never be served. Legacy (batch) callers keep an
+    empty token and therefore keep their existing cache files.
+    """
+    if mode == "legacy":
+        return ""
+    nodes = int(NODE_CAPS.get(depth) or 0)
+    return f"n{nodes}" if nodes else ""
+
+
+def _cache_path(game_id: str, depth: int, color: str = "white", policy: str = "") -> str:
     safe = _sanitize_id(game_id)
-    d = os.path.join(CACHE_DIR, f"{safe}_{color}_d{depth}.json")
+    d = os.path.join(CACHE_DIR, f"{safe}_{color}_d{depth}{policy}.json")
     return d
 
 
@@ -115,9 +132,13 @@ def _detect_game_profile(tc: str) -> str:
 
 
 def _load_cached_analysis(
-    game_id: str, depth: int, color: str = "white", exact_depth: bool = False
+    game_id: str,
+    depth: int,
+    color: str = "white",
+    exact_depth: bool = False,
+    policy: str = "",
 ) -> GameAnalysis | None:
-    path = _cache_path(game_id, depth, color)
+    path = _cache_path(game_id, depth, color, policy)
     if os.path.isfile(path):
         try:
             with open(path, "r", encoding="utf-8") as f:
@@ -126,8 +147,10 @@ def _load_cached_analysis(
             pass
     if exact_depth:
         return None
-    # Depth approximation: try nearest depth if exact match not found
-    pattern = os.path.join(CACHE_DIR, f"{game_id}_{color}_d*.json")
+    # Depth approximation: try nearest depth if exact match not found.
+    # The policy suffix is part of the pattern: a depth-approximated entry
+    # produced under another engine policy would silently change the numbers.
+    pattern = os.path.join(CACHE_DIR, f"{game_id}_{color}_d*{policy}.json")
     for fpath in sorted(glob.glob(pattern), reverse=True):
         try:
             with open(fpath, "r", encoding="utf-8") as f:
@@ -137,10 +160,12 @@ def _load_cached_analysis(
     return None
 
 
-def _save_cached_analysis(game_id: str, depth: int, analysis: GameAnalysis) -> None:
+def _save_cached_analysis(
+    game_id: str, depth: int, analysis: GameAnalysis, policy: str = ""
+) -> None:
     os.makedirs(CACHE_DIR, exist_ok=True)
     color = analysis.game.color
-    path = _cache_path(game_id, depth, color)
+    path = _cache_path(game_id, depth, color, policy)
     tmp = path + ".tmp"
     try:
         with open(tmp, "w", encoding="utf-8") as f:
@@ -170,6 +195,7 @@ def analyze_pgn(
     """
     if depth == 0:
         depth = DEPTH_DEFAULTS["standard"]["single_game"]
+    policy = _policy_token(depth, mode)
     if use_cache:
         if game_id is None:
             import io
@@ -181,7 +207,9 @@ def analyze_pgn(
                 if "/" in site:
                     game_id = site.split("/")[-1]
         if game_id:
-            cached = _load_cached_analysis(game_id, depth, player_color, exact_depth=strict_depth)
+            cached = _load_cached_analysis(
+                game_id, depth, player_color, exact_depth=strict_depth, policy=policy
+            )
             if cached is not None:
                 cached._cache_hit = True
                 cached._cache_layer = "game"
@@ -202,7 +230,7 @@ def analyze_pgn(
                 len(analysis.unanalyzed_plies),
             )
         else:
-            _save_cached_analysis(game_id, depth, analysis)
+            _save_cached_analysis(game_id, depth, analysis, policy=policy)
 
     return analysis
 
@@ -459,6 +487,7 @@ def _unanalyzed_move(
         phase=_detect_phase(ply),
         fen=fen_before,
         was_in_check=board.is_check(),
+        gives_check=board.gives_check(move),
         analyzed=False,
         explanation_source="none",
     )
@@ -494,6 +523,9 @@ def _run_analyze_pgn(
     engine_deadline = t_start + engine_budget_s
     engine_time_s = 0.0
     bfs_engine_lines_calls = 0
+    # Deterministic policy: single thread + fixed depth + fixed node ceiling.
+    # Legacy callers keep the historical depth-only behaviour.
+    nodes = 0 if mode == "legacy" else int(NODE_CAPS.get(depth) or 0)
 
     # Adaptive hash — deterministic, zero heuristics (ply+depth → hash)
     try:
@@ -603,7 +635,7 @@ def _run_analyze_pgn(
             try:
                 if move in board.legal_moves:
                     eval_result = engine_client.evaluate_move(
-                        fen_before, move.uci(), depth=depth, timeout_s=call_cap
+                        fen_before, move.uci(), depth=depth, timeout_s=call_cap, nodes=nodes
                     )
             except Exception as e:
                 eval_result = {"error": str(e)}
@@ -623,7 +655,7 @@ def _run_analyze_pgn(
                     t_engine = time.perf_counter()
                     try:
                         eval_result = engine_client.evaluate_move(
-                            fen_before, move.uci(), depth=depth, timeout_s=retry_cap
+                            fen_before, move.uci(), depth=depth, timeout_s=retry_cap, nodes=nodes
                         )
                     except Exception as e:
                         eval_result = {"error": str(e)}
@@ -677,6 +709,7 @@ def _run_analyze_pgn(
                 phase=phase,
                 fen=fen_before,
                 was_in_check=was_in_check,
+                gives_check=gives_check,
             )
             if classification == "blunder":
                 analysis.blunders.append(move_analysis)
@@ -703,11 +736,31 @@ def _run_analyze_pgn(
                     )
                     t_engine = time.perf_counter()
                     engine_lines_raw, lines_error = engine_client.analyze_position_ex(
-                        fen_before, depth=depth, multipv=3, timeout_s=bfs_cap
+                        fen_before, depth=depth, multipv=3, timeout_s=bfs_cap, nodes=nodes
                     )
                     engine_time_s += time.perf_counter() - t_engine
                     analysis.engine_calls += 1
                     bfs_engine_lines_calls += 1
+                    if lines_error:
+                        # One retry: a single slow call must not strip a
+                        # flagged move of its top-3 lines (FIX-004).
+                        remaining_retry = max(0.0, engine_deadline - time.perf_counter())
+                        if remaining_retry >= MIN_USEFUL_ENGINE_S:
+                            retry_cap = max(
+                                MIN_USEFUL_ENGINE_S,
+                                min(remaining_retry, max(5.0, per_move_s * 2.0)),
+                            )
+                            t_engine = time.perf_counter()
+                            engine_lines_raw, lines_error = engine_client.analyze_position_ex(
+                                fen_before,
+                                depth=depth,
+                                multipv=3,
+                                timeout_s=retry_cap,
+                                nodes=nodes,
+                            )
+                            engine_time_s += time.perf_counter() - t_engine
+                            analysis.engine_calls += 1
+                            bfs_engine_lines_calls += 1
                     if lines_error:
                         analysis.engine_timeouts += 1
                         analysis.errors.append(

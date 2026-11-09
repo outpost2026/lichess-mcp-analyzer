@@ -57,9 +57,15 @@ BUDGETS = {
     },
 }
 
-# Node ceilings per depth. Filled in by P0.1 calibration; None = no ceiling
-# (behaviour identical to the pre-2026-11 pipeline until measured).
-NODE_CAPS = {12: None, 14: None, 16: None, 18: None}
+# Node ceilings per depth. Single thread + fixed node ceiling + fixed depth
+# are all search-count limits (no wall clock), so the same position always
+# yields the same evaluation (FIX-003). The ceiling also bounds the worst
+# case time per analysis (~0.4 s at 150k nodes, measured).
+NODE_CAPS = {12: 80_000, 14: 150_000, 16: 400_000, 18: 1_000_000}
+
+# Determinism: one thread. Multi-thread search depends on thread scheduling,
+# which made ACPL and flagged move sets differ between identical runs.
+ENGINE_THREADS = 1
 
 # Minimum remaining engine time worth starting another move evaluation.
 MIN_USEFUL_ENGINE_S = 0.15

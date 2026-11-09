@@ -51,6 +51,7 @@ class MoveAnalysis:
     phase: str
     fen: str = ""
     was_in_check: bool = False
+    gives_check: bool = False
     # P0.2: an analytical result is either measured or explicitly absent.
     analyzed: bool = True
     # P0.5: deterministic explanation surface for every flagged move.

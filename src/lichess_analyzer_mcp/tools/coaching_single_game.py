@@ -2,7 +2,12 @@ import json
 import time
 
 from lichess_analyzer_mcp.app import app
-from lichess_analyzer_mcp.config.depth import BUDGETS, DEPTH_DEFAULTS, NODE_CAPS
+from lichess_analyzer_mcp.config.depth import (
+    BUDGETS,
+    DEPTH_DEFAULTS,
+    ENGINE_THREADS,
+    NODE_CAPS,
+)
 from lichess_analyzer_mcp.services import engine_client
 from lichess_analyzer_mcp.services.audit import auditable
 from lichess_analyzer_mcp.services.budget import budget_for_mode
@@ -24,6 +29,28 @@ log = get_logger("coaching_single_game")
 
 SCHEMA_VERSION = "1.1"
 _FLAGGED = ("blunder", "mistake", "inaccuracy")
+
+
+def _node_cap(depth: int) -> int:
+    """Fixed node ceiling for this depth (0 = depth-only, legacy policy)."""
+    return int(NODE_CAPS.get(depth) or 0)
+
+
+def _cache_policy(depth: int) -> str:
+    """Cache-key suffix; must match game_analyzer._policy_token."""
+    cap = _node_cap(depth)
+    return f"n{cap}" if cap else ""
+
+
+def _engine_block(depth: int, hash_mb: int | None) -> dict:
+    cap = _node_cap(depth)
+    return {
+        "limit": "depth+nodes" if cap else "depth",
+        "depth": depth,
+        "nodes_cap": cap or None,
+        "hash_mb": hash_mb,
+        "threads": ENGINE_THREADS,
+    }
 
 
 def _fmt_loss(move: dict) -> str:
@@ -52,6 +79,10 @@ def _flagged_moves(analysis: dict) -> list[dict]:
                 "played_rank": m.get("played_rank") or None,
                 "engine_lines": m.get("engine_lines") or [],
                 "motif": m.get("motif_type"),
+                # `check` = the played move gives check (matches motif
+                # semantics). The pre-move state has its own field.
+                "check": bool(m.get("gives_check")),
+                "in_check_before": bool(m.get("was_in_check")),
                 "explanation": m.get("explanation") or "",
                 "explanation_source": m.get("explanation_source") or "none",
             }
@@ -190,7 +221,8 @@ async def lichess_coaching_single_game(
         def _move_lines(items: list[dict], limit: int = 10) -> str:
             return "\n".join(
                 f"  ply {m.get('ply')}: {m.get('move_san')} (loss {_fmt_loss(m)}cp, "
-                f"fáze={m.get('phase')}, check={m.get('was_in_check', False)}, "
+                f"fáze={m.get('phase')}, gives_check={m.get('gives_check', False)}, "
+                f"in_check_before={m.get('was_in_check', False)}, "
                 f"tactical={m.get('is_tactical_motif', False)}, motif={m.get('motif_type')}, "
                 f"best={m.get('best_move_san') or '?'}, rank={m.get('played_rank') or '?'}, "
                 f"explanation={m.get('explanation') or 'n/a'}, "
@@ -326,7 +358,7 @@ async def lichess_coaching_single_game(
         cache = {
             "hit": cache_hit,
             "layer": getattr(analysis_obj, "_cache_layer", "none"),
-            "key": f"{game_id}_{detected_color}_d{depth}",
+            "key": f"{game_id}_{detected_color}_d{depth}{_cache_policy(depth)}",
         }
 
         report_text = report or ""
@@ -342,13 +374,7 @@ async def lichess_coaching_single_game(
             "errors": errors,
             "unanalyzed_plies": unanalyzed,
             "timings": timings,
-            "engine": {
-                "limit": "depth",
-                "depth": depth,
-                "nodes_cap": NODE_CAPS.get(depth),
-                "hash_mb": None if cache_hit else engine_client.get_current_hash(),
-                "threads": 4,
-            },
+            "engine": _engine_block(depth, None if cache_hit else engine_client.get_current_hash()),
             "cache": cache,
             "analysis": analysis_block,
             "flagged_moves": flagged,
@@ -404,13 +430,7 @@ async def lichess_coaching_single_game(
                 "engine_retries": 0,
                 "cache_hit": False,
             },
-            "engine": {
-                "limit": "depth",
-                "depth": depth,
-                "nodes_cap": NODE_CAPS.get(depth),
-                "hash_mb": None,
-                "threads": 4,
-            },
+            "engine": _engine_block(depth, None),
             "cache": {"hit": False, "layer": "none", "key": None},
             "analysis": {
                 "acpl": None,
