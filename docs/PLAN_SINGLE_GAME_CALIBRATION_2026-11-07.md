@@ -740,3 +740,14 @@ a jinou množinu vlajkovaných tahů (5 vs 7). Příčina: `Threads=4` + transpo
 se mezi tahy nečistí (clear jen na konci hry). Reprodukovatelnost by vyžadovala
 `Threads=1` + `Clear Hash` před každým tahem; to je kalibrační rozhodnutí, ne bug —
 zatím nezvoleno.
+
+**Defekt nalezený v hotovém reportu (2026-11-09):** deterministický report tvrdil
+„Žádný blunder“, i když data obsahovala 1 blunder (ply 41 Qf5+, 308 cp). Příčina:
+parser hledal v promptu literál `Blundry:`, šablona však používá `Blundry (s detaily):`
+→ hodnota byla vždy prázdná. Fix: `_bullet_value()` (prefix labelu + pokračovací řádky),
+křížová kontrola přes `Počet chyb`, ořez na hranici pole místo uprostřed slova.
+Testy: `tests/test_deterministic_report.py` (5). Jde o přesně ten typ vady, který plán
+řadí do P0: čísla jsou správná, ale tvrzení o nich je nepravdivé.
+
+**Kosmetika (neopraveno):** šablona promptu generuje „1 blunderů / 2 chyb“; je to
+gramatika, ne datová vada — mimo rozsah této kalibrace.

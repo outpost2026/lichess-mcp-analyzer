@@ -64,3 +64,17 @@ def test_instruction_markers_do_not_leak():
     content, _ = generate_deterministic_report(PROMPT_WITH_BLUNDER)
     assert "NEVYMÝŠLEJ" not in content
     assert "PRAVIDLA:" not in content
+
+
+def test_long_blunder_detail_is_clipped_at_field_boundary():
+    detail = "; ".join(f"field{i}=value{i}" for i in range(20))
+    prompt = f"""K DISPOZICI:
+- Počet chyb: 1 blunderů, 0 chyb, 0 nepřesností
+- Blundry (s detaily): - ply 41 Qf5+ {detail}
+- Fázový breakdown: middlegame ACPL 56.3
+"""
+    content, _ = generate_deterministic_report(prompt)
+    line = next(ln for ln in content.splitlines() if ln.startswith("- Kritický moment:"))
+    assert len(line) <= 220
+    assert "ply 41" in line
+    assert line.endswith(tuple("0123456789"))

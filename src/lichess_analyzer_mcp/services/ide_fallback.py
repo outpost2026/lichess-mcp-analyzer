@@ -22,6 +22,18 @@ def _extract_field(prompt: str, key: str) -> str:
     return m.group(1).strip() if m else ""
 
 
+def _clip(text: str, limit: int = 200) -> str:
+    """Trim at a field boundary so the report never ends mid-word."""
+    if len(text) <= limit:
+        return text
+    window = text[:limit]
+    for sep in ("; ", ". ", ", "):
+        cut = window.rfind(sep)
+        if cut >= limit // 2:
+            return window[:cut]
+    return window
+
+
 def _bullet_value(prompt: str, label_prefix: str) -> str:
     """Value of a `- Label ...: value` bullet, including continuation lines.
 
@@ -90,7 +102,7 @@ def generate_ide_report(prompt: str, system_prompt: str = "") -> tuple[str, dict
         "## Priority Issues (z dat)",
     ]
     if blunder_section and blunder_section.strip() not in ("(žádné)", "žádné", "-"):
-        lines.append(f"- Kritický moment: {blunder_section[:200]}")
+        lines.append(f"- Kritický moment: {_clip(blunder_section, 200)}")
     elif blunder_count:
         lines.append(f"- Blunderů: {blunder_count} — detaily v datech níže.")
     else:
