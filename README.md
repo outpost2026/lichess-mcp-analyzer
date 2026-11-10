@@ -4,7 +4,7 @@
 
 **MCP server pro analýzu šachových partií, detekci vzorových chyb (pattern library jako kompresní model dle T. Mikolova) a spaced repetition trénink (FSRS/SM-2).**
 
-Verze: `0.1.0` | Stav: **DBCL Phase 2 hotovo** | Testy: **193/193** (bez `test_engine_client.py`) | Nástrojů: **18**
+Verze: `0.1.0` | Stav: **single-game pipeline v4** (compact 2.0 default) | Testy: **193/193** (bez `test_engine_client.py`) | Nástrojů: **18** | v4: `7ce7f61`
 
 
 ## Proč?
@@ -113,6 +113,11 @@ eval_after` pro velké chyby, patterny u konkrétního flagu, `pv_unavailable` p
 explicitní chybějící PV a `clusters` pro série chyb. Plná schema 1.1 je opt-in
 (`--format detailed`) pro debugging a cross-game. Formát, null/omission
 politika, prompt šablona a příklady: `docs/COMPACT_JSON_FOR_LLM.md`.
+
+V4 (commit `7ce7f61`) doplnila `flags[].mate_in` (mat v N z nejlepší linie;
+kladné = pro hráče, záporné = proti), vynechání `eval_before`/`eval_after`
+při rozporu s `cp_loss` (FIX-023), oddělení slabých a čistých fází (FIX-021)
+a persistování obnovené PV do cache (FIX-028).
 
 L2 Resources:
 - `lichess://analysis/{key}` — uložené výsledky analýzy
@@ -381,18 +386,27 @@ lichess-analyzer-mcp/
 │   ├── pgn_to_compact.py        ← Deprecated shim nad coach.py
 │   ├── setup_stockfish.ps1      ← Automatické stažení Stockfish
 │   └── ...                      ← 20+ pomocných scriptů
-├── tests/
-│   ├── test_services.py         ← 15 unit testů (modely, komprese, validace)
-│   ├── test_prompt_contract.py  ← 13 contract testů (schema, mapping)
-│   ├── test_engine_client.py    ← 5 testů s mocknutým Stockfish
-│   ├── test_pattern_semantic_contract.py ← 17 testů (semantic contract + min_games)
-│   ├── test_dbcl.py             ← 17 testů (win_prob, BFS round-trip, narrative validator, N)
-│   ├── test_compact_serializer.py ← schema 2.0, null politika, eval okno, PV fallback
+├── tests/                       ← 193 testů (bez test_engine_client.py)
+│   ├── test_services.py         ← modely, komprese, validace
+│   ├── test_prompt_contract.py  ← schema a mapování promptů
+│   ├── test_engine_client.py    ← Stockfish (sdílený engine, lokálně vylučován)
+│   ├── test_pattern_semantic_contract.py ← semantic contract + min_games
+│   ├── test_dbcl.py             ← win_prob, BFS round-trip, narrative validator, N
+│   ├── test_depth_policy.py     ← depth a časová politika
+│   ├── test_determinism.py      ← determinismus výstupů
+│   ├── test_deterministic_report.py ← deterministický report, slabé/čisté fáze
+│   ├── test_compact_serializer.py ← schema 2.0, null politika, eval okno, PV fallback, mate_in
 │   ├── test_compact_tool.py     ← default compact, detailed, full alias, both
-│   └── test_coach_cli.py        ← jednotný CLI (argumenty, exit kódy, agregace)
+│   ├── test_coach_cli.py        ← jednotný CLI (argumenty, exit kódy, agregace)
+│   ├── test_single_game_contract.py ← kontrakt 1.1 single-game
+│   ├── test_fix_batch1.py       ← CR-B100/B98/B121/B31 regresní testy
+│   ├── test_fix_batch2.py       ← druhá dávka fixů
+│   ├── test_mate_score.py       ← FIX-027 mate_in
+│   ├── test_eval_consistency.py ← FIX-023 cp/eval invariant
+│   └── test_cache_refresh.py    ← FIX-028 refresh cache a overhead
 ├── docs/
 │   ├── CONTEXT_A_ZAMER.md       ← Kompletní kontext a záměr projektu
-│   ├── CONTEXT_INJECT.md        ← Session timeline (v3.2), CPM lifecycle, anomaly log
+│   ├── CONTEXT_INJECT.md        ← Session timeline (v6.0 k 2026-09-05; aktuální stav v .ai_state.json)
 │   ├── MERGE_EVAL_feat_to_main.md ← Merge evaluation + empirical run comparison
 │   ├── PHASE2_BUILD_PLAN.md     ← Build plan + MCP pitva pravidla
 │   ├── 01_DBCL_unity_synthesis.md ← DBCL architektura
@@ -431,28 +445,56 @@ lichess-analyzer-mcp/
 | Dokuments | python-docx>=1.2.0 |
 | Persistence | B2B-Knowledge-Base (JSON + Markdown) |
 | Testování | pytest 8+, pytest-cov, mypy |
-| Lint | ruff (F, E, W, I, N, UP, S) |
+| Lint | ruff (CI: E4/E7/E9/F; širší sada I/UP/N/S/E501 = tech debt) |
 
 
-## Stav projektu (2026-07-28)
+## Stav projektu (2026-11-10)
 
 | Co | Stav |
 |---|------|
-| Testy | **68/68 pass** |
-| Patterny definované | **14** (A, B, C, G, I, I2, J, N, O, P, Q, Q1, Q2, R) + **S** aktivní |
-| Patterny s detektorem | **13** aktivních + I manual_only (code→I2) |
-| Analyzované partie | **63** (44W/17L/2D, depth 12, RUN_003) + 25 anonymních |
-| Cache konzistence | ✅ Auto-konzistentní pipeline |
-| Engine | Stockfish BMI2 dev-20260609, depth 12, ACPL MAE 3.9 vs Lichess |
-| Engine lines | ✅ **0% silent fail** (70/70 BFS s 3/3 engine_lines) |
-| BlunderFactSheet | ✅ Per-blunder: FEN, legal moves, engine_lines, context_window, pattern_matches |
-| Narrative validator | ✅ 5 claim categories (pending reject loop) |
-| Phase 1 | ✅ Hotova |
-| DBCL Phase 2 | ✅ **Hotovo** (engine_lines fix, BFS, N, narrative validator) |
-| Pipeline bugfixy | ✅ **6 fixes**: 50-fetch-clamp, pagination, index auto-update, cache, pending detection |
-| LLM pipeline | ✅ NVIDIA, Cerebras, DeepSeek V4 Flash |
-| DeepSeek Chat | ❌ **ZAKÁZÁN** |
-| 25 anonymních her | ACPL=31.7, 21-4-0 winrate, 8 patternů detekováno |
+| Testy | **193/193 pass** (`pytest tests -q --ignore=tests/test_engine_client.py`, 7,2 s) |
+| MCP toolů | **18** (12 data + 5 coaching + `lichess_persist_report`) |
+| HEAD / push | `7ce7f61`, `origin/main` synchronní, pracovní strom čistý |
+| Single-game pipeline | **v4 hotová**: FIX-027 (mate), FIX-023 (cp/eval invariant), FIX-021 (slabé/čisté fáze), FIX-028 (cache refresh) |
+| Výchozí výstup | compact JSON 2.0; detailed 1.1 opt-in (`--format detailed`) |
+| Regresní compact | `FVhqtv1S` 4377, `WpQOkpc0` 2270, `bRBSphxo` (černý) 2342 znaků; limit 4500 pro FV |
+| Cache-hit overhead | 0,28–0,45 s steady state; první hit po upgradu až ~1,56 s (FIX-028 warm-up) |
+| Engine / cache | Stockfish depth 14, cache `d14n150000` |
+| CI ruff | **GREEN** (`uvx ruff check src/ tests/`, ruff 0.17.4, select E4/E7/E9/F) |
+| CI mypy | **RED** — 77 chyb/16 souborů (mypy 2.3.0); gate dlouhodobě neprochází, CI pytest krok je za ním |
+| CI pytest | **GREEN lokálně** 193/193; v CI nedosažen kvůli mypy |
+| Patterny | 14 definovaných (A–S, I→I2), 13 aktivních detektorů + I manual_only |
+| Dokumentace | `README.md` aktuální; `README_en.md` a `docs/CONTEXT_INJECT.md` zastaralé |
+
+### Známé odchylky a technický dluh
+
+- **`mate_in` = 3, ne 5** u `FVhqtv1S` ply 75: Stockfish v cache vrací
+  `mate 3` (PV `Qf4+ Qf6 Qxf6+`), hodnota se nepřepisuje podle handoffu.
+- **`bRBSphxo` endgame 9565/1 je perspektiva soupeře.** Hráč `systeq` hrál
+  černého: endgame je čistý (`ACPL 0.0`, 0 flagů), celkové ACPL 35.0.
+  Hodnoty 9565 a 3289 znaků pocházejí z analýzy bílého (`Hennessy3`).
+- **První cache hit po upgradu** může ještě jednou spustit PV recovery
+  (~1,56 s); další hity jsou <0,5 s. `refresh_cached_analysis` navíc
+  aktualizuje jen existující cache — PGN run cache nevytváří.
+- **`?` ve `_build_explanation`** se objeví, pokud chybí SAN nebo měřené
+  `eval_cp` (mimo matovou linii); je to explicitní placeholder, ne data.
+- **`engine_lines[].mate_in: null`** v detailed výstupu je šum (schema 1.1
+  ho toleruje); compact ho vynechává.
+- **FIX-023 warning** `ANOMALY_CP_EVAL_MISMATCH` se loguje pro každý tah,
+  nejen flagovaný — může být hlučný.
+- **Mypy dluh**: `pattern_detector` (16× return None), `diagnose_player`
+  (10× shadowing), `game_analyzer` (21× `Move|None` + dynamické
+  `_cache_hit`/`_cache_layer`), `md_reporter` (5× `.get()` na listu).
+  Skupina C (`md_reporter`, `game_analyzer`) = kandidáti na latentní
+  AttributeError, vyšetřit před ignorováním.
+- **`scripts/` je mimo CI ruff gate**: 146 nálezů (F541 74, E402 41,
+  E401 16, F401 11, F841 3, E722 1).
+- **`tests/test_engine_client.py`** se lokálně vylučuje (sdílený engine,
+  flaky), ale CI ho spouští v celé suite.
+- **MCP server může servírovat starý kód** po změně — po nasazení v4
+  restartovat proces; CLI používá aktuální kód.
+- **`datetime.utcnow()`** v `kb/writer.py:32` generuje 2 deprecation
+  warningy v testech.
 
 ### CPM Lifecycle — Pattern Status
 
@@ -493,7 +535,7 @@ lichess-analyzer-mcp/
 - `docs/AUDIT_REPORT_lichess-analyzer-mcp_v2.md` — interní audit
 
 ### Session context
-- `docs/CONTEXT_INJECT.md` v3.2 — session timeline, anomaly log, next steps
+- `docs/CONTEXT_INJECT.md` v6.0 (stav k 2026-09-05; aktuální stav viz `.ai_state.json`) — session timeline, anomaly log
 - `docs/CONTEXT_A_ZAMER.md` v1.0 — kompletní kontext a záměr projektu
 
 

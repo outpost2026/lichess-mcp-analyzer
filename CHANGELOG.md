@@ -48,9 +48,11 @@ schématu 1.1, bez nových MCP toolů, bez nových CAND-* položek.
 - **`mate_in` = 3, ne 5.** Stockfish v aktuální cache vrací `mate 3` pro
   `Qf4+` (PV `Qf4+ Qf6 Qxf6+ Kg8 Re8#` = mat na 3. tahu bílého). Hodnota
   z engine se nepřepisuje na 5 jen kvůli očekávání v handoffu.
-- **`bRBSphxo` endgame není čistá fáze.** Měřená cache: endgame
-  `ACPL 9565.0`, 1 flag (blunder ply 51). Fáze je proto správně první
-  v weakest; očekávání „endgame 0,0" v handoffu neodpovídá datům.
+- **`bRBSphxo` endgame závisí na perspektivě.** Hráč `systeq` hrál černého:
+  endgame je čistá fáze (`ACPL 0.0`, 0 flagů), celkové ACPL 35.0. Hodnoty
+  `ACPL 9565.0`, 1 flag a compact 3289 znaků pocházejí z analýzy bílého
+  (`Hennessy3`, soupeř), tedy z opačné perspektivy. Handoff očekával `0,0`
+  pro hráče správně; čísla 9565/3288 nejsou jeho slabina.
 
 ### Tests
 
