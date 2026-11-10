@@ -1,11 +1,24 @@
-"""Analyze a single game and output JSON to a file."""
+"""Analyze a single game and output JSON to a file.
 
-import argparse, json, sys, os
+DEPRECATED: use `scripts/coach.py --game-id <id> --format detailed` for the
+full contract v1.1 payload, or the default compact output.
+"""
+
+import argparse
+import json
+import os
+import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+_DEPRECATION = (
+    "warning: analyze_single_game.py is deprecated; "
+    "use scripts/coach.py --game-id <id> --format detailed"
+)
+
 
 def main():
+    print(_DEPRECATION, file=sys.stderr)
     parser = argparse.ArgumentParser()
     parser.add_argument("game_id", type=str)
     parser.add_argument("--color", default=None)

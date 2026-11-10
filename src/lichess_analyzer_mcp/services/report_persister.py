@@ -202,6 +202,7 @@ async def _run_tool(kind: str, params: dict, ctx=None) -> dict:
             username=params.get("username", ""),
             color=params.get("color", ""),
             depth=params.get("depth", 0),
+            output_format="detailed",
             ctx=ctx,
         )
     if kind == "cross_game":

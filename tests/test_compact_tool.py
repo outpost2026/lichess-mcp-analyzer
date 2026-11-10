@@ -70,14 +70,36 @@ def _install(monkeypatch):
     monkeypatch.setattr(cs, "detect_single_game", lambda obj: [])
 
 
-def test_default_is_full_v11(monkeypatch):
+def test_default_is_compact_v2(monkeypatch):
     _install(monkeypatch)
     result = asyncio.run(
         cs.lichess_coaching_single_game("testgame", color="white", depth=14, use_llm=False)
     )
+    assert result["v"] == "2.0"
+    assert result["game"]["id"] == "testgame"
+    assert result["flags"][0]["ply"] == 3
+
+
+def test_detailed_returns_schema_11(monkeypatch):
+    _install(monkeypatch)
+    result = asyncio.run(
+        cs.lichess_coaching_single_game(
+            "testgame", color="white", depth=14, output_format="detailed", use_llm=False
+        )
+    )
     assert result["schema_version"] == "1.1"
     assert result["game_id"] == "testgame"
     assert result["report_meta"]["truncated"] is False
+
+
+def test_full_is_deprecated_alias_for_detailed(monkeypatch):
+    _install(monkeypatch)
+    result = asyncio.run(
+        cs.lichess_coaching_single_game(
+            "testgame", color="white", depth=14, output_format="full", use_llm=False
+        )
+    )
+    assert result["schema_version"] == "1.1"
 
 
 def test_compact_output_is_schema_20(monkeypatch):
@@ -94,16 +116,27 @@ def test_compact_output_is_schema_20(monkeypatch):
     assert result["summary"]["phases"]["opening"] == [60.0, 1]
 
 
-def test_both_returns_full_and_compact(monkeypatch):
+def test_both_returns_compact_and_detailed(monkeypatch):
     _install(monkeypatch)
     result = asyncio.run(
         cs.lichess_coaching_single_game(
             "testgame", color="white", depth=14, output_format="both", use_llm=False
         )
     )
-    assert set(result) == {"full", "compact"}
-    assert result["full"]["schema_version"] == "1.1"
+    assert set(result) == {"compact", "detailed"}
     assert result["compact"]["v"] == "2.0"
+    assert result["detailed"]["schema_version"] == "1.1"
+
+
+def test_invalid_output_format_returns_error(monkeypatch):
+    _install(monkeypatch)
+    result = asyncio.run(
+        cs.lichess_coaching_single_game(
+            "testgame", color="white", depth=14, output_format="xml", use_llm=False
+        )
+    )
+    assert result["status"] == "error"
+    assert result["error"]
 
 
 def test_use_llm_false_does_not_call_providers(monkeypatch):
@@ -114,7 +147,9 @@ def test_use_llm_false_does_not_call_providers(monkeypatch):
 
     monkeypatch.setattr(cs, "safe_llm_call", boom)
     result = asyncio.run(
-        cs.lichess_coaching_single_game("testgame", color="white", depth=14, use_llm=False)
+        cs.lichess_coaching_single_game(
+            "testgame", color="white", depth=14, output_format="detailed", use_llm=False
+        )
     )
     assert result["llm"]["reason"] == "llm_disabled"
     assert result["report_meta"]["source"] == "deterministic"

@@ -260,8 +260,10 @@ def _game_result_for_player(game: dict, username: str) -> str | None:
     return "win" if player_won else "loss"
 
 
-def fetch_user_games(username: str, max_games: int = 10, result: str = "all") -> list[dict]:
-    cached = _load_user_games_cache(username)
+def fetch_user_games(
+    username: str, max_games: int = 10, result: str = "all", refresh: bool = False
+) -> list[dict]:
+    cached = None if refresh else _load_user_games_cache(username)
     index = _load_games_index(username) if result != "all" and cached is not None else None
     if cached is not None:
         if result == "all":
@@ -274,6 +276,15 @@ def fetch_user_games(username: str, max_games: int = 10, result: str = "all") ->
         return filtered[:max_games]
     games = _export_by_player(username, max_games=max_games)
     games = [_json_safe(g) for g in games]
+    # Never shrink an existing cache: a later call with a smaller max_games
+    # would otherwise make --batch N unreachable for the rest of the session.
+    previous = _load_user_games_cache(username) or []
+    merged = {g.get("id"): g for g in previous if g.get("id")}
+    for game in games:
+        if game.get("id"):
+            merged[game["id"]] = game
+    if merged:
+        games = sorted(merged.values(), key=lambda g: g.get("createdAt") or "", reverse=True)
     _save_user_games_cache(username, games)
     _save_games_index(username, _build_games_index(games, username))
     if result == "all":

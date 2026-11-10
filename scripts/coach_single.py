@@ -114,6 +114,7 @@ def main() -> int:
                 color=args.color,
                 depth=args.depth,
                 mode=args.mode,
+                output_format="detailed",
             )
         )
         print(_summary(payload))

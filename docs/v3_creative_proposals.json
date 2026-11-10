@@ -1,0 +1,103 @@
+{
+  "handoff": "lichess_fix_v3.json",
+  "generated": "2026-11-10",
+  "evaluated_on": ["FVhqtv1S", "NxKgE4l8", "lxO3gwd3"],
+  "budget_limit_chars": 4500,
+  "budget_measured_FVhqtv1S": 4400,
+  "decisions": [
+    {
+      "id": "CAND-A",
+      "idea": "critical_moment: single most impactful flag with full context",
+      "decision": "rejected",
+      "reason": "Derivable from flags[].cp: the critical moment is max(flags, key=cp). On FVhqtv1S that is ply 75 (Re8+, cp 9473), already present with eval_before 9997 / eval_after 525 and a recovered PV. A separate object would duplicate move, class, cp, best, pv and fen_before (+180 chars) without adding information.",
+      "evidence": "FVhqtv1S flags[ply=75]: class=blunder, cp=9473, eval_before=9997, eval_after=525, pv=[Qf4+, ...].",
+      "estimated_size_cost": "+180 chars",
+      "guardrail_check": "Would keep output under 4500, but violates the no-redundancy rule (R1 derive, don't store)."
+    },
+    {
+      "id": "CAND-B",
+      "idea": "phase_acpl_median instead of mean",
+      "decision": "rejected",
+      "reason": "The compact payload does not carry the full cp_loss distribution, only flagged moves. A median over flags would describe the tail, not typical play, and would be a new unvalidated metric. Phase ACPL plus eval_before/eval_after already expose when a phase is dominated by one blunder.",
+      "evidence": "FVhqtv1S summary.phases.endgame = [438.7, 10]; the outlier is visible as ply 75 cp=9473 in flags. No compact field needs the median to make that statement.",
+      "estimated_size_cost": "+60 chars",
+      "guardrail_check": "No new measurement source; would need a second aggregation over all moves."
+    },
+    {
+      "id": "CAND-C",
+      "idea": "position_type per phase (open/closed/tactical/positional)",
+      "decision": "rejected",
+      "reason": "Requires a new heuristic that does not exist in the pipeline. Emitting a label without a measured classifier would be DATA-FABRICATION-001. The coaching decision (which drill) is already supported by motif, phase and eval fields.",
+      "evidence": "FVhqtv1S endgame flags carry motif=check where relevant (plies 75, 87, 89); no position_type classifier exists in src/.",
+      "estimated_size_cost": "+40 chars",
+      "guardrail_check": "Violates 'no speculative models' and the no-fabrication rule."
+    },
+    {
+      "id": "CAND-D",
+      "idea": "opening_deviation: ply where player left engine's book top-3",
+      "decision": "rejected",
+      "reason": "Needs an opening book or Lichess Opening Explorer call, which makes the offline ETL network-dependent and non-deterministic. Opening quality is already represented by opening phase ACPL and the first flag ply.",
+      "evidence": "FVhqtv1S opening phase = [17.4, 0]; first flag is ply 21 (f4, mistake, cp 159). The deviation ply is already the first flag.",
+      "estimated_size_cost": "+80 chars",
+      "guardrail_check": "Breaks offline determinism; no book data in the repo contract."
+    },
+    {
+      "id": "CAND-E",
+      "idea": "pattern_overlaps: map flag -> patterns containing it",
+      "decision": "accepted",
+      "implemented_as": "flags[].patterns = [pattern_id, ...] (omitted when no pattern covers the ply)",
+      "reason": "Direct link from a concrete mistake to a behavioural pattern; avoids the LLM joining patterns[].plie with flags[].ply. Only emitted when non-empty, so games without pattern overlap pay nothing.",
+      "evidence": "FVhqtv1S ply 75 carries patterns [R, T]; measured contribution across 17 flags = 148 chars (including keys).",
+      "estimated_size_cost": "+8 chars per covered flag",
+      "measured_size_cost_FVhqtv1S": 148,
+      "guardrail_check": "FVhqtv1S total 4400 <= 4500; schema 2.0 only, schema 1.1 untouched."
+    },
+    {
+      "id": "CAND-F",
+      "idea": "consecutive_errors: detect time-pressure-like clusters",
+      "decision": "accepted",
+      "implemented_as": "clusters = [{from, to, count, total_cp}] for >= 3 consecutive flagged own moves (ply step 2)",
+      "reason": "A run of consecutive errors is a different coaching signal from a single blunder, and it is measured (flag plies + cp values). Shape is explicit and hypothesis-framed, not a diagnosis.",
+      "evidence": "FVhqtv1S clusters = [{from:47,to:55,count:5,total_cp:674}, {from:87,to:91,count:3,total_cp:482}]; measured contribution 91 chars.",
+      "estimated_size_cost": "+60 chars when present",
+      "measured_size_cost_FVhqtv1S": 91,
+      "guardrail_check": "Present only when a cluster exists; NxKgE4l8 and lxO3gwd3 have none and pay 0 chars."
+    },
+    {
+      "id": "CAND-G",
+      "idea": "eval_swing: detect moments where eval flipped > 200 cp",
+      "decision": "rejected",
+      "reason": "Redundant with FIX-015. eval_before and eval_after are already emitted for exactly the flags where a swing matters; a derived eval_swing field would duplicate their difference (R1 derive, don't store).",
+      "evidence": "FVhqtv1S ply 75: eval_before 9997, eval_after 525; difference is 9472 and does not need to be stored.",
+      "estimated_size_cost": "+40 chars per swing",
+      "guardrail_check": "No new information; would spend budget twice on the same fact."
+    },
+    {
+      "id": "CAND-H",
+      "idea": "drill_recommendation: FEN + PV as SRS-ready card for top-3 flags",
+      "decision": "rejected",
+      "reason": "Out of scope for compact JSON: FEN+PV for three flags already exists in fen_before and pv, and an SRS card needs scheduling metadata that this pipeline does not produce. A separate <game_id>_srs.json would be a new artifact, not a compact field.",
+      "evidence": "FVhqtv1S already emits fen_before for 11 plies (692 chars) and pv for 13 plies (322 chars); duplicating three of them would add ~300 chars and no new fact.",
+      "estimated_size_cost": "+300 chars",
+      "guardrail_check": "Would push FVhqtv1S well above 4500 and duplicate existing keys."
+    },
+    {
+      "id": "CAND-I",
+      "idea": "loss_type per flag: tactical | positional | time_pressure | unknown",
+      "decision": "rejected",
+      "reason": "Tactical/positional is already represented by flags[].motif and phase. 'time_pressure' is a hypothesis about the clock, not a measured property; storing it per flag would violate the no-fabrication rule. Clusters express the time-pressure hypothesis once per run instead of 17 guesses.",
+      "evidence": "FVhqtv1S flags carry motif=check for plies 75, 87, 89; clusters capture the 87..91 run without labelling each move.",
+      "estimated_size_cost": "+15 chars per flag",
+      "guardrail_check": "Per-flag label would add ~255 chars and invent an unmeasured cause."
+    },
+    {
+      "id": "CAND-J",
+      "idea": "consistency_score: stdev of cp_loss, separate from ACPL",
+      "decision": "rejected",
+      "reason": "Adds a second dispersion metric without a coaching action attached. ACPL plus phase breakdown plus clusters already separate 'one disaster' from 'many small errors'. Stdev of a skewed cp_loss distribution is also dominated by the same blunder it is meant to explain.",
+      "evidence": "FVhqtv1S endgame ACPL 438.7 is driven by ply 75 cp=9473; the cluster at 87..91 (count 3, total_cp 482) already shows the repeated-error run.",
+      "estimated_size_cost": "+30 chars",
+      "guardrail_check": "No concrete coaching use case beyond what ACPL and clusters provide."
+    }
+  ]
+}

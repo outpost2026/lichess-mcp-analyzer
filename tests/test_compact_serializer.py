@@ -141,6 +141,7 @@ def test_metadata_and_summary():
     assert out["v"] == "2.0"
     assert out["game"] == {
         "id": "lxO3gwd3",
+        "username": "systeq",
         "color": "black",
         "result": "0-1",
         "opening": "C65 Ruy Lopez: Berlin Defense",
@@ -155,6 +156,25 @@ def test_metadata_and_summary():
         "middlegame": [24.5, 3],
         "endgame": [18.6, 1],
     }
+
+
+def test_anonymous_game_has_no_username():
+    full = json.loads(json.dumps(FULL))
+    full["username"] = ""
+    meta = dict(GAME_META)
+    meta["player_name"] = "Anonymous"
+    out = to_compact_v2(full, game_meta=meta)
+    validate_compact(out)
+    assert "username" not in out["game"]
+
+
+def test_unknown_pgn_date_is_omitted():
+    full = json.loads(json.dumps(FULL))
+    meta = dict(GAME_META)
+    meta["date"] = "????.??.??"
+    out = to_compact_v2(full, game_meta=meta)
+    validate_compact(out)
+    assert "date" not in out["game"]
 
 
 def test_all_flags_preserved_in_ply_order():
@@ -189,6 +209,103 @@ def test_fen_only_above_100cp():
 def test_patterns_preserved():
     out = _compact()
     assert out["patterns"] == [{"id": "T", "conf": 0.16, "freq": 1, "sev": "medium", "plie": [40]}]
+
+
+def test_patterns_per_flag_and_error_cluster():
+    full = json.loads(json.dumps(FULL))
+    for ply, cp, cls in ((87, 186.0, "mistake"), (89, 237.0, "mistake"), (91, 59.0, "inaccuracy")):
+        full["flagged_moves"].append(
+            {
+                **FLAG_TEMPLATE,
+                "ply": ply,
+                "san": f"M{ply}",
+                "classification": cls,
+                "cp_loss": cp,
+                "engine_lines": [],
+                "played_rank": None,
+            }
+        )
+    out = to_compact_v2(full, game_meta=GAME_META)
+    validate_compact(out)
+    assert out["clusters"] == [{"from": 87, "to": 91, "count": 3, "total_cp": 482}]
+    by_ply = {f["ply"]: f for f in out["flags"]}
+    # CAND-E: the flag itself says which behavioural patterns it feeds.
+    assert by_ply[40]["patterns"] == ["T"]
+    assert "patterns" not in by_ply[34]
+
+
+def test_eval_fields_follow_fix015_window():
+    full = json.loads(json.dumps(FULL))
+    full["flagged_moves"].append(
+        {
+            **FLAG_TEMPLATE,
+            "ply": 75,
+            "san": "Re8+",
+            "classification": "blunder",
+            "cp_loss": 9473.0,
+            "eval_before": 9997,
+            "eval_after": 525,
+            "engine_lines": [],
+            "played_rank": None,
+        }
+    )
+    full["flagged_moves"].append(
+        {
+            **FLAG_TEMPLATE,
+            "ply": 91,
+            "san": "Qc4+",
+            "classification": "inaccuracy",
+            "cp_loss": 250.0,
+            "eval_before": 727,
+            "eval_after": 477,
+        }
+    )
+    out = to_compact_v2(full, game_meta=GAME_META, pv_unavailable={75: "engine_timeout"})
+    validate_compact(out)
+    by_ply = {f["ply"]: f for f in out["flags"]}
+    assert by_ply[75]["eval_before"] == 9997
+    assert by_ply[75]["eval_after"] == 525
+    assert by_ply[91]["eval_before"] == 727  # cp > 200, inaccuracy still counts
+    assert "eval_before" not in by_ply[34]  # inaccuracy at 84 cp
+
+
+def test_blunder_pv_fallback():
+    full = json.loads(json.dumps(FULL))
+    full["flagged_moves"].append(
+        {
+            **FLAG_TEMPLATE,
+            "ply": 75,
+            "san": "Re8+",
+            "classification": "blunder",
+            "cp_loss": 9473.0,
+            "engine_lines": [],
+            "played_rank": None,
+            "motif": "check",
+        }
+    )
+    out = to_compact_v2(full, game_meta=GAME_META, pv_unavailable={75: "engine_timeout"})
+    validate_compact(out)
+    assert out["pv_unavailable"] == {"75": "engine_timeout"}
+    assert "75" not in out.get("pv", {})
+    # Without an explicit reason the serializer still refuses to be silent.
+    derived = to_compact_v2(full, game_meta=GAME_META)
+    assert derived["pv_unavailable"]["75"] == "engine_lines_empty"
+
+
+def test_null_policy_consistent():
+    out = _compact()
+    by_ply = {f["ply"]: f for f in out["flags"]}
+    assert by_ply[34]["rank"] == 3
+    assert "motif" not in by_ply[34]  # no tactical motif -> key absent
+    assert by_ply[40]["motif"] == "discovered_check_capture"
+    full = json.loads(json.dumps(FULL))
+    for flag in full["flagged_moves"]:
+        flag["played_rank"] = 0
+    unmeasured = to_compact_v2(full, game_meta=GAME_META)
+    validate_compact(unmeasured)
+    assert all(flag["rank"] is None for flag in unmeasured["flags"])
+    # Only the flag that genuinely has a motif keeps it; the rest omit the key.
+    assert [flag["ply"] for flag in unmeasured["flags"] if "motif" in flag] == [40]
 
 
 def test_llm_deterministic_is_reported_as_failed():

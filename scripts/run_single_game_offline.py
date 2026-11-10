@@ -35,6 +35,11 @@ DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
 
 
 def main():
+    print(
+        "warning: run_single_game_offline.py is deprecated; "
+        "use scripts/coach.py --pgn-file <path> --no-llm",
+        file=sys.stderr,
+    )
     parser = argparse.ArgumentParser()
     parser.add_argument("game_id", type=str)
     parser.add_argument("--username", type=str, default="systeq")
@@ -53,6 +58,7 @@ def main():
             color=args.color,
             depth=args.depth,
             mode=args.mode,
+            output_format="detailed",
         )
     )
     duration = time.time() - t0

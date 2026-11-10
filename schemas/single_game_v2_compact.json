@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://lichess-analyzer-mcp/schemas/single_game_v2_compact.json",
   "title": "single_game_v2_compact",
-  "description": "Compact single-game output for LLM self-coaching. Derived from contract v1.1; instrumentation and derivable fields are omitted. Null is used when a value was not measured - it is never replaced by a guessed number.",
+  "description": "Compact single-game output for LLM self-coaching. Derived from contract v1.1; instrumentation and derivable fields are omitted. Null means 'not measured' - it is never replaced by a guessed number. Null policy per field: summary.acpl / summary.phases[*][0] are null when the phase had no measured move; flags[].rank is null when the engine did not measure the played-move rank; flags[].motif is omitted when the move has no tactical motif (a present motif is always a string); eval_before/eval_after are omitted outside the FIX-015 window (cp > 200 or class blunder/mistake) or when the evaluation was not measured. Unavailable PV for a blunder/mistake is published in pv_unavailable instead of being silently omitted.",
   "type": "object",
   "required": ["v", "game", "summary", "flags", "patterns"],
   "additionalProperties": false,
@@ -14,6 +14,11 @@
       "additionalProperties": false,
       "properties": {
         "id": { "type": "string", "minLength": 1 },
+        "username": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Player whose side is analysed. Omitted for anonymous games / when unknown."
+        },
         "color": { "enum": ["white", "black"] },
         "result": { "type": "string", "pattern": "^(1-0|0-1|1/2-1/2|\\*)$" },
         "opening": { "type": "string" },
@@ -27,8 +32,17 @@
       "required": ["acpl", "acc", "phases"],
       "additionalProperties": false,
       "properties": {
-        "acpl": { "type": ["number", "null"], "minimum": 0 },
-        "acc": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
+        "acpl": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "description": "Mean centipawn loss. Null when no move was measured."
+        },
+        "acc": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Accuracy 0-100. Null when no move was measured."
+        },
         "phases": {
           "type": "object",
           "required": ["opening", "middlegame", "endgame"],
@@ -57,9 +71,26 @@
           "rank": {
             "type": ["integer", "null"],
             "minimum": 1,
-            "description": "played move rank among engine candidates; null when not measured"
+            "description": "Played move rank among engine candidates; null when not measured (engine timeout). Never 0."
           },
-          "motif": { "type": "string", "description": "tactical motif tag, e.g. discovered_check_capture" }
+          "motif": {
+            "type": "string",
+            "description": "Tactical motif tag, e.g. discovered_check_capture. Omitted when the move has no tactical motif; null is not used here."
+          },
+          "eval_before": {
+            "type": "number",
+            "description": "Engine eval (cp, side-to-move POV) before the move. Present only for cp > 200 or class blunder/mistake."
+          },
+          "eval_after": {
+            "type": "number",
+            "description": "Engine eval (cp, side-to-move POV) after the move. Present only for cp > 200 or class blunder/mistake."
+          },
+          "patterns": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "minLength": 1 },
+            "description": "Behavioural pattern ids whose evidence includes this ply (CAND-E). Omitted when no pattern covers the move."
+          }
         }
       }
     },
@@ -80,8 +111,30 @@
     },
     "pv": {
       "type": "object",
-      "description": "Optional. Map ply (string) -> principal variation SAN moves, max 3. Only for flagged plies.",
+      "description": "Optional. Map ply (string) -> principal variation SAN moves, max 3. Only for flagged plies with measured engine lines. A ply absent here but present in pv_unavailable has no PV for the stated reason.",
       "additionalProperties": { "type": "array", "items": { "type": "string" }, "minItems": 1, "maxItems": 3 }
+    },
+    "pv_unavailable": {
+      "type": "object",
+      "description": "Optional. Map ply (string) -> reason why no PV exists for a blunder/mistake. Makes a data gap explicit (FIX-014).",
+      "additionalProperties": {
+        "enum": ["engine_timeout", "engine_error", "no_engine_lines", "engine_lines_empty", "retry_budget_exhausted", "no_fen"]
+      }
+    },
+    "clusters": {
+      "type": "array",
+      "description": "Optional. Runs of >= 3 flagged moves on consecutive own moves (plies step by 2), i.e. a likely time-pressure / attention cluster (CAND-F).",
+      "items": {
+        "type": "object",
+        "required": ["from", "to", "count", "total_cp"],
+        "additionalProperties": false,
+        "properties": {
+          "from": { "type": "integer", "minimum": 1 },
+          "to": { "type": "integer", "minimum": 1 },
+          "count": { "type": "integer", "minimum": 3 },
+          "total_cp": { "type": "number" }
+        }
+      }
     },
     "fen_before": {
       "type": "object",
@@ -90,8 +143,8 @@
     },
     "report": {
       "type": ["string", "null"],
-      "maxLength": 1200,
-      "description": "Optional short deterministic summary. Never truncated mid-structure."
+      "maxLength": 900,
+      "description": "Optional short deterministic summary. Never truncated mid-structure. Capped at 900 chars to keep the compact budget."
     },
     "llm": {
       "type": ["object", "null"],

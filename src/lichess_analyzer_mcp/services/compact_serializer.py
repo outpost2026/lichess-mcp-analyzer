@@ -15,6 +15,20 @@ Design rules (handoff lichess_fix_v2):
   R7 FEN only above 100 cp
   R8 no null noise         — optional keys omitted when empty
 
+v3 additions (handoff lichess_fix_v3):
+  - eval_before/eval_after for cp > 200 or blunder/mistake (FIX-015)
+  - username in the game block when known (FIX-020)
+  - patterns per flag (CAND-E) and consecutive-error clusters (CAND-F)
+  - pv_unavailable[ply] = reason when a blunder/mistake has no PV (FIX-014)
+
+Null policy (FIX-016), documented in the schema as well:
+  - `rank: null`  -> rank was not measured (engine timeout), never 0 or 1.
+  - `motif`        -> omitted when the move has no tactical motif; a motif is
+                      always a string when present.
+  - eval fields    -> omitted when the flag is outside the FIX-015 window or
+                      the evaluation was not measured.
+  - `acpl` / phase ACPL -> null when the phase had no measured move.
+
 Nothing here invents data: unavailable values are emitted as `null` (and the
 schema explicitly allows it) or the key is omitted.
 """
@@ -25,8 +39,17 @@ import json
 import re
 
 SCHEMA_V = "2.0"
-MAX_REPORT_CHARS = 1200
+MAX_REPORT_CHARS = 900
 FEN_CP_THRESHOLD = 100
+EVAL_CP_THRESHOLD = 200
+PV_UNAVAILABLE_REASONS = (
+    "engine_timeout",
+    "engine_error",
+    "no_engine_lines",
+    "engine_lines_empty",
+    "retry_budget_exhausted",
+    "no_fen",
+)
 
 _PHASES = ("opening", "middlegame", "endgame")
 _CLASSES = ("blunder", "mistake", "inaccuracy")
@@ -75,7 +98,7 @@ def _fen_by_ply(moves: list[dict] | None) -> dict[int, str]:
     return {int(m["ply"]): m.get("fen", "") for m in moves if m.get("ply") and m.get("fen")}
 
 
-def _flag(flag: dict, fens: dict[int, str]) -> dict:
+def _flag(flag: dict, fens: dict[int, str], cover: dict[int, list[str]] | None = None) -> dict:
     ply = int(flag.get("ply") or 0)
     cp = _cp(flag.get("cp_loss"))
     out = {
@@ -84,12 +107,54 @@ def _flag(flag: dict, fens: dict[int, str]) -> dict:
         "class": flag.get("classification"),
         "cp": cp,
         "best": flag.get("best_move_san") or "",
+        # FIX-016: null means "not measured", never zero and never a guess.
         "rank": int(flag["played_rank"]) if int(flag.get("played_rank") or 0) >= 1 else None,
     }
+    # FIX-015: an LLM cannot narrate a swing it cannot see.
+    if isinstance(cp, (int, float)) and (
+        cp > EVAL_CP_THRESHOLD or out["class"] in ("blunder", "mistake")
+    ):
+        eval_before = _cp(flag.get("eval_before"))
+        eval_after = _cp(flag.get("eval_after"))
+        if eval_before is not None:
+            out["eval_before"] = eval_before
+        if eval_after is not None:
+            out["eval_after"] = eval_after
+    # FIX-016: a genuinely absent motif is omitted; present motifs stay strings.
     motif = flag.get("motif")
     if motif:
         out["motif"] = motif
+    # CAND-E: which behavioural patterns this single mistake feeds.
+    if cover and ply in cover:
+        out["patterns"] = cover[ply]
     return out
+
+
+def _clusters(flags: list[dict], min_count: int = 3) -> list[dict]:
+    """CAND-F: consecutive flagged moves (same side, every second ply)."""
+    out: list[dict] = []
+    run: list[dict] = []
+    for flag in flags:
+        if not isinstance(flag.get("cp"), (int, float)):
+            continue
+        if run and int(flag["ply"]) == int(run[-1]["ply"]) + 2:
+            run.append(flag)
+            continue
+        if len(run) >= min_count:
+            out.append(_cluster(run))
+        run = [flag]
+    if len(run) >= min_count:
+        out.append(_cluster(run))
+    return out
+
+
+def _cluster(run: list[dict]) -> dict:
+    return {
+        "from": int(run[0]["ply"]),
+        "to": int(run[-1]["ply"]),
+        "count": len(run),
+        "total_cp": _cp(sum(flag["cp"] for flag in run)),
+    }
 
 
 def _pv(flag: dict) -> list[str]:
@@ -101,17 +166,28 @@ def _pv(flag: dict) -> list[str]:
 
 
 def _clip_report(text: str, limit: int = MAX_REPORT_CHARS) -> str | None:
-    """Clip at a sentence boundary; a report never ends mid-structure."""
+    """Clip at the last sentence/paragraph boundary inside the limit.
+
+    The deterministic report starts with a ~250-char disclaimer that the
+    pipeline never called an LLM. In compact JSON that fact already lives in
+    `llm.status`, so the preamble is dropped and the budget goes to the actual
+    coaching content instead.
+    """
     text = (text or "").strip()
     if not text:
         return None
+    first_section = text.find("\n## ")
+    if text.startswith("# ") and first_section > 0:
+        preamble = text[:first_section].lower()
+        if "deterministick" in preamble:
+            text = text[first_section + 1 :]
     if len(text) <= limit:
         return text
     window = text[:limit]
-    for sep in (". ", ".\n", "\n\n"):
-        cut = window.rfind(sep)
-        if cut >= limit // 3:
-            return window[: cut + 1].rstrip()
+    cuts = [window.rfind(sep) for sep in (". ", ".\n", "\n\n")]
+    cut = max(cuts)
+    if cut >= limit // 3:
+        return window[: cut + 1].rstrip()
     return None  # no safe boundary — omit rather than emit broken text
 
 
@@ -136,6 +212,7 @@ def to_compact_v2(
     *,
     game_meta: dict | None = None,
     moves: list[dict] | None = None,
+    pv_unavailable: dict[int | str, str] | None = None,
 ) -> dict:
     """Serialize a contract v1.1 coaching payload to schema 2.0.
 
@@ -145,6 +222,9 @@ def to_compact_v2(
             not carry it, so callers that have it should pass it.
         moves: optional `analysis["moves"]`; used for `fen_before` when the
             flagged move itself does not carry a FEN.
+        pv_unavailable: optional `{ply: reason}` from `pv_recovery`. When a
+            blunder/mistake still has no PV, the reason is published instead
+            of silently omitting the key (FIX-014).
     """
     meta = game_meta or {}
     analysis = full.get("analysis") or {}
@@ -159,10 +239,18 @@ def to_compact_v2(
     }
     if meta.get("time_control"):
         game["tc"] = meta["time_control"]
+    # FIX-020: keeps compact JSONs groupable by player without the full payload.
+    # Anonymous games (Lichess/PGN placeholder) must not look like a real player.
+    username = (full.get("username") or meta.get("player_name") or "").strip()
+    if username.lower() in ("anonymous", "?", "-"):
+        username = ""
+    if username:
+        game["username"] = username
     date = (meta.get("date") or "").strip()
     if re.fullmatch(r"\d{4}\.\d{2}\.\d{2}", date):
         date = date.replace(".", "-")  # PGN style -> ISO-ish, stable for LLM
-    if date:
+    # An unknown PGN date is "????.??.??" - never publish a placeholder.
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
         game["date"] = date
 
     stats = analysis.get("phase_stats") or {}
@@ -172,28 +260,38 @@ def to_compact_v2(
         "phases": {phase: _phase(stats, phase) for phase in _PHASES},
     }
 
-    flags = []
-    pv: dict[str, list[str]] = {}
-    for raw in sorted(full.get("flagged_moves") or [], key=lambda f: f.get("ply") or 0):
-        if raw.get("classification") not in _CLASSES:
-            continue
-        flag = _flag(raw, fens)
-        flags.append(flag)
-        line = _pv(raw)
-        if line:
-            pv[str(flag["ply"])] = line
     patterns = []
+    pattern_plies: dict[int, list[str]] = {}
     for pattern in full.get("patterns") or []:
         plies = sorted({int(e["ply"]) for e in pattern.get("evidence") or [] if e.get("ply")})
+        pattern_id = pattern.get("pattern_id") or ""
         patterns.append(
             {
-                "id": pattern.get("pattern_id") or "",
+                "id": pattern_id,
                 "conf": pattern.get("confidence"),
                 "freq": int(pattern.get("frequency") or 1),
                 "sev": _severity(pattern.get("confidence"), pattern.get("severity")),
                 "plie": plies,
             }
         )
+        for ply in plies:
+            if pattern_id:
+                pattern_plies.setdefault(ply, []).append(pattern_id)
+
+    flags = []
+    pv: dict[str, list[str]] = {}
+    missing_pv: list[tuple[str, str | None]] = []
+    for raw in sorted(full.get("flagged_moves") or [], key=lambda f: f.get("ply") or 0):
+        if raw.get("classification") not in _CLASSES:
+            continue
+        flag = _flag(raw, fens, pattern_plies)
+        flags.append(flag)
+        ply = str(flag["ply"])
+        line = _pv(raw)
+        if line:
+            pv[ply] = line
+        elif flag["class"] in ("blunder", "mistake"):
+            missing_pv.append((ply, raw.get("pv_error")))
 
     compact: dict = {
         "v": SCHEMA_V,
@@ -203,9 +301,22 @@ def to_compact_v2(
         "patterns": patterns,
     }
 
-    pv = {ply: line for ply, line in pv.items() if line}
     if pv:
         compact["pv"] = pv
+    unavailable: dict[str, str] = {}
+    for key, reason in (pv_unavailable or {}).items():
+        ply = str(int(key))
+        if ply not in pv and reason:
+            unavailable[ply] = str(reason)
+    for ply, reason in missing_pv:
+        if ply not in pv and ply not in unavailable:
+            unavailable[ply] = str(reason or "engine_lines_empty")
+    if unavailable:
+        compact["pv_unavailable"] = unavailable
+
+    clusters = _clusters(flags)
+    if clusters:
+        compact["clusters"] = clusters
     fen_before = {
         str(flag["ply"]): fens[flag["ply"]]
         for flag in flags
@@ -253,14 +364,14 @@ def validate_compact(data: dict) -> None:
     _check_keys(
         data,
         _REQUIRED_TOP,
-        _REQUIRED_TOP | {"pv", "fen_before", "report", "llm"},
+        _REQUIRED_TOP | {"pv", "pv_unavailable", "clusters", "fen_before", "report", "llm"},
         "$",
     )
     if data["v"] != SCHEMA_V:
         _fail("$.v", f"must be {SCHEMA_V!r}")
 
     game = data["game"]
-    _check_keys(game, _REQUIRED_GAME, _REQUIRED_GAME | {"tc", "date"}, "$.game")
+    _check_keys(game, _REQUIRED_GAME, _REQUIRED_GAME | {"username", "tc", "date"}, "$.game")
     if not isinstance(game["id"], str) or not game["id"]:
         _fail("$.game.id", "must be a non-empty string")
     if game["color"] not in ("white", "black"):
@@ -271,6 +382,8 @@ def validate_compact(data: dict) -> None:
         _fail("$.game.opening", "must be a string")
     if not isinstance(game["depth"], int) or not 8 <= game["depth"] <= 24:
         _fail("$.game.depth", "must be an integer 8..24")
+    if "username" in game and (not isinstance(game["username"], str) or not game["username"]):
+        _fail("$.game.username", "must be a non-empty string when present")
 
     summary = data["summary"]
     _check_keys(summary, {"acpl", "acc", "phases"}, {"acpl", "acc", "phases"}, "$.summary")
@@ -292,7 +405,12 @@ def validate_compact(data: dict) -> None:
 
     for idx, flag in enumerate(data["flags"]):
         path = f"$.flags[{idx}]"
-        _check_keys(flag, _REQUIRED_FLAG, _REQUIRED_FLAG | {"motif"}, path)
+        _check_keys(
+            flag,
+            _REQUIRED_FLAG,
+            _REQUIRED_FLAG | {"motif", "eval_before", "eval_after", "patterns"},
+            path,
+        )
         if not isinstance(flag["ply"], int) or flag["ply"] < 1:
             _fail(f"{path}.ply", "must be an integer >= 1")
         if flag["class"] not in _CLASSES:
@@ -305,6 +423,14 @@ def validate_compact(data: dict) -> None:
             _fail(f"{path}.rank", "must be an integer >= 1 or null")
         if "motif" in flag and not isinstance(flag["motif"], str):
             _fail(f"{path}.motif", "must be a string")
+        for key in ("eval_before", "eval_after"):
+            if key in flag and not isinstance(flag[key], (int, float)):
+                _fail(f"{path}.{key}", "must be a number")
+        if "patterns" in flag:
+            if not isinstance(flag["patterns"], list) or not flag["patterns"]:
+                _fail(f"{path}.patterns", "must be a non-empty array")
+            if not all(isinstance(p, str) and p for p in flag["patterns"]):
+                _fail(f"{path}.patterns", "must contain non-empty strings")
 
     for idx, pattern in enumerate(data["patterns"]):
         path = f"$.patterns[{idx}]"
@@ -333,6 +459,40 @@ def validate_compact(data: dict) -> None:
                 _fail(f"$.pv[{key!r}]", "must be an array of 1..3 SAN moves")
             if not all(isinstance(san, str) for san in line):
                 _fail(f"$.pv[{key!r}]", "SAN moves must be strings")
+
+    pv_unavailable = data.get("pv_unavailable")
+    if pv_unavailable is not None:
+        if not isinstance(pv_unavailable, dict):
+            _fail("$.pv_unavailable", "must be an object")
+        for key, reason in pv_unavailable.items():
+            if not re.fullmatch(r"[1-9]\d*", str(key)):
+                _fail(f"$.pv_unavailable[{key!r}]", "key must be a ply number")
+            if reason not in PV_UNAVAILABLE_REASONS:
+                _fail(
+                    f"$.pv_unavailable[{key!r}]",
+                    f"reason must be one of {PV_UNAVAILABLE_REASONS}",
+                )
+
+    clusters = data.get("clusters")
+    if clusters is not None:
+        if not isinstance(clusters, list):
+            _fail("$.clusters", "must be an array")
+        for idx, cluster in enumerate(clusters):
+            path = f"$.clusters[{idx}]"
+            _check_keys(
+                cluster,
+                {"from", "to", "count", "total_cp"},
+                {"from", "to", "count", "total_cp"},
+                path,
+            )
+            if not isinstance(cluster["from"], int) or cluster["from"] < 1:
+                _fail(f"{path}.from", "must be an integer >= 1")
+            if not isinstance(cluster["to"], int) or cluster["to"] < cluster["from"]:
+                _fail(f"{path}.to", "must be an integer >= from")
+            if not isinstance(cluster["count"], int) or cluster["count"] < 3:
+                _fail(f"{path}.count", "must be an integer >= 3")
+            if not isinstance(cluster["total_cp"], (int, float)):
+                _fail(f"{path}.total_cp", "must be a number")
 
     fen_before = data.get("fen_before")
     if fen_before is not None:

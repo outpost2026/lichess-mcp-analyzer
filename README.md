@@ -4,7 +4,7 @@
 
 **MCP server pro analýzu šachových partií, detekci vzorových chyb (pattern library jako kompresní model dle T. Mikolova) a spaced repetition trénink (FSRS/SM-2).**
 
-Verze: `0.1.0` | Stav: **DBCL Phase 2 hotovo** | Testy: **160/160** (bez `test_engine_client.py`) | Nástrojů: **18**
+Verze: `0.1.0` | Stav: **DBCL Phase 2 hotovo** | Testy: **178/178** (bez `test_engine_client.py`) | Nástrojů: **18**
 
 
 ## Proč?
@@ -107,10 +107,12 @@ Pattern O byl původně pojmenován "Repetition avoidance greed", ale kód detek
 | `lichess_workspace_info` | Vrátí kontext pracovního prostoru |
 
 ### Compact JSON 2.0
-`lichess_coaching_single_game(..., output_format="compact")` nebo
-`scripts/pgn_to_compact.py` vygeneruje kompaktní JSON (schema 2.0, ~1,1–1,8 kB)
-pro přímou konzumaci LLM agentem. Plná schema 1.1 zůstává výchozí pro debugging
-a cross-game. Formát, prompt šablona a příklady: `docs/COMPACT_JSON_FOR_LLM.md`.
+Compact 2.0 je **výchozí** výstup `lichess_coaching_single_game` i
+`scripts/coach.py` (schema 2.0, obvykle 1,2–4,5 kB). Obsahuje mj. `eval_before/
+eval_after` pro velké chyby, patterny u konkrétního flagu, `pv_unavailable` pro
+explicitní chybějící PV a `clusters` pro série chyb. Plná schema 1.1 je opt-in
+(`--format detailed`) pro debugging a cross-game. Formát, null/omission
+politika, prompt šablona a příklady: `docs/COMPACT_JSON_FOR_LLM.md`.
 
 L2 Resources:
 - `lichess://analysis/{key}` — uložené výsledky analýzy
@@ -254,11 +256,18 @@ Server se připojí přes stdio. Pro opencode ho registruj v `opencode.jsonc`:
 ### 5. Nebo použít CLI pipeline
 
 ```
-# Analyzuj vlastní profil (posledních 20 partii)
-uv run python scripts\run_pipeline.py outpost2026 --games 20 --depth 12
+# Jedna hra -> compact JSON 2.0 (výchozí, offline)
+uv run python scripts\coach.py --game-id FVhqtv1S --username systeq --no-llm --out data\reports\FVhqtv1S.json
 
-# Analyzuj + zapiš do KB
-uv run python scripts\run_pipeline.py outpost2026 --games 10
+# Explicitně schema 1.1, nebo oba tvary
+uv run python scripts\coach.py --game-id lxO3gwd3 --format detailed
+uv run python scripts\coach.py --game-id lxO3gwd3 --format both --out both.json
+
+# Posledních N her hráče (compact array / NDJSON)
+uv run python scripts\coach.py --username systeq --batch 3 --no-llm --out data\runs\batch.json
+
+# Batch pipeline přes celý profil (starší, cross-game)
+uv run python scripts\run_pipeline.py outpost2026 --games 20 --depth 12
 ```
 
 
@@ -347,6 +356,8 @@ lichess-analyzer-mcp/
 │       │   ├── lichess_client.py    ← berserk wrapper (fetch, index, cache)
 │       │   ├── engine_client.py     ← Stockfish UCI wrapper (depth limit, PV SAN fix)
 │       │   ├── game_analyzer.py     ← per-move eval + BlunderFactSheet + per-blunder patterns
+│       │   ├── pv_recovery.py       ← retry PV pro blundery/mistaky bez engine_lines (FIX-014)
+│       │   ├── compact_serializer.py ← schema 2.0 (default) + validace + null politika
 │       │   ├── game_llm_cache.py    ← per-game LLM cache
 │       │   ├── llm_client.py        ← multi-provider LLM cascade
 │       │   ├── narrative_validator.py ← LLM hallucination guard (5 claims)
@@ -363,10 +374,11 @@ lichess-analyzer-mcp/
 │       │   └── schemas.py       ← KB schema definitions
 │       └── patterns/
 ├── scripts/
+│   ├── coach.py                 ← Jednotný CLI: hra / PGN / batch, compact 2.0 default
 │   ├── run_pipeline.py          ← CLI batch pipeline
-│   ├── coach_single.py          ← CLI single-game coaching (bez MCP klienta)
+│   ├── coach_single.py          ← Starší CLI single-game (deprecated)
 │   ├── mcp_call.py              ← CLI runner pro všech 18 MCP toolů
-│   ├── pgn_to_compact.py        ← PGN → compact JSON 2.0 (offline ETL)
+│   ├── pgn_to_compact.py        ← Deprecated shim nad coach.py
 │   ├── setup_stockfish.ps1      ← Automatické stažení Stockfish
 │   └── ...                      ← 20+ pomocných scriptů
 ├── tests/
@@ -374,7 +386,10 @@ lichess-analyzer-mcp/
 │   ├── test_prompt_contract.py  ← 13 contract testů (schema, mapping)
 │   ├── test_engine_client.py    ← 5 testů s mocknutým Stockfish
 │   ├── test_pattern_semantic_contract.py ← 17 testů (semantic contract + min_games)
-│   └── test_dbcl.py             ← 17 testů (win_prob, BFS round-trip, narrative validator, N)
+│   ├── test_dbcl.py             ← 17 testů (win_prob, BFS round-trip, narrative validator, N)
+│   ├── test_compact_serializer.py ← schema 2.0, null politika, eval okno, PV fallback
+│   ├── test_compact_tool.py     ← default compact, detailed, full alias, both
+│   └── test_coach_cli.py        ← jednotný CLI (argumenty, exit kódy, agregace)
 ├── docs/
 │   ├── CONTEXT_A_ZAMER.md       ← Kompletní kontext a záměr projektu
 │   ├── CONTEXT_INJECT.md        ← Session timeline (v3.2), CPM lifecycle, anomaly log

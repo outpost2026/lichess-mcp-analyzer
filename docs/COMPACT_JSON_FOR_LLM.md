@@ -4,13 +4,17 @@ Compact JSON is the hand-off format between this pipeline and an LLM. It is
 produced **offline** (no LLM at ETL time) and contains only what a coaching
 answer needs. Schema: `schemas/single_game_v2_compact.json`.
 
-Typical size: **1.1–1.8 kB** (≈300–450 tokens) versus 13–16 kB for schema 1.1.
+It is the **default** output. Schema 1.1 (detailed) is opt-in via
+`--format detailed` and exists for debugging and cross-game work.
+
+Typical size: **1.2–4.5 kB** per game (hard budget 4500 chars for the primary
+regression `FVhqtv1S`; measured 4400 chars) versus 13–26 kB for schema 1.1.
 
 ## What is in it
 
 | Key | Meaning |
 |---|---|
-| `game` | id, color (side you played), result, opening (ECO + name), tc, date, depth |
+| `game` | id, username (omitted for anonymous games), color (side you played), result, opening (ECO + name), tc, date, depth |
 | `summary.acpl` / `summary.acc` | centipawn loss = lower is better; accuracy 0–100 |
 | `summary.phases` | `[acpl, flagged_count]` for opening / middlegame / endgame |
 | `flags[]` | one entry per blunder/mistake/inaccuracy, ordered by ply |
@@ -18,29 +22,55 @@ Typical size: **1.1–1.8 kB** (≈300–450 tokens) versus 13–16 kB for schem
 | `flags[].move` / `best` | SAN played vs SAN the engine preferred |
 | `flags[].class` / `cp` / `rank` | severity, centipawn loss, played-move rank among engine candidates |
 | `flags[].motif` | tactical tag when present (e.g. `discovered_check_capture`, `check`, `capture`) |
+| `flags[].eval_before` / `eval_after` | eval swing in cp; present only for `cp > 200` or class blunder/mistake |
+| `flags[].patterns` | pattern ids whose evidence includes this ply; omitted when none |
 | `patterns[]` | behavioural layer: id, confidence 0–1, frequency, severity, affected plies |
 | `pv` | `ply -> [SAN, SAN, SAN]` best line (max 3 moves) |
+| `pv_unavailable` | `ply -> reason` when a blunder/mistake has no PV (explicit gap) |
+| `clusters` | runs of >= 3 consecutive flagged own moves (time-pressure signal) |
 | `fen_before` | `ply -> FEN`, only for `cp > 100` (reproducible drill positions) |
-| `report` | short deterministic summary, ≤1200 chars, never truncated mid-structure |
+| `report` | short deterministic summary, ≤900 chars, never truncated mid-structure |
 | `llm` | `{status, provider, reason}`; `failed` + `deterministic` means no LLM was used |
 
+### Null and omission policy
+
 `null` means **not measured** — never treat it as zero and never fill it in.
-A missing `rank`, `motif`, `pv` or `fen_before` key means the same: no data.
+
+- `flags[].rank = null` — the engine did not measure the played-move rank
+  (typically a timeout). It is never 0 and never guessed as 1.
+- `flags[].motif` absent — the move has no tactical motif. A present motif is
+  always a string. (`null` is not used here.)
+- `eval_before` / `eval_after` absent — the flag is outside the FIX-015 window
+  (`cp <= 200` and not blunder/mistake) or the eval was not measured.
+- `summary.acpl` / `summary.phases[*][0] = null` — no measured move in that
+  scope.
+- `game.username` absent — anonymous game or unknown player; never the literal
+  placeholder `Anonymous`.
+- `game.date` absent — PGN date is unknown (`????.??.??`); a placeholder is
+  never published.
+- `pv_unavailable[ply]` — a blunder/mistake has no PV and the reason is one of
+  `engine_timeout`, `engine_error`, `no_engine_lines`, `engine_lines_empty`,
+  `retry_budget_exhausted`, `no_fen`. Do not claim the position is simple;
+  say the engine line was unavailable.
 
 ## What the agent must do
 
 1. Validate the JSON (schema 2.0) before using it.
 2. Pick the weakest phase from `summary.phases`: highest ACPL, tie-break by
-   flagged count. If all ACPL are similar, say so instead of inventing one.
+   flagged count. If all ACPL are similar or null, say so instead of inventing
+   one.
 3. For every flag you discuss, read `pv[ply]` for the alternative and
    `fen_before[ply]` when you need the position. Do not reconstruct a FEN by
-   hand.
-4. Cross-reference `patterns[].plie` with `flags[].ply` — a pattern with
-   `conf >= 0.5` is worth a general recommendation; below that mention it as a
-   weak signal only.
-5. Answer in this order: one-sentence verdict, weakest phase + one drill, top
+   hand. If the ply is in `pv_unavailable`, state the gap.
+4. Use `flags[].eval_before/eval_after` verbatim when present — you cannot
+   derive a swing that was not measured.
+5. Cross-reference `patterns[].plie` with `flags[].ply`; `flags[].patterns`
+   already tells you which pattern a specific mistake feeds.
+6. Mention `clusters` as a time-pressure / attention hypothesis, not a proven
+   cause. A cluster is a run of flagged own moves, not a diagnosis.
+7. Answer in this order: one-sentence verdict, weakest phase + one drill, top
    two flags with the engine alternative, pattern-level advice.
-6. Absolute rules:
+8. Absolute rules:
    - never invent a move, eval, FEN or PV;
    - never say "no blunders" if any `flags[].class == "blunder"`;
    - never call an inaccuracy a blunder (severity is in `class`);
@@ -66,16 +96,22 @@ Rules:
 1. One-sentence verdict.
 2. Weakest phase from summary.phases (highest ACPL) + one concrete drill.
 3. Top 2 flags by cp: what was played, what pv[ply] says was better, why.
-4. Pattern advice only for patterns with conf >= 0.5.
+   Use eval_before/eval_after when present. If pv_unavailable has the ply, say
+   the engine line was unavailable.
+4. Pattern advice only for patterns with conf >= 0.5. Use flags[].patterns to
+   link a specific mistake to its pattern.
 5. Do not claim "no blunders" if flags contains class=blunder.
 
 JSON:
 <PASTE COMPACT JSON HERE>
 ```
 
-## Example
+## Example (core fields)
 
-Input (`Sl1s8KmU`, White, 0-1, rapid 600+0, depth 14):
+Input (`Sl1s8KmU`, White, 0-1, rapid 600+0, depth 14). The example predates the
+v3 additions and is intentionally limited to the core keys; current output can
+also carry `username`, `eval_before/eval_after`, per-flag `patterns`,
+`pv_unavailable` and `clusters`.
 
 ```json
 {
@@ -150,15 +186,22 @@ above 0.5, so they justify targeted capture/check discipline work.
 ## How to produce it
 
 ```powershell
-# one game -> compact JSON (offline, no LLM)
-.\.venv\Scripts\python.exe -X utf8 scripts\pgn_to_compact.py --game-id Sl1s8KmU --color white --out data\reports\compact_Sl1s8KmU.json
+# one game -> compact JSON (default, offline without --no-llm only if desired)
+.\.venv\Scripts\python.exe -X utf8 scripts\coach.py --game-id Sl1s8KmU --username systeq --no-llm --out data\reports\compact_Sl1s8KmU.json
+
+# exact schema 1.1 (debugging / cross-game)
+.\.venv\Scripts\python.exe -X utf8 scripts\coach.py --game-id Sl1s8KmU --format detailed --out detailed.json
+
+# both shapes in one payload {"compact": ..., "detailed": ...}
+.\.venv\Scripts\python.exe -X utf8 scripts\coach.py --game-id Sl1s8KmU --format both --out both.json
 
 # from a PGN file
-.\.venv\Scripts\python.exe -X utf8 scripts\pgn_to_compact.py --pgn-file data\reports\Sl1s8KmU.pgn --color white --out out.json
+.\.venv\Scripts\python.exe -X utf8 scripts\coach.py --pgn-file data\reports\Sl1s8KmU.pgn --color white --no-llm --out out.json
 
 # via MCP tool (when an IDE client is available)
 .\.venv\Scripts\python.exe -X utf8 scripts\mcp_call.py lichess_coaching_single_game --args '{"game_id":"Sl1s8KmU","username":"systeq","output_format":"compact"}'
 ```
 
-`output_format` accepts `full` (default, contract 1.1), `compact` (2.0) and
-`both` → `{"full": …, "compact": …}`.
+`output_format` accepts `compact` (default, schema 2.0), `detailed` (schema
+1.1) and `both` → `{"compact": …, "detailed": …}`. `full` remains a deprecated
+alias for `detailed` for one release cycle and logs a warning.

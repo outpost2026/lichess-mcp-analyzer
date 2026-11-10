@@ -1,8 +1,12 @@
 # CLI usage — samostatné spouštění bez MCP klienta
 
 Nástroj je navržený tak, aby šel použít i mimo IDE (OpenCode, Codex, …).
-Oba skripty spouští **aktuální kód z repozitáře v novém procesu** — obcházejí
+Všechny skripty spouští **aktuální kód z repozitáře v novém procesu** — obcházejí
 případný starý běžící MCP server.
+
+Primární vstup je `scripts/coach.py` (jedna hra, PGN, dávka). Starší skripty
+`coach_single.py`, `pgn_to_compact.py`, `analyze_single_game.py` a
+`run_single_game_offline.py` zůstávají funkční, ale tisknou deprecation warning.
 
 Všechny příkazy se spouští z kořene repozitáře:
 
@@ -27,10 +31,64 @@ Ověření, že server i tools jsou dostupné:
 
 `tools_total` musí být `18`.
 
-## 1. Jedna hra: `scripts/coach_single.py`
+## 1. Jednotný CLI: `scripts/coach.py`
 
-Standardní single-game pipeline (stejná jako MCP tool
-`lichess_coaching_single_game`, kontrakt v1.1), jen z příkazové řádky.
+Jeden vstupní bod pro všechny reálné workflow. **Výchozí výstup je compact
+JSON 2.0** (schema `schemas/single_game_v2_compact.json`); schema 1.1 je
+opt-in přes `--format detailed`.
+
+```powershell
+# jedna hra -> compact 2.0 (výchozí)
+.\.venv\Scripts\python.exe -X utf8 scripts\coach.py --game-id FVhqtv1S --username systeq --no-llm --out data\reports\FVhqtv1S.json
+
+# explicitně schema 1.1 (debugging / cross-game)
+.\.venv\Scripts\python.exe -X utf8 scripts\coach.py --game-id lxO3gwd3 --format detailed --out detailed.json
+
+# oba tvary v jednom payloadu
+.\.venv\Scripts\python.exe -X utf8 scripts\coach.py --game-id lxO3gwd3 --format both --out both.json
+
+# lokální PGN, plně offline
+.\.venv\Scripts\python.exe -X utf8 scripts\coach.py --pgn-file data\runs\game.pgn --color black --no-llm --out out.json
+
+# posledních N her hráče -> pole compact her
+.\.venv\Scripts\python.exe -X utf8 scripts\coach.py --username systeq --batch 3 --no-llm --out data\runs\batch.json
+
+# totéž jako NDJSON (jeden JSON na řádek)
+.\.venv\Scripts\python.exe -X utf8 scripts\coach.py --username systeq --batch 3 --ndjson --out data\runs\batch.ndjson
+```
+
+| Parametr | Význam |
+|---|---|
+| `--game-id ID` | Lichess ID (8 znaků) |
+| `--pgn-file PATH` | alternativa k `--game-id`; lokální PGN |
+| `--username NAME` | Lichess nick; určí barvu automaticky |
+| `--color white\|black\|both` | `both` analyzuje obě strany (vrací pole) |
+| `--batch N` | posledních N her z `--username`; jen s `--format compact` |
+| `--depth N` | výchozí 14 |
+| `--mode fast\|deep` | `fast` = 60 s deadline, `deep` = 120 s |
+| `--format compact\|detailed\|both\|full` | `compact` výchozí; `full` = deprecated alias pro `detailed` |
+| `--no-llm` | žádný LLM provider; report je deterministický |
+| `--no-cache` | vynutí cold analýzu |
+| `--nodes-cap N` | přepíše `NODE_CAPS[depth]` jen v tomto procesu |
+| `--out PATH` | JSON do souboru (výchozí stdout) |
+| `--ndjson` | jen pro `--batch`: jeden JSON na řádek |
+| `--quiet` | potlačí progress a agregát na stderr |
+
+Exit kódy: **0** ok, **1** validační chyba (argumenty / neplatné PGN), **2**
+I/O chyba, **3** engine chyba (Stockfish chybí nebo timeout), **4** síťová
+chyba. JSON jde na stdout nebo do `--out`; progress a agregáty jdou na stderr,
+takže `coach.py ... | jq` funguje.
+
+Batch na konci vypíše agregát na stderr:
+
+```text
+aggregate: {"games": 3, "mean_acpl": 191.4, "flags": {"blunder": 2, "mistake": 6, "inaccuracy": 24}, "patterns": {"B": 2, "T": 2}}
+```
+
+### Starší varianta: `scripts/coach_single.py` (deprecated)
+
+Standardní single-game pipeline (kontrakt v1.1), jen z příkazové řádky. Stále
+funguje, ale nové příkazy piš přes `coach.py`.
 
 ```powershell
 # základní: hra podle ID, barva se určí z username
@@ -64,8 +122,9 @@ Standardní single-game pipeline (stejná jako MCP tool
 | `--no-cache` | vynutí nový výpočet |
 | `--quiet` | nevypisuje markdown report |
 
-Návratové kódy: `0` = ok nebo degraded, `2` = partial (některé plyny
-neanalyzované), `1` = chyba.
+Návratové kódy staršího skriptu: `0` = ok nebo degraded, `2` = partial
+(některé plyny neanalyzované), `1` = chyba. Nový `coach.py` používá jednotné
+kódy 0–4 viz výše.
 
 Výstupní JSON obsahuje `analysis.acpl`, `analysis.accuracy`, `flagged_moves`,
 `patterns`, `report`, `engine` (politika) a `timings`.
@@ -164,35 +223,30 @@ Poznámky k jednotlivým toolům:
 
 ## 3. Kompaktní JSON 2.0 (ETL bez LLM)
 
-Pro rychlé hodnocení vlastních her existuje offline ETL, které z PGN vytvoří
-kompaktní JSON (schema 2.0, ~1,1–1,8 kB). LLM se při ETL vůbec nevolá.
+Compact 2.0 je **výchozí** výstup `coach.py`. Sekce výše pokrývá všechny
+případy; zde jen minimální příklady a rozdíly.
 
 ```powershell
 # hra podle ID
-.\.venv\Scripts\python.exe -X utf8 scripts\pgn_to_compact.py --game-id Sl1s8KmU --color white --out data\reports\compact_Sl1s8KmU.json
+.\.venv\Scripts\python.exe -X utf8 scripts\coach.py --game-id Sl1s8KmU --username systeq --no-llm --out data\reports\compact_Sl1s8KmU.json
 
 # lokální PGN
-.\.venv\Scripts\python.exe -X utf8 scripts\pgn_to_compact.py --pgn-file data\reports\game.pgn --color white --out out.json
+.\.venv\Scripts\python.exe -X utf8 scripts\coach.py --pgn-file data\reports\game.pgn --color white --no-llm --out out.json
 
 # jiný strop uzlů (mění i cache klíč)
-.\.venv\Scripts\python.exe -X utf8 scripts\pgn_to_compact.py --game-id Sl1s8KmU --color white --nodes-cap 200000 --out out.json
+.\.venv\Scripts\python.exe -X utf8 scripts\coach.py --game-id Sl1s8KmU --color white --nodes-cap 200000 --out out.json
 ```
 
-| Parametr | Význam |
-|---|---|
-| `--game-id` / `--pgn-file` | vzájemně výlučné, jedno je povinné |
-| `--color white\|black` | strana, kterou hodnotíš |
-| `--depth N` | výchozí 14 |
-| `--nodes-cap N` | přepíše `NODE_CAPS[depth]` jen v tomto procesu |
-| `--mode fast\|deep` | budget |
-| `--out PATH` | výchozí `data\reports\compact_{id}_{ts}.json` |
-| `--no-llm` | kompatibilitní; ETL LLM nikdy nevolá |
+`scripts/pgn_to_compact.py` je deprecated shim nad `coach.py`; argumenty
+`--game-id`, `--pgn-file`, `--color`, `--depth`, `--nodes-cap`, `--mode`,
+`--out`, `--no-cache` zůstávají. Nové skripty piš proti `coach.py`.
 
-Výstup se validuje proti `schemas/single_game_v2_compact.json`. Detaily a
-prompt pro LLM: `docs/COMPACT_JSON_FOR_LLM.md`.
+Výstup se validuje proti `schemas/single_game_v2_compact.json`. Detaily,
+null/omission politika a prompt pro LLM: `docs/COMPACT_JSON_FOR_LLM.md`.
 
 MCP tool `lichess_coaching_single_game` umí totéž přes `output_format`:
-`full` (výchozí, kontrakt 1.1), `compact` (2.0), `both`.
+`compact` (výchozí, 2.0), `detailed` (kontrakt 1.1), `both`;
+`full` je deprecated alias pro `detailed`.
 
 ## 4. Determinismus a cache
 
@@ -210,7 +264,8 @@ MCP tool `lichess_coaching_single_game` umí totéž přes `output_format`:
 |---|---|---|
 | `tools_total: 18` neodpovídá | starý proces / jiná větev | spusť z kořene repa, zkontroluj `git log -1` |
 | JSON má na začátku BOM nebo je rozbitý | `>` redirect v PowerShellu | použij `--out` |
-| `status=partial`, `exit=2` | vyčerpaný budget / timeout enginu | `--mode deep`, případně `--no-cache` |
+| `status=partial` (starší skript) | vyčerpaný budget / timeout enginu | `--mode deep`, případně `--no-cache` |
 | `engine … error` | Stockfish se nepodařilo spustit | `stockfish\stockfish-bmi2.exe` + `STOCKFISH_PATH` |
 | report je „degraded“ | LLM providery nedostupné | očekávané; report je deterministický |
-| proces visí po dokončení | starý skript bez `close_engine()` | použij `coach_single.py` / `mcp_call.py` |
+| `pv_unavailable` v compact JSON | blunder/mistake bez engine line i po retry | explicitní mezera; nepředstírej, že pozice je jednoduchá |
+| proces visí po dokončení | starý skript bez `close_engine()` | použij `coach.py` / `mcp_call.py` |

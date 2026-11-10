@@ -29,6 +29,18 @@ log = get_logger("coaching_single_game")
 
 SCHEMA_VERSION = "1.1"
 _FLAGGED = ("blunder", "mistake", "inaccuracy")
+_OUTPUT_FORMATS = ("compact", "detailed", "both")
+
+
+def _normalize_format(value: str) -> str:
+    """Validate `output_format`; `full` stays a deprecated alias for one cycle."""
+    requested = (value or "compact").strip().lower()
+    if requested == "full":
+        log.warning("output_format='full' is deprecated; use 'detailed'")
+        return "detailed"
+    if requested not in _OUTPUT_FORMATS:
+        raise ValueError(f"invalid output_format {value!r}; expected one of {_OUTPUT_FORMATS}")
+    return requested
 
 
 def _report_truncated(text: str) -> bool:
@@ -155,6 +167,264 @@ def _token_totals(cascade_log: list[dict]) -> dict:
     return {"input": inp, "output": out}
 
 
+async def build_response(
+    *,
+    game_id: str,
+    username: str,
+    detected_color: str,
+    depth: int,
+    mode: str,
+    deadline_s: float,
+    call_started: float,
+    analysis_obj,
+    io_s: float,
+    use_llm: bool,
+    ctx,
+    output_format: str,
+) -> dict:
+    """Build a contract v1.1 response (optionally serialized to the 2.0 shape).
+
+    Public so the CLI (`scripts/coach.py`) can reuse the exact same pipeline for
+    PGN input, which never reaches the MCP tool's Lichess fetch.
+    """
+    from lichess_analyzer_mcp.services.pv_recovery import recover_missing_pv
+
+    # FIX-014: a blunder whose PV was lost to the analysis deadline is retried
+    # here, after the budget is released. Failures stay explicit.
+    pv_unavailable = recover_missing_pv(analysis_obj, depth=depth)
+    analysis = analysis_obj.to_dict()
+    if not analysis.get("moves"):
+        raise ValueError("analysis produced no moves")
+
+    patterns = detect_single_game(analysis_obj)
+    flagged = _flagged_moves(analysis)
+    unanalyzed = analysis.get("unanalyzed_plies", []) or []
+
+    game_info = analysis.get("game", {})
+    phase_stats = _phase_summary(analysis)
+    phase_breakdown = (
+        "; ".join(
+            f"{p}: ACPL {s.get('acpl', '?')}, {s.get('flagged', 0)} chyb"
+            for p, s in sorted(phase_stats.items())
+        )
+        or "(není k dispozici)"
+    )
+
+    def _move_lines(items: list[dict], limit: int = 10) -> str:
+        return "\n".join(
+            f"  ply {m.get('ply')}: {m.get('move_san')} (loss {_fmt_loss(m)}cp, "
+            f"fáze={m.get('phase')}, gives_check={m.get('gives_check', False)}, "
+            f"in_check_before={m.get('was_in_check', False)}, "
+            f"tactical={m.get('is_tactical_motif', False)}, motif={m.get('motif_type')}, "
+            f"best={m.get('best_move_san') or '?'}, rank={m.get('played_rank') or '?'}, "
+            f"explanation={m.get('explanation') or 'n/a'}, "
+            f"fen={m.get('fen', '')[:60]})"
+            for m in items[:limit]
+        )
+
+    blunders_list = _move_lines(analysis.get("blunders", []))
+    mistakes_list = _move_lines(analysis.get("mistakes", []))
+    inacc_list = _move_lines(analysis.get("inaccuracies", []))
+    bfs_raw = analysis.get("blunder_fact_sheets", [])
+
+    prompt_data = {
+        "game_id": game_id,
+        "color": detected_color,
+        "depth": depth,
+        "result": game_info.get("result", "?"),
+        "opening": game_info.get("opening", "?"),
+        "acpl": round(analysis.get("total_acpl", 0), 1),
+        "blunders_count": len(analysis.get("blunders", [])),
+        "mistakes_count": len(analysis.get("mistakes", [])),
+        "inaccuracies_count": len(analysis.get("inaccuracies", [])),
+        "blunders_list": blunders_list or "(žádné)",
+        "mistakes_list": mistakes_list or "(žádné)",
+        "inacc_list": inacc_list or "(žádné)",
+        "phase_breakdown": phase_breakdown,
+        "patterns_json": json.dumps(patterns, ensure_ascii=False, indent=2),
+        "bfs_json": json.dumps(bfs_raw, ensure_ascii=False, indent=2)[:2000],
+        "time_control": game_info.get("time_control", "?"),
+        "player_rating": game_info.get("player_rating", "?"),
+        "opponent_rating": game_info.get("opponent_rating", "?"),
+    }
+    prompt = build_prompt(1, prompt_data)
+
+    elapsed = time.perf_counter() - call_started
+    llm_timeout = min(
+        float(budget_for_mode(mode)["llm_s"]),
+        max(0.5, deadline_s - elapsed - float(budget_for_mode(mode)["reserve_s"])),
+    )
+    t_llm = time.perf_counter()
+    if use_llm:
+        report, cascade_log, cascade_exhausted, report_source = safe_llm_call(
+            prompt, f"single_game:{game_id}", timeout_s=llm_timeout
+        )
+    else:
+        # Offline ETL contract: no provider is contacted. The report is the
+        # deterministic summary, never labelled as LLM output.
+        from lichess_analyzer_mcp.services.ide_fallback import generate_ide_report
+
+        report, token_log = generate_ide_report(prompt, COACHING_SYSTEM_PROMPT)
+        cascade_log = [token_log]
+        cascade_exhausted = True
+        report_source = "deterministic"
+    llm_s = time.perf_counter() - t_llm
+
+    # MCP sampling fallback — use IDE's LLM when external APIs are exhausted.
+    # `cascade_exhausted` is also True for the deterministic fallback, so a
+    # real LLM gets a chance before the deterministic text is final.
+    if use_llm and cascade_exhausted and ctx is not None:
+        try:
+            mcp_content, mcp_log = await mcp_sample_fallback(ctx, prompt, COACHING_SYSTEM_PROMPT)
+            from lichess_analyzer_mcp.services.coaching_base import (
+                _is_valid_coaching_content,
+            )
+
+            if _is_valid_coaching_content(mcp_content):
+                report = mcp_content
+                report_source = "mcp_sampling"
+                cascade_log.append(mcp_log)
+        except Exception as e:
+            log.warning("MCP sampling fallback failed: %s", e)
+            cascade_log.append({"provider": "MCP Sampling", "error": str(e)})
+
+    llm_ok = report_source not in ("deterministic", "data_dump", "none", None)
+    source_label = (
+        "llm" if llm_ok else ("deterministic" if report_source == "deterministic" else "data_dump")
+    )
+
+    # ── status precedence: error > partial > degraded > ok ──
+    errors = analysis.get("errors", []) or []
+    if unanalyzed:
+        status = "partial"
+    elif errors or not llm_ok:
+        status = "degraded"
+    else:
+        status = "ok"
+
+    total_s = time.perf_counter() - call_started
+    analysis_timings = analysis.get("timings", {}) or {}
+    cache_hit = bool(getattr(analysis_obj, "_cache_hit", False))
+    # A cache hit ran no engine in this call; the stored stage timings
+    # describe the run that produced the file, not this response.
+    engine_s = 0.0 if cache_hit else float(analysis_timings.get("engine_s", 0.0))
+    engine_calls = 0 if cache_hit else int(analysis.get("engine_calls", 0))
+    engine_timeouts = 0 if cache_hit else int(analysis.get("engine_timeouts", 0))
+    engine_retries = 0 if cache_hit else int(analysis.get("engine_retries", 0))
+    overhead_s = max(0.0, total_s - io_s - engine_s - llm_s)
+    timings = {
+        "io_s": round(io_s, 3),
+        "engine_s": round(engine_s, 3),
+        "llm_s": round(llm_s, 3),
+        "overhead_s": round(overhead_s, 3),
+        "total_s": round(total_s, 3),
+        "deadline_s": round(float(analysis.get("deadline_s") or deadline_s), 3),
+        "budget_used": round(total_s / deadline_s, 3) if deadline_s else None,
+        "engine_calls": engine_calls,
+        "engine_timeouts": engine_timeouts,
+        "engine_retries": engine_retries,
+        "cache_hit": cache_hit,
+    }
+
+    llm_status = get_llm_status()
+    tokens = _token_totals(cascade_log)
+    patterns_meta = {
+        "scope": "single_game",
+        "cross_game_suppressed": True,
+        "reason": (
+            "Single-game scope: only per-move evidence is aggregated. "
+            "Cross-game detectors need >=3 games and are suppressed."
+            if patterns
+            else "No flagged move met a single-game pattern threshold. "
+            "Cross-game detectors need >=3 games and are suppressed."
+        ),
+        "detector_version": DETECTOR_VERSION,
+    }
+
+    moves = analysis.get("moves", [])
+    acpl_value = analysis.get("total_acpl")
+    analysis_block = {
+        "acpl": round(acpl_value, 1) if isinstance(acpl_value, (int, float)) else None,
+        "accuracy": analysis.get("accuracy"),
+        "moves_analyzed": sum(1 for m in moves if m.get("analyzed", True)),
+        "moves_total": len(moves),
+        "evaluation_errors": analysis.get("evaluation_errors", 0),
+        "phase_stats": phase_stats,
+    }
+
+    cache = {
+        "hit": cache_hit,
+        "layer": getattr(analysis_obj, "_cache_layer", "none"),
+        "key": f"{game_id}_{detected_color}_d{depth}{_cache_policy(depth)}",
+    }
+
+    report_text = report or ""
+    response = {
+        "schema_version": SCHEMA_VERSION,
+        "game_id": game_id,
+        "username": username,
+        "color": detected_color,
+        "mode": mode,
+        "depth": depth,
+        "status": status,
+        "partial": bool(unanalyzed),
+        "errors": errors,
+        "unanalyzed_plies": unanalyzed,
+        "timings": timings,
+        "engine": _engine_block(depth, None if cache_hit else engine_client.get_current_hash()),
+        "cache": cache,
+        "analysis": analysis_block,
+        "flagged_moves": flagged,
+        "patterns": patterns,
+        "patterns_meta": patterns_meta,
+        "llm": {
+            "status": "ok" if llm_ok else "degraded",
+            "provider": report_source,
+            "degraded": not llm_ok,
+            "reason": (
+                "ok" if llm_ok else ("llm_disabled" if not use_llm else "all_providers_failed")
+            ),
+            "attempts": _llm_attempts(cascade_log),
+            "configured_providers": llm_status.get("total_configured", 0),
+            "timeout_s": round(llm_timeout, 3),
+            "tokens": tokens,
+        },
+        "report": report_text,
+        "report_meta": {
+            "source": source_label,
+            "format": "markdown",
+            "chars": len(report_text),
+            "full_chars": len(report_text),
+            "truncated": _report_truncated(report_text),
+        },
+        # Legacy alias kept for one release (K7).
+        "cascade_log": cascade_log,
+        "flags": {
+            "cloud_eval": "off_by_default",
+            "bfs_scope": "blunder+mistake+inaccuracy",
+        },
+    }
+
+    # FIX-017: compact 2.0 is the default; schema 1.1 is opt-in as "detailed".
+    if output_format in ("compact", "both"):
+        from lichess_analyzer_mcp.services.compact_serializer import (
+            to_compact_v2,
+            validate_compact,
+        )
+
+        compact = to_compact_v2(
+            response,
+            game_meta=game_info,
+            moves=moves,
+            pv_unavailable=pv_unavailable,
+        )
+        validate_compact(compact)
+        if output_format == "compact":
+            return compact
+        return {"compact": compact, "detailed": response}
+    return response
+
+
 @app.tool("lichess_coaching_single_game")
 @auditable
 async def lichess_coaching_single_game(
@@ -163,7 +433,7 @@ async def lichess_coaching_single_game(
     color: str = "",
     depth: int = 0,
     mode: str = "fast",
-    output_format: str = "full",
+    output_format: str = "compact",
     use_llm: bool = True,
     ctx=None,
 ):
@@ -172,7 +442,7 @@ async def lichess_coaching_single_game(
     Fetches PGN, runs Stockfish analysis, detects single-game patterns,
     and generates an LLM coaching report. Depth 0 = auto (14).
 
-    The response follows contract v1.1 (see
+    The detailed response follows contract v1.1 (see
     docs/PLAN_SINGLE_GAME_CALIBRATION_2026-11-07.md): every stage reports
     time, every flagged move carries an explanation or an explicit
     `explanation_source="none"`, and an unmeasured move never looks like a
@@ -190,8 +460,9 @@ async def lichess_coaching_single_game(
         color: Your color ('white' or 'black', fallback if no username)
         depth: Stockfish analysis depth (8-24, 0=auto)
         mode: Budget profile — 'fast' (60 s hard deadline) or 'deep' (120 s)
-        output_format: 'full' (contract v1.1, default), 'compact' (schema 2.0)
-            or 'both' -> {"full": ..., "compact": ...}
+        output_format: 'compact' (schema 2.0, default), 'detailed' (contract
+            v1.1) or 'both' -> {"compact": ..., "detailed": ...}.
+            'full' is a deprecated alias for 'detailed'.
         use_llm: False skips every LLM provider (deterministic report only)
     """
     call_started = time.perf_counter()
@@ -208,6 +479,7 @@ async def lichess_coaching_single_game(
     deadline_s = float(budget_cfg["total_s"])
 
     try:
+        output_format = _normalize_format(output_format)
         data = collect_single_game(
             game_id,
             color or "white",
@@ -218,234 +490,22 @@ async def lichess_coaching_single_game(
             include_obj=True,
         )
         analysis_obj = data.get("analysis_obj")
-        analysis = data.get("analysis", {})
-        detected_color = data.get("color", color or "white")
-
-        if analysis_obj is None or not analysis.get("moves"):
+        if analysis_obj is None:
             raise ValueError("analysis produced no moves")
-
-        patterns = detect_single_game(analysis_obj)
-        flagged = _flagged_moves(analysis)
-        unanalyzed = analysis.get("unanalyzed_plies", []) or []
-
-        game_info = analysis.get("game", {})
-        phase_stats = _phase_summary(analysis)
-        phase_breakdown = (
-            "; ".join(
-                f"{p}: ACPL {s.get('acpl', '?')}, {s.get('flagged', 0)} chyb"
-                for p, s in sorted(phase_stats.items())
-            )
-            or "(není k dispozici)"
+        return await build_response(
+            game_id=game_id,
+            username=username,
+            detected_color=data.get("color", color or "white"),
+            depth=depth,
+            mode=mode,
+            deadline_s=deadline_s,
+            call_started=call_started,
+            analysis_obj=analysis_obj,
+            io_s=float(data.get("timings", {}).get("io_s", 0.0)),
+            use_llm=use_llm,
+            ctx=ctx,
+            output_format=output_format,
         )
-
-        def _move_lines(items: list[dict], limit: int = 10) -> str:
-            return "\n".join(
-                f"  ply {m.get('ply')}: {m.get('move_san')} (loss {_fmt_loss(m)}cp, "
-                f"fáze={m.get('phase')}, gives_check={m.get('gives_check', False)}, "
-                f"in_check_before={m.get('was_in_check', False)}, "
-                f"tactical={m.get('is_tactical_motif', False)}, motif={m.get('motif_type')}, "
-                f"best={m.get('best_move_san') or '?'}, rank={m.get('played_rank') or '?'}, "
-                f"explanation={m.get('explanation') or 'n/a'}, "
-                f"fen={m.get('fen', '')[:60]})"
-                for m in items[:limit]
-            )
-
-        blunders_list = _move_lines(analysis.get("blunders", []))
-        mistakes_list = _move_lines(analysis.get("mistakes", []))
-        inacc_list = _move_lines(analysis.get("inaccuracies", []))
-        bfs_raw = analysis.get("blunder_fact_sheets", [])
-
-        prompt_data = {
-            "game_id": game_id,
-            "color": detected_color,
-            "depth": depth,
-            "result": game_info.get("result", "?"),
-            "opening": game_info.get("opening", "?"),
-            "acpl": round(analysis.get("total_acpl", 0), 1),
-            "blunders_count": len(analysis.get("blunders", [])),
-            "mistakes_count": len(analysis.get("mistakes", [])),
-            "inaccuracies_count": len(analysis.get("inaccuracies", [])),
-            "blunders_list": blunders_list or "(žádné)",
-            "mistakes_list": mistakes_list or "(žádné)",
-            "inacc_list": inacc_list or "(žádné)",
-            "phase_breakdown": phase_breakdown,
-            "patterns_json": json.dumps(patterns, ensure_ascii=False, indent=2),
-            "bfs_json": json.dumps(bfs_raw, ensure_ascii=False, indent=2)[:2000],
-            "time_control": game_info.get("time_control", "?"),
-            "player_rating": game_info.get("player_rating", "?"),
-            "opponent_rating": game_info.get("opponent_rating", "?"),
-        }
-        prompt = build_prompt(1, prompt_data)
-
-        elapsed = time.perf_counter() - call_started
-        llm_timeout = min(
-            float(budget_cfg["llm_s"]),
-            max(0.5, deadline_s - elapsed - float(budget_cfg["reserve_s"])),
-        )
-        t_llm = time.perf_counter()
-        if use_llm:
-            report, cascade_log, cascade_exhausted, report_source = safe_llm_call(
-                prompt, f"single_game:{game_id}", timeout_s=llm_timeout
-            )
-        else:
-            # Offline ETL contract: no provider is contacted. The report is the
-            # deterministic summary, never labelled as LLM output.
-            from lichess_analyzer_mcp.services.ide_fallback import generate_ide_report
-
-            report, token_log = generate_ide_report(prompt, COACHING_SYSTEM_PROMPT)
-            cascade_log = [token_log]
-            cascade_exhausted = True
-            report_source = "deterministic"
-        llm_s = time.perf_counter() - t_llm
-
-        # MCP sampling fallback — use IDE's LLM when external APIs are exhausted.
-        # `cascade_exhausted` is also True for the deterministic fallback, so a
-        # real LLM gets a chance before the deterministic text is final.
-        if use_llm and cascade_exhausted and ctx is not None:
-            try:
-                mcp_content, mcp_log = await mcp_sample_fallback(
-                    ctx, prompt, COACHING_SYSTEM_PROMPT
-                )
-                from lichess_analyzer_mcp.services.coaching_base import (
-                    _is_valid_coaching_content,
-                )
-
-                if _is_valid_coaching_content(mcp_content):
-                    report = mcp_content
-                    report_source = "mcp_sampling"
-                    cascade_log.append(mcp_log)
-            except Exception as e:
-                log.warning("MCP sampling fallback failed: %s", e)
-                cascade_log.append({"provider": "MCP Sampling", "error": str(e)})
-
-        llm_ok = report_source not in ("deterministic", "data_dump", "none", None)
-        source_label = (
-            "llm"
-            if llm_ok
-            else ("deterministic" if report_source == "deterministic" else "data_dump")
-        )
-
-        # ── status precedence: error > partial > degraded > ok ──
-        errors = analysis.get("errors", []) or []
-        if unanalyzed:
-            status = "partial"
-        elif errors or not llm_ok:
-            status = "degraded"
-        else:
-            status = "ok"
-
-        total_s = time.perf_counter() - call_started
-        analysis_timings = analysis.get("timings", {}) or {}
-        io_s = float(data.get("timings", {}).get("io_s", 0.0))
-        cache_hit = bool(getattr(analysis_obj, "_cache_hit", False))
-        # A cache hit ran no engine in this call; the stored stage timings
-        # describe the run that produced the file, not this response.
-        engine_s = 0.0 if cache_hit else float(analysis_timings.get("engine_s", 0.0))
-        engine_calls = 0 if cache_hit else int(analysis.get("engine_calls", 0))
-        engine_timeouts = 0 if cache_hit else int(analysis.get("engine_timeouts", 0))
-        engine_retries = 0 if cache_hit else int(analysis.get("engine_retries", 0))
-        overhead_s = max(0.0, total_s - io_s - engine_s - llm_s)
-        timings = {
-            "io_s": round(io_s, 3),
-            "engine_s": round(engine_s, 3),
-            "llm_s": round(llm_s, 3),
-            "overhead_s": round(overhead_s, 3),
-            "total_s": round(total_s, 3),
-            "deadline_s": round(float(analysis.get("deadline_s") or deadline_s), 3),
-            "budget_used": round(total_s / deadline_s, 3) if deadline_s else None,
-            "engine_calls": engine_calls,
-            "engine_timeouts": engine_timeouts,
-            "engine_retries": engine_retries,
-            "cache_hit": cache_hit,
-        }
-
-        llm_status = get_llm_status()
-        tokens = _token_totals(cascade_log)
-        patterns_meta = {
-            "scope": "single_game",
-            "cross_game_suppressed": True,
-            "reason": (
-                "Single-game scope: only per-move evidence is aggregated. "
-                "Cross-game detectors need >=3 games and are suppressed."
-                if patterns
-                else "No flagged move met a single-game pattern threshold. "
-                "Cross-game detectors need >=3 games and are suppressed."
-            ),
-            "detector_version": DETECTOR_VERSION,
-        }
-
-        moves = analysis.get("moves", [])
-        acpl_value = analysis.get("total_acpl")
-        analysis_block = {
-            "acpl": round(acpl_value, 1) if isinstance(acpl_value, (int, float)) else None,
-            "accuracy": analysis.get("accuracy"),
-            "moves_analyzed": sum(1 for m in moves if m.get("analyzed", True)),
-            "moves_total": len(moves),
-            "evaluation_errors": analysis.get("evaluation_errors", 0),
-            "phase_stats": phase_stats,
-        }
-
-        cache = {
-            "hit": cache_hit,
-            "layer": getattr(analysis_obj, "_cache_layer", "none"),
-            "key": f"{game_id}_{detected_color}_d{depth}{_cache_policy(depth)}",
-        }
-
-        report_text = report or ""
-        response = {
-            "schema_version": SCHEMA_VERSION,
-            "game_id": game_id,
-            "username": username,
-            "color": detected_color,
-            "mode": mode,
-            "depth": depth,
-            "status": status,
-            "partial": bool(unanalyzed),
-            "errors": errors,
-            "unanalyzed_plies": unanalyzed,
-            "timings": timings,
-            "engine": _engine_block(depth, None if cache_hit else engine_client.get_current_hash()),
-            "cache": cache,
-            "analysis": analysis_block,
-            "flagged_moves": flagged,
-            "patterns": patterns,
-            "patterns_meta": patterns_meta,
-            "llm": {
-                "status": "ok" if llm_ok else "degraded",
-                "provider": report_source,
-                "degraded": not llm_ok,
-                "reason": (
-                    "ok" if llm_ok else ("llm_disabled" if not use_llm else "all_providers_failed")
-                ),
-                "attempts": _llm_attempts(cascade_log),
-                "configured_providers": llm_status.get("total_configured", 0),
-                "timeout_s": round(llm_timeout, 3),
-                "tokens": tokens,
-            },
-            "report": report_text,
-            "report_meta": {
-                "source": source_label,
-                "format": "markdown",
-                "chars": len(report_text),
-                "full_chars": len(report_text),
-                "truncated": _report_truncated(report_text),
-            },
-            # Legacy alias kept for one release (K7).
-            "cascade_log": cascade_log,
-            "flags": {
-                "cloud_eval": "off_by_default",
-                "bfs_scope": "blunder+mistake+inaccuracy",
-            },
-        }
-        # ── output format: v1.1 stays the default (backward compatible) ──
-        if output_format in ("compact", "both"):
-            from lichess_analyzer_mcp.services.compact_serializer import to_compact_v2
-
-            compact = to_compact_v2(response, game_meta=game_info, moves=moves)
-            if output_format == "compact":
-                return compact
-            return {"full": response, "compact": compact}
-        return response
     except Exception as e:
         log.exception("coaching single game error | game=%s", game_id)
         return {
