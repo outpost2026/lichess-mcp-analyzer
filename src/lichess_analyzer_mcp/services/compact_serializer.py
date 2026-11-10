@@ -38,6 +38,8 @@ from __future__ import annotations
 import json
 import re
 
+from lichess_analyzer_mcp.services.eval_consistency import eval_invariant_holds
+
 SCHEMA_V = "2.0"
 MAX_REPORT_CHARS = 900
 FEN_CP_THRESHOLD = 100
@@ -111,19 +113,32 @@ def _flag(flag: dict, fens: dict[int, str], cover: dict[int, list[str]] | None =
         "rank": int(flag["played_rank"]) if int(flag.get("played_rank") or 0) >= 1 else None,
     }
     # FIX-015: an LLM cannot narrate a swing it cannot see.
+    # FIX-023: ... and it must not narrate a contradiction: when the eval pair
+    # disagrees with cp_loss, omit both fields (raw values stay in detailed).
     if isinstance(cp, (int, float)) and (
         cp > EVAL_CP_THRESHOLD or out["class"] in ("blunder", "mistake")
     ):
         eval_before = _cp(flag.get("eval_before"))
         eval_after = _cp(flag.get("eval_after"))
-        if eval_before is not None:
+        if (
+            eval_before is not None
+            and eval_after is not None
+            and eval_invariant_holds(eval_before, eval_after, cp)
+        ):
             out["eval_before"] = eval_before
-        if eval_after is not None:
             out["eval_after"] = eval_after
     # FIX-016: a genuinely absent motif is omitted; present motifs stay strings.
     motif = flag.get("motif")
     if motif:
         out["motif"] = motif
+    # FIX-027: a blunder whose best line is a forced mate must not read as
+    # "eval unknown". Only blunders carry the field (compact size budget).
+    if out["class"] == "blunder":
+        lines = flag.get("engine_lines") or []
+        best_line = min(lines, key=lambda line: line.get("rank") or 99) if lines else {}
+        mate_in = best_line.get("mate_in")
+        if isinstance(mate_in, int) and mate_in != 0:
+            out["mate_in"] = mate_in
     # CAND-E: which behavioural patterns this single mistake feeds.
     if cover and ply in cover:
         out["patterns"] = cover[ply]
@@ -408,7 +423,7 @@ def validate_compact(data: dict) -> None:
         _check_keys(
             flag,
             _REQUIRED_FLAG,
-            _REQUIRED_FLAG | {"motif", "eval_before", "eval_after", "patterns"},
+            _REQUIRED_FLAG | {"motif", "eval_before", "eval_after", "patterns", "mate_in"},
             path,
         )
         if not isinstance(flag["ply"], int) or flag["ply"] < 1:
@@ -426,6 +441,9 @@ def validate_compact(data: dict) -> None:
         for key in ("eval_before", "eval_after"):
             if key in flag and not isinstance(flag[key], (int, float)):
                 _fail(f"{path}.{key}", "must be a number")
+        if "mate_in" in flag:
+            if not isinstance(flag["mate_in"], int) or flag["mate_in"] == 0:
+                _fail(f"{path}.mate_in", "must be a non-zero integer")
         if "patterns" in flag:
             if not isinstance(flag["patterns"], list) or not flag["patterns"]:
                 _fail(f"{path}.patterns", "must be a non-empty array")

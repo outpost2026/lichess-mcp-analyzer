@@ -4,7 +4,7 @@
 
 **MCP server pro analýzu šachových partií, detekci vzorových chyb (pattern library jako kompresní model dle T. Mikolova) a spaced repetition trénink (FSRS/SM-2).**
 
-Verze: `0.1.0` | Stav: **DBCL Phase 2 hotovo** | Testy: **178/178** (bez `test_engine_client.py`) | Nástrojů: **18**
+Verze: `0.1.0` | Stav: **DBCL Phase 2 hotovo** | Testy: **193/193** (bez `test_engine_client.py`) | Nástrojů: **18**
 
 
 ## Proč?

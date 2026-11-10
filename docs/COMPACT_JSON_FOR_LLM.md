@@ -22,7 +22,8 @@ regression `FVhqtv1S`; measured 4400 chars) versus 13–26 kB for schema 1.1.
 | `flags[].move` / `best` | SAN played vs SAN the engine preferred |
 | `flags[].class` / `cp` / `rank` | severity, centipawn loss, played-move rank among engine candidates |
 | `flags[].motif` | tactical tag when present (e.g. `discovered_check_capture`, `check`, `capture`) |
-| `flags[].eval_before` / `eval_after` | eval swing in cp; present only for `cp > 200` or class blunder/mistake |
+| `flags[].eval_before` / `eval_after` | eval swing in cp; present only for `cp > 200` or class blunder/mistake **and** consistent with `cp` (FIX-023) |
+| `flags[].mate_in` | blunder only: forced mate in N moves from the best line (FIX-027); positive = for the player, negative = against |
 | `flags[].patterns` | pattern ids whose evidence includes this ply; omitted when none |
 | `patterns[]` | behavioural layer: id, confidence 0–1, frequency, severity, affected plies |
 | `pv` | `ply -> [SAN, SAN, SAN]` best line (max 3 moves) |
@@ -41,7 +42,12 @@ regression `FVhqtv1S`; measured 4400 chars) versus 13–26 kB for schema 1.1.
 - `flags[].motif` absent — the move has no tactical motif. A present motif is
   always a string. (`null` is not used here.)
 - `eval_before` / `eval_after` absent — the flag is outside the FIX-015 window
-  (`cp <= 200` and not blunder/mistake) or the eval was not measured.
+  (`cp <= 200` and not blunder/mistake), the eval was not measured, or the pair
+  contradicts `cp` (FIX-023). **Never** reconstruct a swing from `eval_before -
+  eval_after` when those keys are absent.
+- `mate_in` absent — the best line is not a forced mate, or the flag is not a
+  blunder. When present, `eval_cp` is `null` for that engine line; say
+  "mat v N", never "hodnocení 0".
 - `summary.acpl` / `summary.phases[*][0] = null` — no measured move in that
   scope.
 - `game.username` absent — anonymous game or unknown player; never the literal
@@ -57,8 +63,9 @@ regression `FVhqtv1S`; measured 4400 chars) versus 13–26 kB for schema 1.1.
 
 1. Validate the JSON (schema 2.0) before using it.
 2. Pick the weakest phase from `summary.phases`: highest ACPL, tie-break by
-   flagged count. If all ACPL are similar or null, say so instead of inventing
-   one.
+   flagged count. A phase with `flagged == 0` **and** ACPL `0.0` (or `null`) is
+   clean — it is never the weakest phase. If every phase is clean, say
+   "žádná slabá fáze" instead of inventing one.
 3. For every flag you discuss, read `pv[ply]` for the alternative and
    `fen_before[ply]` when you need the position. Do not reconstruct a FEN by
    hand. If the ply is in `pv_unavailable`, state the gap.

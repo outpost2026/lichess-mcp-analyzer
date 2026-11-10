@@ -138,6 +138,41 @@ def _phase_summary(analysis: dict) -> dict:
     return result
 
 
+def _phase_breakdown(phase_stats: dict) -> str:
+    """FIX-021: weakest phases first, clean phases never called weakest.
+
+    A phase is clean only when it measured 0 flagged moves *and* ACPL 0.0
+    (or no measured move). Weak phases are sorted by ACPL desc, tie-break
+    flagged desc. Returns "žádná slabá fáze" when every phase is clean.
+    """
+    weak = {
+        p: s
+        for p, s in phase_stats.items()
+        if not (
+            s.get("flagged", 0) == 0
+            and (s.get("acpl") is None or float(s.get("acpl") or 0.0) == 0.0)
+        )
+    }
+    clean = [p for p in phase_stats if p not in weak]
+    ordered = sorted(
+        weak.items(),
+        key=lambda kv: (
+            kv[1].get("acpl") if isinstance(kv[1].get("acpl"), (int, float)) else -1.0,
+            kv[1].get("flagged", 0),
+        ),
+        reverse=True,
+    )
+    if ordered:
+        text = "; ".join(
+            f"{p}: ACPL {s.get('acpl', '?')}, {s.get('flagged', 0)} chyb" for p, s in ordered
+        )
+    else:
+        text = "žádná slabá fáze"
+    if clean:
+        text += f" | čisté fáze: {', '.join(clean)}"
+    return text
+
+
 def _llm_attempts(cascade_log: list[dict]) -> list[dict]:
     attempts = []
     for entry in cascade_log:
@@ -192,6 +227,14 @@ async def build_response(
     # FIX-014: a blunder whose PV was lost to the analysis deadline is retried
     # here, after the budget is released. Failures stay explicit.
     pv_unavailable = recover_missing_pv(analysis_obj, depth=depth)
+    # FIX-028: persist the recovered PV so a later cache hit does not re-run
+    # the engine retry (the analysis cache was written before this step).
+    try:
+        from lichess_analyzer_mcp.services.game_analyzer import refresh_cached_analysis
+
+        refresh_cached_analysis(game_id, depth, mode, analysis_obj)
+    except Exception:
+        pass
     analysis = analysis_obj.to_dict()
     if not analysis.get("moves"):
         raise ValueError("analysis produced no moves")
@@ -202,13 +245,7 @@ async def build_response(
 
     game_info = analysis.get("game", {})
     phase_stats = _phase_summary(analysis)
-    phase_breakdown = (
-        "; ".join(
-            f"{p}: ACPL {s.get('acpl', '?')}, {s.get('flagged', 0)} chyb"
-            for p, s in sorted(phase_stats.items())
-        )
-        or "(není k dispozici)"
-    )
+    phase_breakdown = _phase_breakdown(phase_stats)
 
     def _move_lines(items: list[dict], limit: int = 10) -> str:
         return "\n".join(

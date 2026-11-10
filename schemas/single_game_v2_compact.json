@@ -90,6 +90,10 @@
             "minItems": 1,
             "items": { "type": "string", "minLength": 1 },
             "description": "Behavioural pattern ids whose evidence includes this ply (CAND-E). Omitted when no pattern covers the move."
+          },
+          "mate_in": {
+            "type": "integer",
+            "description": "FIX-027: forced mate in N moves from the engine's best line. Positive = mate for the player, negative = mate against the player. Only emitted for blunders whose best line is mate; eval_cp stays null in that case."
           }
         }
       }

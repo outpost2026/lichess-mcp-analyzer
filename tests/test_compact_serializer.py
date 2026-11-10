@@ -269,6 +269,90 @@ def test_eval_fields_follow_fix015_window():
     assert "eval_before" not in by_ply[34]  # inaccuracy at 84 cp
 
 
+def test_mate_in_in_blunder_flag():
+    full = json.loads(json.dumps(FULL))
+    full["flagged_moves"].append(
+        {
+            **FLAG_TEMPLATE,
+            "ply": 75,
+            "san": "Re8+",
+            "classification": "blunder",
+            "cp_loss": 9473.0,
+            "eval_before": 9997,
+            "eval_after": 525,
+            "engine_lines": [
+                {
+                    "rank": 1,
+                    "san": "Qf4+",
+                    "eval_cp": None,
+                    "mate_in": 5,
+                    "pv": ["Qf4+", "Qf6", "Qxf6+", "Kg8", "Re8#"],
+                }
+            ],
+            "played_rank": 4,
+        }
+    )
+    out = to_compact_v2(full, game_meta=GAME_META)
+    validate_compact(out)
+    by_ply = {f["ply"]: f for f in out["flags"]}
+    assert by_ply[75]["mate_in"] == 5
+    # FIX-027 is blunder-only: ordinary flags never pay the ~15 chars.
+    assert "mate_in" not in by_ply[34]
+
+    not_mate = json.loads(json.dumps(FULL))
+    not_mate["flagged_moves"].append(
+        {
+            **FLAG_TEMPLATE,
+            "ply": 75,
+            "classification": "blunder",
+            "cp_loss": 400.0,
+            "engine_lines": [{"rank": 1, "san": "Qf4+", "eval_cp": 300, "pv": ["Qf4+"]}],
+        }
+    )
+    ordinary = to_compact_v2(not_mate, game_meta=GAME_META)
+    validate_compact(ordinary)
+    assert "mate_in" not in {f["ply"]: f for f in ordinary["flags"]}[75]
+
+
+def test_inconsistent_eval_pair_is_omitted():
+    """FIX-023: 638 -> 682 while cp_loss is 237 is not narratable."""
+    full = json.loads(json.dumps(FULL))
+    full["flagged_moves"].append(
+        {
+            **FLAG_TEMPLATE,
+            "ply": 89,
+            "san": "Qe4+",
+            "classification": "mistake",
+            "cp_loss": 237.0,
+            "eval_before": 638,
+            "eval_after": 682,
+            "engine_lines": [],
+            "played_rank": None,
+        }
+    )
+    full["flagged_moves"].append(
+        {
+            **FLAG_TEMPLATE,
+            "ply": 93,
+            "san": "Kg1",
+            "classification": "mistake",
+            "cp_loss": 237.0,
+            "eval_before": 682,
+            "eval_after": 445,
+            "engine_lines": [],
+            "played_rank": None,
+        }
+    )
+    out = to_compact_v2(full, game_meta=GAME_META, pv_unavailable={89: "engine_timeout"})
+    validate_compact(out)
+    by_ply = {f["ply"]: f for f in out["flags"]}
+    assert "eval_before" not in by_ply[89]
+    assert "eval_after" not in by_ply[89]
+    # A consistent pair is still published.
+    assert by_ply[93]["eval_before"] == 682
+    assert by_ply[93]["eval_after"] == 445
+
+
 def test_blunder_pv_fallback():
     full = json.loads(json.dumps(FULL))
     full["flagged_moves"].append(

@@ -44,6 +44,7 @@ class EngineLine:
     rank: int = 0
     move_san: str = ""
     eval_cp: float = 0.0
+    mate_in: Optional[int] = None
     win_prob: Optional[float] = None
     pv: list[str] = field(default_factory=list)
 

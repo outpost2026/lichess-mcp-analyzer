@@ -40,6 +40,15 @@ PROMPT_COUNT_ONLY = """K DISPOZICI:
 """
 
 
+PROMPT_WITH_CLEAN_PHASE = """K DISPOZICI:
+- Výsledek: 1-0, barva: white, zahájení: Sicilian Defense
+- Celková ACPL: 239.4
+- Počet chyb: 1 blunderů, 7 chyb, 9 nepřesností
+- Blundry (s detaily): - ply 75 Re8+ (blunder, cp_loss=9473, endgame)
+- Fázový breakdown: endgame: ACPL 438.7, 10 chyb; middlegame: ACPL 68.5, 7 chyb | čisté fáze: opening
+"""
+
+
 def test_blunder_detail_is_reported():
     content, log = generate_deterministic_report(PROMPT_WITH_BLUNDER)
     assert "Žádný blunder" not in content
@@ -58,6 +67,49 @@ def test_count_without_details_does_not_claim_no_blunder():
     content, _ = generate_deterministic_report(PROMPT_COUNT_ONLY)
     assert "Žádný blunder" not in content
     assert "Blunderů: 2" in content
+
+
+def test_weakest_phase_excludes_clean_phases():
+    """FIX-021: a 0.0-ACPL / 0-flag phase is clean, never weakest."""
+    content, _ = generate_deterministic_report(PROMPT_WITH_CLEAN_PHASE)
+    weakest = next(ln for ln in content.splitlines() if ln.startswith("- Fázově nejslabší:"))
+    assert "endgame" in weakest
+    assert "opening" not in weakest
+    assert "- Čisté fáze: opening" in content
+
+
+def test_weakest_phase_sorted_by_acpl():
+    from lichess_analyzer_mcp.tools.coaching_single_game import _phase_breakdown
+
+    stats = {
+        "endgame": {"acpl": 438.7, "flagged": 10},
+        "middlegame": {"acpl": 68.5, "flagged": 7},
+        "opening": {"acpl": 17.4, "flagged": 0},
+    }
+    text = _phase_breakdown(stats)
+    assert text.index("endgame") < text.index("middlegame") < text.index("opening")
+    assert "čisté fáze" not in text  # opening has ACPL 17.4, so it is not clean
+
+
+def test_all_clean_phases_say_no_weak_phase():
+    from lichess_analyzer_mcp.tools.coaching_single_game import _phase_breakdown
+
+    stats = {
+        "opening": {"acpl": 0.0, "flagged": 0},
+        "middlegame": {"acpl": 0.0, "flagged": 0},
+        "endgame": {"acpl": None, "flagged": 0},
+    }
+    text = _phase_breakdown(stats)
+    assert text.startswith("žádná slabá fáze")
+    assert "čisté fáze: opening, middlegame, endgame" in text
+    content, _ = generate_deterministic_report(
+        PROMPT_WITH_CLEAN_PHASE.replace(
+            "endgame: ACPL 438.7, 10 chyb; middlegame: ACPL 68.5, 7 chyb | čisté fáze: opening",
+            "žádná slabá fáze | čisté fáze: opening, middlegame, endgame",
+        )
+    )
+    assert "Fázově nejslabší" not in content
+    assert "Žádná slabá fáze" in content
 
 
 def test_instruction_markers_do_not_leak():

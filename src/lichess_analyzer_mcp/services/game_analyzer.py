@@ -26,6 +26,10 @@ from lichess_analyzer_mcp.models.analysis import (
     DETECTOR_VERSION,
 )
 from lichess_analyzer_mcp.services import engine_client
+from lichess_analyzer_mcp.services.eval_consistency import (
+    eval_delta,
+    eval_invariant_holds,
+)
 from lichess_analyzer_mcp.services.logger import get_logger
 from lichess_analyzer_mcp.services.pattern_detector import (
     THRESHOLD_GRAB_CP,
@@ -173,6 +177,20 @@ def _save_cached_analysis(
         os.replace(tmp, path)
     except Exception:
         pass
+
+
+def refresh_cached_analysis(game_id: str, depth: int, mode: str, analysis: GameAnalysis) -> bool:
+    """FIX-028: persist post-analysis repairs (recovered PV) into an existing cache.
+
+    The analysis cache is written before `recover_missing_pv` runs, so without
+    this the recovery would re-run the engine on every cache hit. Only an
+    existing cache entry is refreshed - a PGN run never creates one.
+    """
+    path = _cache_path(game_id, depth, analysis.game.color, _policy_token(depth, mode))
+    if not os.path.isfile(path):
+        return False
+    _save_cached_analysis(game_id, depth, analysis, policy=_policy_token(depth, mode))
+    return os.path.isfile(path)
 
 
 def analyze_pgn(
@@ -428,6 +446,7 @@ def _engine_lines_to_dicts(lines: list[dict]) -> list[dict]:
                 "rank": rank,
                 "san": pv_san[0] if pv_san else "",
                 "eval_cp": el.get("score_cp"),
+                "mate_in": el.get("mate"),
                 "pv": pv_san,
             }
         )
@@ -445,8 +464,16 @@ def _build_explanation(move: MoveAnalysis, engine_lines: list[dict]) -> str:
     best = engine_lines[0]
     best_san = best.get("san") or "?"
     best_cp = best.get("eval_cp")
-    best_cp_txt = f"{best_cp:+.0f}" if isinstance(best_cp, (int, float)) else "?"
-    parts = [f"Hráno {move.move_san}; motor preferuje {best_san} (hodnocení {best_cp_txt} cp)."]
+    mate_in = best.get("mate_in")
+    if isinstance(mate_in, int) and mate_in > 0:
+        eval_txt = f"mat v {mate_in}"
+    elif isinstance(mate_in, int) and mate_in < 0:
+        eval_txt = f"mat v {-mate_in} proti hráči"
+    else:
+        eval_txt = (
+            f"hodnocení {best_cp:+.0f} cp" if isinstance(best_cp, (int, float)) else "hodnocení ?"
+        )
+    parts = [f"Hráno {move.move_san}; motor preferuje {best_san} ({eval_txt})."]
     if move.played_rank > 1:
         # We only measured len(engine_lines) candidates. Claiming a concrete
         # rank beyond that would be invented precision (DATA-FABRICATION-001).
@@ -692,6 +719,18 @@ def _run_analyze_pgn(
             )
             eval_before_val = eval_result.get("eval_before", 0) if eval_result else 0
             eval_after_val = eval_result.get("eval_after", 0) if eval_result else 0
+            # FIX-023: a large divergence would make the compact eval pair
+            # contradict cp_loss ("eval rose while the move lost 237 cp").
+            if not eval_invariant_holds(eval_before_val, eval_after_val, cp_loss):
+                _logger.warning(
+                    "ANOMALY_CP_EVAL_MISMATCH ply=%s cp_loss=%.1f "
+                    "eval_before=%s eval_after=%s eval_delta=%s",
+                    ply,
+                    cp_loss,
+                    eval_before_val,
+                    eval_after_val,
+                    eval_delta(eval_before_val, eval_after_val),
+                )
             move_analysis = MoveAnalysis(
                 ply=ply,
                 move_uci=move.uci(),
@@ -816,6 +855,7 @@ def _run_analyze_pgn(
                         rank=e["rank"],
                         move_san=e["san"],
                         eval_cp=e["eval_cp"] if e["eval_cp"] is not None else 0,
+                        mate_in=e.get("mate_in"),
                         win_prob=_win_prob_from_cp(e["eval_cp"]),
                         pv=e["pv"],
                     )

@@ -9,6 +9,7 @@ import chess
 from lichess_analyzer_mcp.services.engine_client import (
     _find_stockfish,
     analyze_position,
+    analyze_position_ex,
     evaluate_move,
     evaluate_move_with_confidence,
     check_blunder_sanity,
@@ -66,6 +67,35 @@ class TestAnalyzePosition:
                 f"engine_lines from depth {item.get('depth')} — "
                 f"should be from depth >= 12, not depth 1,2,3"
             )
+
+
+class TestAnalyzePositionMate:
+    """FIX-027: `score mate N` must survive as an explicit mate value."""
+
+    @patch("lichess_analyzer_mcp.services.engine_client.get_engine")
+    def test_mate_score_parsing(self, mock_get_engine):
+        mock_engine = MagicMock()
+        mock_get_engine.return_value = mock_engine
+
+        mock_score = MagicMock()
+        mock_score.relative.score.return_value = None
+        mock_score.relative.mate.return_value = 5
+        mock_engine.analyse.return_value = [
+            {
+                "pv": [chess.Move.from_uci("d1f3")],
+                "score": mock_score,
+                "depth": 18,
+            }
+        ]
+
+        lines, error = analyze_position_ex(
+            "6k1/6bp/3pp1p1/1q1p4/5Q2/3N1P2/4K1PP/1r6 w - - 10 38",
+            depth=8,
+            multipv=1,
+        )
+        assert error is None
+        assert lines[0]["mate"] == 5
+        assert lines[0]["score_cp"] is None
 
 
 class TestEvaluateMove:

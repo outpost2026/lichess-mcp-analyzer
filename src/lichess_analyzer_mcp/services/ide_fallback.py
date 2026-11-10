@@ -131,7 +131,18 @@ def generate_ide_report(prompt: str, system_prompt: str = "") -> tuple[str, dict
     else:
         lines.append("- Žádný blunder — chyby jsou nepřesnosti/mistakes, viz ACPL per fáze.")
     if phase_line:
-        lines.append(f"- Fázově nejslabší: {phase_line}")
+        # FIX-021: the phase breakdown already separates weak phases from clean
+        # ones ("... | čisté fáze: opening"). A clean phase must never be
+        # presented as weakest, and an all-clean game says so explicitly.
+        weak_part, _, clean_part = phase_line.partition(" | čisté fáze: ")
+        weak_part = weak_part.strip()
+        clean_part = clean_part.strip()
+        if weak_part and weak_part.lower() != "žádná slabá fáze":
+            lines.append(f"- Fázově nejslabší: {weak_part}")
+        else:
+            lines.append("- Žádná slabá fáze — všechny fáze bez chyb.")
+        if clean_part:
+            lines.append(f"- Čisté fáze: {clean_part}")
     lines += [
         "",
         "## Training Recommendations (deterministické)",
