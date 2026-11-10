@@ -454,7 +454,7 @@ lichess-analyzer-mcp/
 |---|------|
 | Testy | **193/193 pass** (`pytest tests -q --ignore=tests/test_engine_client.py`, 7,2 s) |
 | MCP toolů | **18** (12 data + 5 coaching + `lichess_persist_report`) |
-| HEAD / push | `7ce7f61`, `origin/main` synchronní, pracovní strom čistý |
+| v4 / push | `7ce7f61` na `origin/main`; dokumentační změny lokálně, push jen na pokyn |
 | Single-game pipeline | **v4 hotová**: FIX-027 (mate), FIX-023 (cp/eval invariant), FIX-021 (slabé/čisté fáze), FIX-028 (cache refresh) |
 | Výchozí výstup | compact JSON 2.0; detailed 1.1 opt-in (`--format detailed`) |
 | Regresní compact | `FVhqtv1S` 4377, `WpQOkpc0` 2270, `bRBSphxo` (černý) 2342 znaků; limit 4500 pro FV |
