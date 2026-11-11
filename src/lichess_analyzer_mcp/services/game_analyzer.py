@@ -26,6 +26,7 @@ from lichess_analyzer_mcp.models.analysis import (
     DETECTOR_VERSION,
 )
 from lichess_analyzer_mcp.services import engine_client
+from lichess_analyzer_mcp.services import board_facts
 from lichess_analyzer_mcp.services.eval_consistency import (
     eval_delta,
     eval_invariant_holds,
@@ -319,10 +320,6 @@ def _detect_tactical_motif(
         return True, "capture"
 
     return False, None
-    if is_capture:
-        return True, "capture"
-
-    return False, None
 
 
 def _classify_move(cp_loss: float) -> str:
@@ -388,18 +385,21 @@ def _per_blunder_patterns(
             )
         )
     # S — Capture aversion under check: in check, king capture possible but not played
-    if in_check:
-        king_capture_san = [s for s in legal.king_moves if "x" in s]
-        king_capture_played = any("x" in move.move_san for s in legal.king_moves if "x" in s)
-        if king_capture_san and not king_capture_played and cp >= THRESHOLD_S_CAPTURE_AVERSION_CP:
-            matches.append(
-                PatternMatchInfo(
-                    pattern_id="S",
-                    pattern_name="Capture aversion under check",
-                    confidence=0.4,
-                    evidence=f"king capture available but not taken cp_loss={cp:.0f}",
-                )
+    # P0-1: predikaty z board_facts (chess.Board + typ figury), ne z 'x' v SAN.
+    if (
+        in_check
+        and cp >= THRESHOLD_S_CAPTURE_AVERSION_CP
+        and board_facts.king_capture_possible(move.fen)
+        and not board_facts.is_king_capture(move.fen, move.move_uci)
+    ):
+        matches.append(
+            PatternMatchInfo(
+                pattern_id="S",
+                pattern_name="Capture aversion under check",
+                confidence=0.4,
+                evidence=f"king capture available but not taken cp_loss={cp:.0f}",
             )
+        )
     # C — Attention tunneling: consecutive errors
     if prev_move and prev_move.classification in ("blunder", "mistake") and cp >= 200:
         matches.append(
@@ -882,9 +882,13 @@ def _run_analyze_pgn(
                         checking_pieces=[chess.square_name(sq) for sq in board.checkers()]
                         if was_in_check
                         else [],
-                        capture_checking_piece_possible=any("x" in s for s in legal.captures),
-                        king_capture_possible=any("x" in s for s in legal.king_moves),
-                        king_capture_played="x" in move_analysis.move_san and was_in_check,
+                        capture_checking_piece_possible=board_facts.capture_checking_piece_possible(
+                            fen_before
+                        ),
+                        king_capture_possible=board_facts.king_capture_possible(fen_before),
+                        king_capture_played=board_facts.king_capture_played(
+                            fen_before, move_analysis.move_uci, was_in_check
+                        ),
                     ),
                     legal_moves=legal,
                     engine_lines=engine_lines,

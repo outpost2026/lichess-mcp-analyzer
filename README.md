@@ -4,7 +4,7 @@
 
 **MCP server pro analýzu šachových partií, detekci vzorových chyb (pattern library jako kompresní model dle T. Mikolova) a spaced repetition trénink (FSRS/SM-2).**
 
-Verze: `0.1.0` | Stav: **single-game pipeline v4** (compact 2.0 default) | Testy: **206 fast + 15 real engine** | Nástrojů: **18** | v4: `7ce7f61`
+Verze: `0.1.0` | Stav: **single-game pipeline v4** (compact 2.0 default) | Testy: **219 fast + 15 real engine** | Nástrojů: **18** | v4: `7ce7f61`
 
 
 ## Proč?
@@ -386,10 +386,11 @@ lichess-analyzer-mcp/
 │   ├── pgn_to_compact.py        ← Deprecated shim nad coach.py
 │   ├── setup_stockfish.ps1      ← Automatické stažení Stockfish
 │   └── ...                      ← 20+ pomocných scriptů
-├── tests/                       ← 206 fast testů + 15 real-engine (marker real_engine)
+├── tests/                       ← 219 fast testů + 15 real-engine (marker real_engine)
 │   ├── test_services.py         ← modely, komprese, validace
 │   ├── test_prompt_contract.py  ← schema a mapování promptů
 │   ├── test_engine_client.py    ← Stockfish (sdílený engine; real-engine = marker real_engine)
+│   ├── test_board_facts.py      ← P0-1: centrální predikáty S, A1 regrese, ekvivalence BFS/single-game
 │   ├── test_pattern_semantic_contract.py ← semantic contract + min_games
 │   ├── test_dbcl.py             ← win_prob, BFS round-trip, narrative validator, N
 │   ├── test_depth_policy.py     ← depth a časová politika
@@ -452,7 +453,7 @@ lichess-analyzer-mcp/
 
 | Co | Stav |
 |---|------|
-| Testy (fast) | **206/206 pass** (`pytest tests -q`, 5,4 s; default vylučuje `real_engine`) |
+| Testy (fast) | **219/219 pass** (`pytest tests -q`, 4,6 s; default vylučuje `real_engine`) |
 | Testy (real engine) | **15/15 pass** (`pytest tests -m real_engine`, 9,2 s); GREEN — deterministické díky `clear_hash()` ve fixture |
 | MCP toolů | **18** (12 data + 5 coaching + `lichess_persist_report`) |
 | v4 / push | `7ce7f61` na `origin/main`; dokumentační změny lokálně, push jen na pokyn |
@@ -463,7 +464,7 @@ lichess-analyzer-mcp/
 | Engine / cache | Stockfish depth 14, cache `d14n150000` |
 | CI ruff | **GREEN** (`uvx ruff check src/ tests/`, ruff 0.17.4, select E4/E7/E9/F) |
 | CI mypy | **RED** — 77 chyb/16 souborů (mypy 2.3.0); gate dlouhodobě neprochází, CI pytest krok je za ním |
-| CI pytest | lokálně fast **206/206** + engine **15/15**; v CI je krok za RED mypy gate a `addopts` engine sadu vylučuje (rozhodnutí o engine kroku = D6) |
+| CI pytest | lokálně fast **219/219** + engine **15/15**; v CI je krok za RED mypy gate a `addopts` engine sadu vylučuje (rozhodnutí o engine kroku = D6) |
 | Patterny | 14 definovaných (A–S, I→I2), 13 aktivních detektorů + I manual_only |
 | Dokumentace | `README.md` aktuální; `README_en.md` a `docs/CONTEXT_INJECT.md` zastaralé |
 
@@ -492,7 +493,7 @@ lichess-analyzer-mcp/
   E401 16, F401 11, F841 3, E722 1).
 - **`tests/test_engine_client.py`** býval maskován dvakrát (lokálně
   `--ignore`, v CI za RED mypy gate). Od 2026-11-11 je rozdělen markerem
-  `real_engine`: default `pytest` = 206 fast testů, `pytest -m real_engine`
+  `real_engine`: default `pytest` = 219 fast testů, `pytest -m real_engine`
   = 15 testů proti skutečnému Stockfish. Stale expectation `top_move == "f2c2"`
   (závislá na buildu a `multipv`; Stockfish 18 v `multipv=1` dává `b1h7`)
   nahrazeny invariantami: hloubka ≥ 12 + Qh4 není #1.
@@ -504,9 +505,18 @@ lichess-analyzer-mcp/
   `_fresh_engine_state` (GT-106/P97, GT-093/P73); v produkci se hash maže
   jednou za hru (`game_analyzer.py:929`). Dopad na FIX-023: provenance
   musí reportovat i stav engine, ne jen depth.
-- **`king_capture_played`** je v `game_analyzer.py` odvozen z `x` v SAN
-  během šachu, takže jakékoli braní potlačí pattern S. `pattern_detector.py`
-  má správnou verzi přes typ figury; obě cesty se mohou rozcházet.
+- **P0-1 `king_capture_played` OPRAVENO (2026-11-11)**: odvozovalo se z `x`
+  v SAN během šachu, takže jakékoli braní potlačilo pattern S. Nově
+  `services/board_facts.py` = jediný zdroj predikátů (typ figury přes
+  `chess.Board`, totalita bez výjimek) pro všechna 4 místa: BFS
+  `_per_blunder_patterns`, single-game `_single_game_candidate`, cross-game
+  `_detect_s` a `BoardState`. A1: `capture_checking_piece_possible` už není
+  „jakékoli braní" (mimo sach = False). Regrese: `tests/test_board_facts.py`
+  (3 FEN fixtures + ekvivalence BFS/single-game).
+- **Snapshoty `systeq` 2026-11-11**: 7 her (3 blitz d12 + 4 rapid d14,
+  výsledky 3 win / 2 loss / 2 draw, 3 white + 4 black) analyzováno přes MCP,
+  sha256 + metriky v `docs/SNAPSHOT_SYSEQ_2026-11-11.json` (cache je
+  gitignored) — základ pro diffy po refaktoru.
 - **Quiet blunder**: 98/228 blunderů (43 %) v cache s aktuálním detektorem
   nemá motiv ani pattern (cp < 2000, medián 384). Tichý poziční blunder
   neprojde žádnou větví `_single_game_candidate`; řešení je explicitní

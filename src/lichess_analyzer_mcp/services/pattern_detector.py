@@ -13,6 +13,7 @@ import chess
 
 from lichess_analyzer_mcp.models.pattern import PatternMatch, PatternLibrary
 from lichess_analyzer_mcp.models.game import GameAnalysis
+from lichess_analyzer_mcp.services import board_facts
 
 THRESHOLD_TUNNEL_CONSECUTIVE = 2
 THRESHOLD_GRAB_CP = 100
@@ -507,13 +508,9 @@ class PatternDetector:
         for analysis in analyses:
             for m in analysis.moves:
                 if m.was_in_check and m.centipawn_loss >= THRESHOLD_S_CAPTURE_AVERSION_CP and m.fen:
-                    board = chess.Board(m.fen)
-                    king_square = board.king(board.turn)
-                    if king_square:
-                        for checker in board.checkers():
-                            if board.is_legal(chess.Move(king_square, checker)):
-                                affected.append(analysis.game.id)
-                                break
+                    # P0-1: kral muze primo sebrat sachujiho (board_facts, ne rucni cyklus)
+                    if board_facts.king_can_capture_checker(m.fen):
+                        affected.append(analysis.game.id)
         if affected:
             total_games = len(analyses)
             return PatternMatch(
@@ -619,31 +616,18 @@ def _single_game_candidate(move, prev_move) -> list[dict]:
         )
 
     if move.was_in_check and cp >= THRESHOLD_S_CAPTURE_AVERSION_CP:
-        try:
-            board = chess.Board(move.fen)
-            played = chess.Move.from_uci(move.move_uci)
-            king_captures = [
-                mv
-                for mv in board.legal_moves
-                if board.piece_at(mv.from_square).piece_type == chess.KING and board.is_capture(mv)
-            ]
-            played_piece = board.piece_at(played.from_square)
-            played_king_capture = (
-                played_piece is not None
-                and played_piece.piece_type == chess.KING
-                and board.is_capture(played)
+        # P0-1: predikaty z board_facts; totalita FEN resi primo (zadny silent except).
+        if board_facts.king_capture_possible(move.fen) and not board_facts.is_king_capture(
+            move.fen, move.move_uci
+        ):
+            out.append(
+                {
+                    "pattern_id": "S",
+                    "pattern_name": "Capture aversion under check",
+                    "confidence": 0.4,
+                    "detail": "king capture available but not played",
+                }
             )
-            if king_captures and not played_king_capture:
-                out.append(
-                    {
-                        "pattern_id": "S",
-                        "pattern_name": "Capture aversion under check",
-                        "confidence": 0.4,
-                        "detail": "king capture available but not played",
-                    }
-                )
-        except Exception:  # malformed FEN must not break the report
-            pass
 
     if prev_move is not None and prev_move.classification in ("blunder", "mistake") and cp >= 200:
         out.append(
