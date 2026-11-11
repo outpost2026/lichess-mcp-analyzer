@@ -111,6 +111,17 @@ def capture_checking_piece_possible(fen: str) -> bool:
     return False
 
 
+def checking_pieces(fen: str) -> list[str]:
+    """Sachujici figury pro ``board_state.checking_pieces`` (P0-1 totalita).
+
+    Volano jen pri ``was_in_check=True``; mimo sach nebo pri chybe FEN = [].
+    """
+    board = _board(fen)
+    if board is None or not board.is_check():
+        return []
+    return [chess.square_name(sq) for sq in board.checkers()]
+
+
 def king_can_capture_checker(fen: str) -> bool:
     """Kral muze primo sebrat sachujiho figurou (cross-game detektor S)."""
     board = _board(fen)

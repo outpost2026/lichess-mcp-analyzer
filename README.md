@@ -136,7 +136,7 @@ Per-blunder struktura s:
 - `engine_lines` (rank, move_san, eval_cp, win_prob, PV)
 - `played_move_rank`, `pattern_matches` (pattern_id, name, confidence, evidence)
 - `context_window` (3 tahy před/po s eval + win_prob)
-- `detector_version`: `DBCL-20260727-dev`
+- `detector_version`: `DBCL-20261111-dev`
 
 ### Narrative validator (`services/narrative_validator.py`)
 
@@ -520,8 +520,11 @@ lichess-analyzer-mcp/
   `pattern_detector.per_move_patterns`; oba volající jsou thin wrappery.
   BFS nově zahrnuje i **T** (dříve jen compact) — naměřeno na 138 fact
   sheetch: **35 (25 %) získá T**, B/J/R/S/C beze změny. Dle plánu §288
-  jde o změnu patternu → vyžaduje bump `DETECTOR_VERSION` (rozhodnutí
-  o termínu a způsobu u autora).
+  jde o změnu patternu → bump `DETECTOR_VERSION` **proveden 2026-11-11**
+  (`DBCL-20260727-dev` → `DBCL-20261111-dev`) lokální migrací bez engine:
+  `scripts/migrate_detector_version.py` přepočítal `pattern_matches`
+  (277 změn, +65 id) a `board_state` (801/943) ze stored FEN, záloha
+  236 souborů (6 186 463 B) v `data/_backup_migrate_2026-11-11/`.
 - **Snapshoty `systeq` 2026-11-11**: 7 her (3 blitz d12 + 4 rapid d14,
   výsledky 3 win / 2 loss / 2 draw, 3 white + 4 black) analyzováno přes MCP,
   sha256 + metriky v `docs/SNAPSHOT_SYSEQ_2026-11-11.json` (cache je

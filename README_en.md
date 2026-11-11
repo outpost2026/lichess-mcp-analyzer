@@ -121,7 +121,7 @@ Per-blunder structure with:
 - `engine_lines` (rank, move_san, eval_cp, win_prob, PV)
 - `played_move_rank`, `pattern_matches` (pattern_id, name, confidence, evidence)
 - `context_window` (3 moves before/after with eval + win_prob)
-- `detector_version`: `DBCL-20260727-dev`
+- `detector_version`: `DBCL-20261111-dev`
 
 ### Narrative validator (`services/narrative_validator.py`)
 

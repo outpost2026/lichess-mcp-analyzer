@@ -89,7 +89,7 @@
 - `engine_lines` (rank, move_san, eval_cp, win_prob, pv), `played_move_rank`
 - `pattern_matches` (pattern_id, pattern_name, confidence, evidence)
 - `context_window` (3 moves before/after with eval+win_prob)
-- `detector_version` constant: `DBCL-20260727-dev`
+- `detector_version` constant: `DBCL-20261111-dev`
 
 ### narrative_validator (`services/narrative_validator.py`)
 - 5 claim categories: piece-on-square, check, capture, eval-number, king-move

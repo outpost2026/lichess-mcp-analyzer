@@ -10,7 +10,7 @@
   "jen dokoncene partie (mate/resign/draw/outoftime), bez abort"
  ],
  "git_head_at_creation": "effcfe1",
- "detector_version": "DBCL-20260727-dev (models/analysis.py)",
+ "detector_version": "DBCL-20261111-dev (models/analysis.py; bump 2026-11-11 po P0-2 + lokalni migrace 236 souboru/943 fact sheets bez engine, zaloha data/_backup_migrate_2026-11-11)",
  "depth_policy": "config/depth.py DEPTH_DEFAULTS: blitz=12, rapid=14 (auto podle time_control)",
  "engine_binary": [
   "stockfish\\stockfish-bmi2.exe",
