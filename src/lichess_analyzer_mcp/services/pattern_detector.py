@@ -576,11 +576,28 @@ class PatternDetector:
 # that exist inside a single game and labels its output with scope=single_game.
 
 
-def _single_game_candidate(move, prev_move) -> list[dict]:
-    """Return zero or more per-move pattern candidates for one flagged move."""
+def per_move_patterns(
+    move,
+    prev_move=None,
+    in_check: bool | None = None,
+) -> list[dict]:
+    """Jediná implementace per-move patternů B/J/R/S/C/T (P0-2).
+
+    Obě cesty ji volají, takže BFS (``game_analyzer._per_blunder_patterns`` →
+    BlunderFactSheet) a single-game (``_single_game_candidate`` → compact)
+    musí pro stejný tah vrátit stejné patterny i confidence
+    (akceptance REFACTOR_PLAN §P0-2: „BFS = single-game patterny").
+
+    - ``in_check``: výchozí ``move.was_in_check``; BFS předává svůj parametr.
+    - Práh ``R`` chrání ``(move.eval_before or 0)`` (P0-3/None politika).
+    - Predikát S: ``board_facts`` (P0-1), typ figury, ne SAN ``x``.
+    """
+    if in_check is None:
+        in_check = bool(getattr(move, "was_in_check", False))
     cp = float(move.centipawn_loss or 0)
     out: list[dict] = []
 
+    # B — Automatic grab: capture that is a blunder/mistake
     if "x" in (move.move_san or "") and cp >= THRESHOLD_GRAB_CP:
         out.append(
             {
@@ -591,7 +608,8 @@ def _single_game_candidate(move, prev_move) -> list[dict]:
             }
         )
 
-    if move.was_in_check and "x" not in (move.move_san or "") and cp >= THRESHOLD_BLOCK_CP:
+    # J — Impulsive check block: in check, non-capture, cp_loss >= THRESHOLD_BLOCK_CP
+    if in_check and "x" not in (move.move_san or "") and cp >= THRESHOLD_BLOCK_CP:
         out.append(
             {
                 "pattern_id": "J",
@@ -601,6 +619,7 @@ def _single_game_candidate(move, prev_move) -> list[dict]:
             }
         )
 
+    # R — Endgame relaxation: endgame, eval_before > THRESHOLD_ENDGAME_EVAL, cp_loss >= THRESHOLD_ENDGAME_CP
     if (
         move.phase == "endgame"
         and (move.eval_before or 0) > THRESHOLD_ENDGAME_EVAL
@@ -611,24 +630,28 @@ def _single_game_candidate(move, prev_move) -> list[dict]:
                 "pattern_id": "R",
                 "pattern_name": "Endgame relaxation",
                 "confidence": min(cp / 1000, 0.85),
-                "detail": f"endgame eval_before={move.eval_before:.0f}, cp_loss={cp:.0f}",
+                "detail": f"endgame eval_before={move.eval_before or 0:.0f}, cp_loss={cp:.0f}",
             }
         )
 
-    if move.was_in_check and cp >= THRESHOLD_S_CAPTURE_AVERSION_CP:
-        # P0-1: predikaty z board_facts; totalita FEN resi primo (zadny silent except).
-        if board_facts.king_capture_possible(move.fen) and not board_facts.is_king_capture(
-            move.fen, move.move_uci
-        ):
-            out.append(
-                {
-                    "pattern_id": "S",
-                    "pattern_name": "Capture aversion under check",
-                    "confidence": 0.4,
-                    "detail": "king capture available but not played",
-                }
-            )
+    # S — Capture aversion under check: in check, king capture possible but not played
+    # P0-1: predikaty z board_facts; totalita FEN resi primo (zadny silent except).
+    if (
+        in_check
+        and cp >= THRESHOLD_S_CAPTURE_AVERSION_CP
+        and board_facts.king_capture_possible(move.fen)
+        and not board_facts.is_king_capture(move.fen, move.move_uci)
+    ):
+        out.append(
+            {
+                "pattern_id": "S",
+                "pattern_name": "Capture aversion under check",
+                "confidence": 0.4,
+                "detail": "king capture available but not played",
+            }
+        )
 
+    # C — Attention tunneling: consecutive errors
     if prev_move is not None and prev_move.classification in ("blunder", "mistake") and cp >= 200:
         out.append(
             {
@@ -639,6 +662,7 @@ def _single_game_candidate(move, prev_move) -> list[dict]:
             }
         )
 
+    # T — Tactical oversight: motif present with real loss
     if move.is_tactical_motif and cp >= 50:
         out.append(
             {
@@ -650,6 +674,11 @@ def _single_game_candidate(move, prev_move) -> list[dict]:
         )
 
     return out
+
+
+def _single_game_candidate(move, prev_move) -> list[dict]:
+    """Thin wrapper nad společným jádrem (P0-2: jediná implementace)."""
+    return per_move_patterns(move, prev_move)
 
 
 def detect_single_game(analysis: GameAnalysis) -> list[dict]:

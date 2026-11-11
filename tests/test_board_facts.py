@@ -16,7 +16,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from lichess_analyzer_mcp.services import board_facts
 from lichess_analyzer_mcp.services.game_analyzer import _per_blunder_patterns
 from lichess_analyzer_mcp.services.pattern_detector import _single_game_candidate
-from lichess_analyzer_mcp.models.analysis import LegalMovesSummary
 from lichess_analyzer_mcp.models.game import MoveAnalysis
 
 # F1: bily Ke1 v sachu od cerneho De2 (e-file, sousedni), král muze Kxe2.
@@ -104,7 +103,7 @@ class TestBfsSingleGameAgreement:
     """P0-1 acceptance: oba detektory musi pro tenze tah dat stejny verdikt S."""
 
     def _ids_bfs(self, move: MoveAnalysis) -> set[str]:
-        matches = _per_blunder_patterns(move, LegalMovesSummary(), True, None)
+        matches = _per_blunder_patterns(move, True, None)
         return {m.pattern_id for m in matches}
 
     def _ids_single(self, move: MoveAnalysis) -> set[str]:

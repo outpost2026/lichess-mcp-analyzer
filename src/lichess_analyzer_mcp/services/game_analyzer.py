@@ -32,13 +32,7 @@ from lichess_analyzer_mcp.services.eval_consistency import (
     eval_invariant_holds,
 )
 from lichess_analyzer_mcp.services.logger import get_logger
-from lichess_analyzer_mcp.services.pattern_detector import (
-    THRESHOLD_GRAB_CP,
-    THRESHOLD_BLOCK_CP,
-    THRESHOLD_ENDGAME_CP,
-    THRESHOLD_ENDGAME_EVAL,
-    THRESHOLD_S_CAPTURE_AVERSION_CP,
-)
+from lichess_analyzer_mcp.services.pattern_detector import per_move_patterns
 
 _logger = get_logger("game_analyzer")
 
@@ -344,73 +338,24 @@ def _detect_phase(ply: int) -> str:
 
 def _per_blunder_patterns(
     move: MoveAnalysis,
-    legal: LegalMovesSummary,
     in_check: bool,
     prev_move: MoveAnalysis | None = None,
 ) -> list[PatternMatchInfo]:
-    matches = []
-    cp = move.centipawn_loss
-    # B — Automatic grab: capture that is a blunder/mistake
-    if "x" in move.move_san and cp >= THRESHOLD_GRAB_CP:
-        matches.append(
-            PatternMatchInfo(
-                pattern_id="B",
-                pattern_name="Automatic grab",
-                confidence=min(cp / 500, 0.95),
-                evidence=f"capture blunder cp_loss={cp:.0f}",
-            )
+    """BFS cesta k per-move patternům (P0-2: thin wrapper nad per_move_patterns).
+
+    Dříve vlastní kopie B/J/R/S/C (bez T) — nyní volá společné jádro
+    v ``pattern_detector.per_move_patterns``, takže BFS (BlunderFactSheet)
+    a single-game (compact) dávají stejné patterny i confidence.
+    """
+    return [
+        PatternMatchInfo(
+            pattern_id=c["pattern_id"],
+            pattern_name=c["pattern_name"],
+            confidence=c["confidence"],
+            evidence=c["detail"],
         )
-    # J — Impulsive check block: in check, non-capture, cp_loss >= THRESHOLD_BLOCK_CP
-    if in_check and "x" not in move.move_san and cp >= THRESHOLD_BLOCK_CP:
-        matches.append(
-            PatternMatchInfo(
-                pattern_id="J",
-                pattern_name="Impulsive check block",
-                confidence=min(cp / 600, 0.85),
-                evidence=f"in_check block cp_loss={cp:.0f}",
-            )
-        )
-    # R — Endgame relaxation: endgame, eval_before > THRESHOLD_ENDGAME_EVAL, cp_loss >= THRESHOLD_ENDGAME_CP
-    if (
-        move.phase == "endgame"
-        and move.eval_before > THRESHOLD_ENDGAME_EVAL
-        and cp >= THRESHOLD_ENDGAME_CP
-    ):
-        matches.append(
-            PatternMatchInfo(
-                pattern_id="R",
-                pattern_name="Endgame relaxation",
-                confidence=min(cp / 1000, 0.85),
-                evidence=f"endgame eval_before={move.eval_before:.0f} cp_loss={cp:.0f}",
-            )
-        )
-    # S — Capture aversion under check: in check, king capture possible but not played
-    # P0-1: predikaty z board_facts (chess.Board + typ figury), ne z 'x' v SAN.
-    if (
-        in_check
-        and cp >= THRESHOLD_S_CAPTURE_AVERSION_CP
-        and board_facts.king_capture_possible(move.fen)
-        and not board_facts.is_king_capture(move.fen, move.move_uci)
-    ):
-        matches.append(
-            PatternMatchInfo(
-                pattern_id="S",
-                pattern_name="Capture aversion under check",
-                confidence=0.4,
-                evidence=f"king capture available but not taken cp_loss={cp:.0f}",
-            )
-        )
-    # C — Attention tunneling: consecutive errors
-    if prev_move and prev_move.classification in ("blunder", "mistake") and cp >= 200:
-        matches.append(
-            PatternMatchInfo(
-                pattern_id="C",
-                pattern_name="Attention tunneling",
-                confidence=min(cp / 500, 0.8),
-                evidence=f"consecutive error after ply={prev_move.ply} cp_loss={cp:.0f}",
-            )
-        )
-    return matches
+        for c in per_move_patterns(move, prev_move, in_check)
+    ]
 
 
 def _win_prob_from_cp(cp: float) -> float:
@@ -764,7 +709,7 @@ def _run_analyze_pgn(
             if classification in ("blunder", "mistake", "inaccuracy"):
                 legal = _extract_legal_moves(board)
                 prev_move = analysis.moves[-2] if len(analysis.moves) >= 2 else None
-                patterns = _per_blunder_patterns(move_analysis, legal, was_in_check, prev_move)
+                patterns = _per_blunder_patterns(move_analysis, was_in_check, prev_move)
 
                 engine_lines_raw: list[dict] = []
                 remaining_engine = max(0.0, engine_deadline - time.perf_counter())
