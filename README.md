@@ -448,21 +448,22 @@ lichess-analyzer-mcp/
 | Lint | ruff (CI: E4/E7/E9/F; širší sada I/UP/N/S/E501 = tech debt) |
 
 
-## Stav projektu (2026-11-10)
+## Stav projektu (2026-11-11)
 
 | Co | Stav |
 |---|------|
-| Testy | **193/193 pass** (`pytest tests -q --ignore=tests/test_engine_client.py`, 7,2 s) |
+| Testy (fast) | **193/193 pass** (`pytest tests -q --ignore=tests/test_engine_client.py`, 7,2 s) |
+| Testy (real engine) | **27/28 pass, 1 failed** (`tests/test_engine_client.py`, 26,2 s); RED |
 | MCP toolů | **18** (12 data + 5 coaching + `lichess_persist_report`) |
 | v4 / push | `7ce7f61` na `origin/main`; dokumentační změny lokálně, push jen na pokyn |
-| Single-game pipeline | **v4 hotová**: FIX-027 (mate), FIX-023 (cp/eval invariant), FIX-021 (slabé/čisté fáze), FIX-028 (cache refresh) |
+| Single-game pipeline | **v4 hotová**: FIX-027 (mate), FIX-023 (containment v compactu; root fix pending), FIX-021 (slabé/čisté fáze), FIX-028 (cache refresh) |
 | Výchozí výstup | compact JSON 2.0; detailed 1.1 opt-in (`--format detailed`) |
 | Regresní compact | `FVhqtv1S` 4377, `WpQOkpc0` 2270, `bRBSphxo` (černý) 2342 znaků; limit 4500 pro FV |
 | Cache-hit overhead | 0,28–0,45 s steady state; první hit po upgradu až ~1,56 s (FIX-028 warm-up) |
 | Engine / cache | Stockfish depth 14, cache `d14n150000` |
 | CI ruff | **GREEN** (`uvx ruff check src/ tests/`, ruff 0.17.4, select E4/E7/E9/F) |
 | CI mypy | **RED** — 77 chyb/16 souborů (mypy 2.3.0); gate dlouhodobě neprochází, CI pytest krok je za ním |
-| CI pytest | **GREEN lokálně** 193/193; v CI nedosažen kvůli mypy |
+| CI pytest | fast 193/193 lokálně; engine suite RED (1 failed); v CI nedosažen kvůli mypy |
 | Patterny | 14 definovaných (A–S, I→I2), 13 aktivních detektorů + I manual_only |
 | Dokumentace | `README.md` aktuální; `README_en.md` a `docs/CONTEXT_INJECT.md` zastaralé |
 
@@ -489,8 +490,22 @@ lichess-analyzer-mcp/
   AttributeError, vyšetřit před ignorováním.
 - **`scripts/` je mimo CI ruff gate**: 146 nálezů (F541 74, E402 41,
   E401 16, F401 11, F841 3, E722 1).
-- **`tests/test_engine_client.py`** se lokálně vylučuje (sdílený engine,
-  flaky), ale CI ho spouští v celé suite.
+- **`tests/test_engine_client.py`** se lokálně vylučuje, ale CI ho spouští
+  v celé suite. Plný běh 2026-11-11: **27/28 pass, 1 failed** —
+  `TestIDGameQh4::test_analyze_position_qh4_rank1` čeká `f2c2`, ale
+  Stockfish 18 vrací při `multipv=1` `b1h7` (při `multipv=3` je `f2c2`
+  první linie). Jde o stale expectation závislou na buildu a `multipv`,
+  ne o náhodný flake. CI pytest krok je navíc za RED mypy gate.
+- **`king_capture_played`** je v `game_analyzer.py` odvozen z `x` v SAN
+  během šachu, takže jakékoli braní potlačí pattern S. `pattern_detector.py`
+  má správnou verzi přes typ figury; obě cesty se mohou rozcházet.
+- **Quiet blunder**: 98/228 blunderů (43 %) v cache s aktuálním detektorem
+  nemá motiv ani pattern (cp < 2000, medián 384). Tichý poziční blunder
+  neprojde žádnou větví `_single_game_candidate`; řešení je explicitní
+  `unclassified` stav, ne nový pattern bez mechanismu.
+- **Compact 2.0 neobsahuje `patterns_meta`** (schema má
+  `additionalProperties: false`), takže prázdný `patterns` list nemá důvod;
+  detailed 1.1 ho má povinný.
 - **MCP server může servírovat starý kód** po změně — po nasazení v4
   restartovat proces; CLI používá aktuální kód.
 - **`datetime.utcnow()`** v `kb/writer.py:32` generuje 2 deprecation
@@ -516,6 +531,7 @@ lichess-analyzer-mcp/
 - `00_STRATEGIE/02_chess/chess_mcp_strategy_v1.md` — strategický plán
 - `00_STRATEGIE/DALSI_KROKY_po_RUN_003.md` — 15-commit follow-up checklist
 - `docs/PHASE2_BUILD_PLAN.md` — build plan v3.0
+- `docs/REFACTOR_PLAN_2026-11-11.md` — audit handoffu v1.0 + fázovaný refaktor (Fáze 0–3, rozhodnutí D1–D6)
 
 ### Pattern library a analýzy
 - `B2B-KB/04_KNOWLEDGE_BASE/02_chess/player_pattern_library_v1.json` — zdrojová knihovna 17 patternů
