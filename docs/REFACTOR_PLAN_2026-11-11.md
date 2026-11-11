@@ -19,7 +19,7 @@ Handoff v1.0 je strategicky správný: prioritizuje správnost a konzistenci př
 
 | # | Tvrzení | Verdikt | Confidence |
 |---|---|---|---|
-| 1 | P0.1 `king_capture_played` je odvozen z `x` v SAN | **Potvrzeno, Závažnější než handoff tvrdí** | P>0.95 |
+| 1 | P0.1 `king_capture_played` je odvozen z `x` v SAN | **Potvrzeno, závažnější než handoff tvrdí** | P>0.95 |
 | 2 | P0.2 `_detect_phase` je segmentace podle ply, ne fáze | **Potvrzeno** | P>0.95 |
 | 3 | P0.3 `confidence` má více významů | **Potvrzeno, minimálně 4 významy** | P>0.95 |
 | 4 | P0.4 `accuracy` je lokální heuristika, ne Lichess | **Potvrzeno** | P>0.95 |
@@ -30,7 +30,7 @@ Handoff v1.0 je strategicky správný: prioritizuje správnost a konzistenci př
 | 9 | LLM providery jsou 404/402 | **Neověřeno v této session** | — |
 | 10 | Handoffu chybí effort estimates, non-goals, LLM strategie | **Potvrzeno (obsahová absence)** | P>0.95 |
 
-**Zásadní korekce:** FIX-023 není chyba znaménka. `cp_loss` a dvojice `eval_before`/`eval_after` pocházejí ze dvou různých výpočtů se dvěma různými baseline. Jakákoli „oprava znaménka“ by byla chybná. Skutečná vada je chybějící provenance a presentace derived hodnoty jako měření.
+**Zásadní korekce:** FIX-023 není chyba znaménka. `cp_loss` je kotven k re-searchi nejlepšího tahu, zatímco `eval_before`/`eval_after` k evaluaci rodiče a sehrávky. Invariant platí jen při `eval_before ≈ best_player`; rozdíl je search instability, ne převrácené znaménko. Jakákoli „oprava znaménka“ by byla chybná. Skutečná vada je chybějící provenance a prezentace derived hodnoty jako měření.
 
 **Druhá zásadní korekce:** P0.1 není jen bug v `game_analyzer.py`. Stejný pattern `S` je implementován dvakrát: v `game_analyzer._per_blunder_patterns` **chybně** (SAN `x`) a v `pattern_detector._single_game_candidate` **správně** (kontrola typu figury). Dva výstupy téže pipeline si mohou odporovat.
 
@@ -61,7 +61,7 @@ Handoff v1.0 je strategicky správný: prioritizuje správnost a konzistenci př
 1. **False negative pro pattern S:** jakékoli braní v šachu (např. `Qxd4`) potlačí detekci „hráč nebral králem“.
 2. **Nekonzistence výstupů:** BFS `pattern_matches` (prompt, detailed) a top-level `patterns` (compact) používají různé implementace stejného patternu.
 
-**Nový nález A1 (nad rámec handoffu):** `capture_checking_piece_possible` je také širší než název. Na řádku 885 se nastaví `True` při jakémkoli legálním braní, ne pouze při braní figura, která dává šach:
+**Nový nález A1 (nad rámec handoffu):** `capture_checking_piece_possible` je také širší než název. Na řádku 885 se nastaví `True` při jakémkoli legálním braní, ne pouze při braní figury, která dává šach:
 ```python
 capture_checking_piece_possible=any("x" in s for s in legal.captures),
 ```
@@ -147,7 +147,7 @@ Konzument to může číst jako „bylo možné sebrat šachující figuru“, c
 
 **Důkaz:**
 
-- Soubor má 28 testů; část je mockovaná, část volá reálný Stockfish (`TestEvaluateMoveRealEngine`, `TestEvaluateMoveLegalGuard`, `TestEvaluateMoveD2Fix`, `TestEvaluateMoveConfidence`, `TestIDGameQh4`).
+- Soubor má 28 testů; část je mockovaná, část volá reálný Stockfish (`TestEvaluateMoveDeterminism`, `TestEvaluateMoveLegalGuard`, `TestEvaluateMoveD2Fix`, `TestEvaluateMoveConfidence`, `TestIDGameQh4`).
 - `tests/test_engine_client.py:179-193` připouští spread až **600 cp**; test `test_qh4_cp_loss_range` připouští **0-1200 cp** (řádek 255). Docstringy výslovně říkají „evaluate_move is nondeterministic between sessions“.
 - `tests/test_engine_client.py:169-177` vyžaduje deterministický `best_move`, ale připouští jakékoli cp_loss.
 - `.github/workflows/test.yml:51` spouští `pytest tests/ -v` **včetně** tohoto souboru.
@@ -217,6 +217,8 @@ Poznámka k předchozímu 900s timeoutu: šlo o artefakt invocation s pipingem (
 | rozdělení podle segmentu | middlegame 66, endgame 24, opening 8 |
 | cp pásma | 300-499: 77, 500-999: 21 |
 
+Poznámka k výběru: sken zahrnul 224 souborů, které mají `blunder_fact_sheets` s `DBCL-20260727-dev`; 46 souborů bez BFS nebylo zahrnuto. Čísla tedy platí pro množinu s dostupnými BFS, ne pro celý archiv.
+
 Konkrétní reprodukce (všechny s `motif_type: null`, BFS `pattern_matches: []`):
 
 | Hra | Barva | Ply | Tah | cp_loss |
@@ -228,9 +230,9 @@ Konkrétní reprodukce (všechny s `motif_type: null`, BFS `pattern_matches: []`
 **Mechanické vysvětlení (nový nález A2):** `_single_game_candidate` umí jen:
 
 - B: braní (`x` v SAN) s cp ≥ 100,
-- J: šach a netáhl-braní s cp ≥ 150,
+- J: v šachu a tah není braní, s cp ≥ 150,
 - R: `phase == endgame` a eval_before > 300 a cp ≥ 300,
-- S: v šachu a dostupné braní králem,
+- S: v šachu, dostupné braní králem a hráč ho nezahrál,
 - C: předchozí tah blunder/mistake a cp ≥ 200,
 - T: `is_tactical_motif` a cp ≥ 50.
 
@@ -238,7 +240,7 @@ Tichý poziční blunder bez braní, bez šachu, mimo endgame a bez taktického 
 
 **Verdikt:** Potvrzeno a kvantifikováno. Kritika má pravdu, že to má být P0. Nemá ale pravdu v tom, že řešením je okamžitě přidat pattern. Pattern bez mechanismu by porušil princip „every reported pattern has traceable evidence“.
 
-**Doporučení:** nejdřív explicitní stav `unclassified` s důvodem (`no_matching_detector`), teprve po taxonomii a kalibraci nový pattern (např. `Q3 — positional oversight`) s definovaným mechanismem a testy na false positives. To je i odpověď na otázku, zda FIX-029 je pattern: **není, dokud není mechanisms.**
+**Doporučení:** nejdřív explicitní stav `unclassified` s důvodem (`no_matching_detector`), teprve po taxonomii a kalibraci nový pattern (např. `Q3 — positional oversight`) s definovaným mechanismem a testy na false positives. To je i odpověď na otázku, zda FIX-029 je pattern: **není, dokud nemá mechanismus.**
 
 ---
 
@@ -268,7 +270,7 @@ Tichý poziční blunder bez braní, bez šachu, mimo endgame a bez taktického 
 | ID | Nález | Důkaz | Dopad |
 |---|---|---|---|
 | A1 | `capture_checking_piece_possible` je true při jakémkoli braní | `game_analyzer.py:885` | false positive v BFS; LLM může dostat nepravdivý fakt |
-| A2 | Quiet blunder je strukturálně nedosažitelný pro všechny detektory | `pattern_detector.py:582-668` | 43 % blunderů bez patternu |
+| A2 | Quiet blunder je strukturálně nedosažitelný pro single-game detektory | `pattern_detector.py:582-668` | 43 % blunderů bez patternu |
 | A3 | `sev` v compactu je odvozeno z `conf` | `compact_serializer.py:68-79` | závažnost patternu závisí na významu confidence |
 | A4 | Cache klíč neobsahuje engine build/hash/threads | názvy `*_d14n150000.json`; `ADAPTIVE_HASH_TABLE` | nereprodukovatelnost, slepé místo při srovnání běhů |
 | A5 | Pattern S má dvě implementace s různou správností | `game_analyzer.py:391-394` vs `pattern_detector.py:621-646` | BFS a compact si mohou odporovat |
@@ -292,11 +294,11 @@ Tichý poziční blunder bez braní, bez šachu, mimo endgame a bez taktického 
 | ID | Úkol | Soubory | Acceptance criteria |
 |---|---|---|---|
 | P0-1 | Centrální board facts: `king_capture_played`, `capture_checking_piece_possible`, typ táhnuté figury | nový `services/board_facts.py`; `game_analyzer.py`; `pattern_detector.py` | 3 FEN fixtures projdou; obě cesty (BFS i single-game) vrací stejný výsledek |
-| P0-2 | Odstranit duplikaci pattern S a mrtvý kód | `game_analyzer.py:321-325, 348-420` | jediná implementace; test na `Qxd4` v šachu = S false, `Kxd4` = S true |
+| P0-2 | Odstranit duplicitní per-blunder detektory (B/J/R/S) a mrtvý kód | `game_analyzer.py:321-325, 348-420` | jediná implementace; test na `Qxd4` v šachu = S false, `Kxd4` = S true; BFS a single-game patterny se rovnají |
 | P0-3 | `phase` vs `segment`: přidat `phase_method` a `chess_phase` (material-based), `phase` aliasovat | `models/game.py`, `game_analyzer.py`, `pattern_detector.py` | payload vždy nese `phase_method`; R detektor testován pro oba režimy |
 | P0-4 | `confidence` dimenze: `detection_strength`, `evidence_support`, `behavioral_confidence`, `confidence_kind` | `models/pattern.py`, detektory, compact | každý pattern má vyplněnou dimenzi nebo explicitní `null` + důvod |
 | P0-5 | `accuracy`: `accuracy_method`, `heuristic_score`; zákaz prezentace jako Lichess | `models/game.py`, `compact_serializer.py`, reporty | `accuracy_method="dbcl_heuristic_v1"` vždy; report neuvádí „Lichess accuracy“ |
-| P0-6 | Eval provenance: `cp_loss_basis`, `eval_source`, `analysis_run_id`; compact už nepublikuje rozporné dvojice | `engine_client.py`, `eval_consistency.py`, `compact_serializer.py` | 0 publikovaných párů porušujících invariant; detailed má explicitní `eval_consistency: false` |
+| P0-6 | Eval provenance: `cp_loss_basis`, `eval_source`, `analysis_run_id`; compact zachová suppression, detailed ji explicitně označí | `engine_client.py`, `eval_consistency.py`, `compact_serializer.py` | 0 párů porušujících invariant bez `eval_consistency=false`; compact je nevynechá jen při splněném invariantu |
 | P0-7 | `unclassified` blunder: `pattern_status`, `unclassified_reason` | `pattern_detector.py`, `coaching_single_game.py`, schemas | 100 % blunderů má buď pattern, nebo důvod |
 | P0-8 | Compact 2.1: `patterns_meta`, `phase_method`, `unclassified` | `compact_serializer.py`, `schemas/single_game_v2_compact.json` | schema validace projde; prázdný pattern list má vždy důvod |
 | P0-9 | Test split + pinned engine | `tests/`, `pyproject.toml`, `.github/workflows/test.yml` | fast job < 60 s bez engine; engine job s pinnutým buildem; žádný test není tiše vyloučen |
@@ -413,9 +415,9 @@ Bez rozhodnutí D1-D6 nelze Fázi 0 dokončit; lze ale začít P0-1, P0-2 a P0-9
 
 ## 9. Acceptance criteria pro „refaktor hotový“
 
-1. Žádný publikovaný eval pár neporušuje invariant; detailed má explicitní `eval_consistency`.
+1. Žádný eval pár porušující invariant není publikován bez explicitního `eval_consistency=false`; compact ho vynechá.
 2. `king_capture_played` a `capture_checking_piece_possible` mají jedinou implementaci a fixtures.
-3. Payload vždy říká, jak byla určena fáze, a jak byla vypočtena accuracy.
+3. Payload vždy uvádí, jak byla určena fáze a jak byla vypočtena accuracy.
 4. Každý pattern má tři dimenze nebo explicitní `null` s důvodem; `sev` není odvozeno z `conf`.
 5. Každý blunder má pattern nebo `unclassified_reason`; prázdný pattern list má v compactu důvod.
 6. `analysis_runs` obsahuje kompletní provenance a stejná konfigurace dá stejný fingerprint.
@@ -445,11 +447,11 @@ Bez rozhodnutí D1-D6 nelze Fázi 0 dokončit; lze ale začít P0-1, P0-2 a P0-9
 cd C:\Users\PC\Documents\Repozitar_Dev\_github\lichess-analyzer-mcp
 $env:PYTHONIOENCODING='utf-8'
 
-# FIX-023: cached vs fresh
-.\.venv\Scripts\python.exe -X utf8 <temp>\eval89.py
+# FIX-023: cached vs fresh (skript auditní session; logika viz §3.3)
+.\.venv\Scripts\python.exe -X utf8 <audit-script>\eval89.py
 
-# FIX-029: scan cache
-.\.venv\Scripts\python.exe -X utf8 <temp>\quiet_blunder_scan2.py
+# FIX-029: scan cache (skript auditní session; logika viz §3.4)
+.\.venv\Scripts\python.exe -X utf8 <audit-script>\quiet_blunder_scan2.py
 
 # FIX-031: detailed vs compact
 .\.venv\Scripts\python.exe -X utf8 scripts\coach.py --game-id rgQlsl0s --color white --format detailed --no-llm --quiet
@@ -460,11 +462,13 @@ $env:PYTHONIOENCODING='utf-8'
 .\.venv\Scripts\python.exe -X utf8 -m pytest tests\test_engine_client.py -v
 ```
 
+Auditní skripty pro FIX-023 a FIX-029 nejsou součástí repa; byly spuštěny z temp adresáře. Jejich logika je popsaná v §3.3 a §3.4 a čísla v Appendix B jsou z jejich výstupů. CLI příkazy pro FIX-031 a test scope jsou plně reprodukovatelné.
+
 ## Appendix B — Měřená data
 
 | Metrika | Hodnota | Zdroj |
 |---|---|---|
-| Cache souborů s aktuálním detektorem | 224 | `data/game_cache` |
+| Cache souborů s BFS a aktuálním detektorem | 224 (46 souborů bez BFS nezahrnuto) | `data/game_cache` |
 | Měřené non-mate tahy s evaly | 7231 | sken cache |
 | Porušení eval invariantu | 101 (1,4 %) | `eval_invariant_holds` |
 | Flagované tahy celkem | 2010 | sken cache |
@@ -478,6 +482,6 @@ $env:PYTHONIOENCODING='utf-8'
 | Engine build | `Stockfish 18` | UCI `id name` |
 | `multipv=1` na Qh4 FEN | `b1h7` (3/3) | tato session |
 | `multipv=3` na Qh4 FEN | `f2c2` první linie (2/2) | tato session |
-| Fast suite bez engine | 193 passed, 7,24 s | `.ai_state.json` |
+| Fast suite bez engine | 193 passed, 7,24 s (2026-11-10); 3,55 s warm (2026-11-11) | `.ai_state.json`, tato session |
 | `FVhqtv1S` ply 89 cached | cp 237, eval 638/682 | cache |
 | `FVhqtv1S` ply 89 fresh d14 | cp 168, eval 638/668 | `evaluate_move` |
