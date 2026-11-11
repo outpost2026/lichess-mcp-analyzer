@@ -33,19 +33,19 @@
    "opening": "Scandinavian Defense: Marshall Variation",
    "player_rating": 1904,
    "cache_file": "RjV8Wvzo_white_d12.json",
-   "cache_bytes": 37896,
-   "sha256": "0464cbe0b61fc8640b8002c0c69d0bece3364bff587d78f0111fb6985e5fb5b2",
+   "cache_bytes": 35205,
+   "sha256": "b8d96547acf16ac6ac936e8ecccfa656063f6a71873c07dd728034228b260ea3",
    "moves": 25,
-   "total_acpl": 36.1,
-   "accuracy": 94.6,
+   "total_acpl": 27.8,
+   "accuracy": 95.8,
    "blunders": 0,
    "mistakes": 1,
-   "inaccuracies": 7,
+   "inaccuracies": 6,
    "evaluation_errors": 0,
    "unanalyzed_plies": 0,
    "mode": "legacy",
    "deadline_hit": false,
-   "engine_s": 5.391
+   "engine_s": 10.113
   },
   {
    "game_id": "Jxt9DdZI",
@@ -57,7 +57,7 @@
    "player_rating": 1921,
    "cache_file": "Jxt9DdZI_black_d12.json",
    "cache_bytes": 62341,
-   "sha256": "26c4123e5684e75fc7514008ec87b030c05ae59f0cc335091b5ce07c23bfe3af",
+   "sha256": "ca6e467da883a393e7eb8be98907583b1cd021c65cd455b1ddbe72cd3ae6b5f2",
    "moves": 56,
    "total_acpl": 193.3,
    "accuracy": 93.6,
@@ -68,7 +68,7 @@
    "unanalyzed_plies": 0,
    "mode": "legacy",
    "deadline_hit": false,
-   "engine_s": 19.676
+   "engine_s": 22.953
   },
   {
    "game_id": "Q9xROOT1",
@@ -79,8 +79,8 @@
    "opening": "Four Knights Game: Italian Variation",
    "player_rating": 1921,
    "cache_file": "Q9xROOT1_black_d12.json",
-   "cache_bytes": 88256,
-   "sha256": "a95280f0bd63bb970baf615c8e70c2043991ab9d001dd70184960bd23bcb6375",
+   "cache_bytes": 88257,
+   "sha256": "43e577e382ddcfd2293b427995ef5cab76ede6f08c4b58f1427cc0f16d1e7ee0",
    "moves": 80,
    "total_acpl": 51.0,
    "accuracy": 92.4,
@@ -91,7 +91,7 @@
    "unanalyzed_plies": 0,
    "mode": "legacy",
    "deadline_hit": false,
-   "engine_s": 28.5
+   "engine_s": 29.031
   },
   {
    "game_id": "KjqCAQN0",
@@ -103,7 +103,7 @@
    "player_rating": 1929,
    "cache_file": "KjqCAQN0_white_d14.json",
    "cache_bytes": 24471,
-   "sha256": "2f5433929ec68e4620514ad0a75d6241c59752d04d1339af49b0a32a6511c0eb",
+   "sha256": "e8f8543a40a410a92612c3942de0309150d3776b91092af05ce01cfddfc13656",
    "moves": 21,
    "total_acpl": 19.0,
    "accuracy": 97.1,
@@ -114,7 +114,7 @@
    "unanalyzed_plies": 0,
    "mode": "legacy",
    "deadline_hit": false,
-   "engine_s": 9.996
+   "engine_s": 10.618
   },
   {
    "game_id": "Ny2FaEJB",
@@ -126,7 +126,7 @@
    "player_rating": 1930,
    "cache_file": "Ny2FaEJB_black_d14.json",
    "cache_bytes": 40791,
-   "sha256": "a93044b83504510c654b2f58e7432638bdc7f39cfd7f1bcff7468ed557c81429",
+   "sha256": "fd035c0e1f558124c1f03fdfb50f8a063fa067f19752cb318434eada7de6ee08",
    "moves": 19,
    "total_acpl": 69.3,
    "accuracy": 89.6,
@@ -137,7 +137,7 @@
    "unanalyzed_plies": 0,
    "mode": "legacy",
    "deadline_hit": false,
-   "engine_s": 18.67
+   "engine_s": 18.45
   },
   {
    "game_id": "LIXspf7y",
@@ -149,7 +149,7 @@
    "player_rating": 1928,
    "cache_file": "LIXspf7y_white_d14.json",
    "cache_bytes": 62174,
-   "sha256": "cb7042c1fcc72d38f575a7a1bc13fea55e347c5c2e09f5fc0e71dc07e651331e",
+   "sha256": "28e03820759cd66488fb236490b1b56dd671c0ba05a1baf540fcee04c784a82c",
    "moves": 64,
    "total_acpl": 29.7,
    "accuracy": 95.5,
@@ -160,7 +160,7 @@
    "unanalyzed_plies": 0,
    "mode": "legacy",
    "deadline_hit": false,
-   "engine_s": 38.954
+   "engine_s": 34.802
   },
   {
    "game_id": "NxK1MuwN",
@@ -170,9 +170,9 @@
    "date": "2026.11.10",
    "opening": "Petrov's Defense: Stafford Gambit",
    "player_rating": 1939,
-   "cache_file": "NxK1MuwN_black_d14n150000.json",
-   "cache_bytes": 32022,
-   "sha256": "e69d990d0d7c92046cef603dfea91c9e7b379d503117eac6d5c6a598715f95e8",
+   "cache_file": "NxK1MuwN_black_d14.json",
+   "cache_bytes": 32129,
+   "sha256": "73b856825d7ee9e907f6814285c2aad02adc679780e927ba8231f199218ea63e",
    "moves": 24,
    "total_acpl": 41.9,
    "accuracy": 93.7,
@@ -181,9 +181,20 @@
    "inaccuracies": 4,
    "evaluation_errors": 0,
    "unanalyzed_plies": 0,
-   "mode": "fast",
+   "mode": "legacy",
    "deadline_hit": false,
-   "engine_s": 14.432
+   "engine_s": 16.653
   }
- ]
+ ],
+ "experiment_2026_11_11": {
+  "purpose": "zm merit dopad P0-1 a reprodukovatelnost behem re-analyzy",
+  "method": "zaloha 14 souboru -> smazani -> re-analyza pres MCP (8 volani, 23-68 s) -> porovnani",
+  "backup_dir": "data/game_cache/_snapshot_backup_2026-11-11/ (14 souboru, 709658 B, gitignored)",
+  "reproducibility": "13/14 souboru: evaly i metriky identicky, lisi se jen timings.engine_s/parse_s -> sha256 NENI stabilni, diff musi jit pres metriky/evaly",
+  "reproducibility_exception": "RjV8Wvzo_white_d12: vsech 25 tahu ma jiny eval (engine_calls 33->32, bez timeoutu/deadadline) - 1/14 nereprodukcnich, viz open issue",
+  "filename_change": "NxK1MuwN: starsi nodes-varianta d14n150000 prepsana auto-depth na d14 (obe barvy); zaloha drzi puvodni nazvy",
+  "p0_1_impact_local": "138 fact sheets: capture_checking_piece_possible 115 zmen (83%, A1), king_capture_played 1 zmena, king_capture_possible 0, pattern S 0 zmen, klasifikace B/M/I 0 zmen",
+  "p0_1_note": "mereno lokalne na zalozach, protoze MCP server spusteny 01:09:37 bezi na kodu pred P0-1 (board_facts.py mtime 12:34)"
+ },
+ "git_head_after_p0_1": "92868ad"
 }
