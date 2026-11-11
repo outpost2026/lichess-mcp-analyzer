@@ -532,6 +532,7 @@ lichess-analyzer-mcp/
 - `00_STRATEGIE/DALSI_KROKY_po_RUN_003.md` — 15-commit follow-up checklist
 - `docs/PHASE2_BUILD_PLAN.md` — build plan v3.0
 - `docs/REFACTOR_PLAN_2026-11-11.md` — audit handoffu v1.0 + fázovaný refaktor (Fáze 0–3, rozhodnutí D1–D6)
+- `docs/REPORT_STAV_2026-11-11.md` — Feynmanovský report stavu, náročnosti a důsledků
 
 ### Pattern library a analýzy
 - `B2B-KB/04_KNOWLEDGE_BASE/02_chess/player_pattern_library_v1.json` — zdrojová knihovna 17 patternů
