@@ -7,13 +7,15 @@ zdroj pro duplicitni implementace). Tady plati:
 - kazdy predikat pocita pres ``chess.Board`` a typ figury, ne pres SAN;
 - vsechny funkce jsou totalni: chybny/nekorektni FEN vrati ``False``/``[]``,
   nikdy nevyhodi vyjimku (volaji je oba detektory bez try/except);
-- ziadna logika prahu ani patternu sem nepatri - to zustava v detektorech.
+- ziadna logika prahu ani patternu sem nepatri - to zustava v detektorech
+  (vyjimka: ``CHESS_PHASE_*`` definuje fazi samotnou, ne detektor patternu).
 
 Konzumenti (maji zustat v sync):
 - ``game_analyzer._per_blunder_patterns``  (BFS / BlunderFactSheet)
 - ``pattern_detector._single_game_candidate`` (single-game, compact)
 - ``pattern_detector._detect_s`` (cross-game knihovna)
-- ``game_analyzer`` konstrukce ``BoardState``
+- ``game_analyzer`` konstrukce ``BoardState`` a ``MoveAnalysis.chess_phase``
+  (P0-3: materialova faze, doplnek ply-segmentace)
 """
 
 from __future__ import annotations
@@ -144,3 +146,52 @@ def played_piece_type(fen: str, move_uci: str) -> int | None:
     board, move = parsed
     piece = board.piece_at(move.from_square)
     return piece.piece_type if piece is not None else None
+
+
+# --- P0-3: materialova faze (chess_phase) --------------------------------
+# Stockfishove vazeni: pesec 0, jezdec/bisup 1, vez 2, dama 4 (obe strany
+# soucasne). Startovni material = 2*4 + 4*2 + 4*1 + 4*1 = 24 = cap
+# (promovane damy se nepocitaji pres cap).
+MATERIAL_WEIGHTS: dict[int, int] = {
+    chess.PAWN: 0,
+    chess.KNIGHT: 1,
+    chess.BISHOP: 1,
+    chess.ROOK: 2,
+    chess.QUEEN: 4,
+    chess.KING: 0,
+}
+MATERIAL_PHASE_CAP = 24
+# Pasove prahy - definice faze, ne detektoru (laditelne; dual-run pred
+# zapnutim material rezimu vramci D1, viz REFACTOR_PLAN §10 rizika).
+CHESS_PHASE_OPENING_MIN = 20  # >= 20 (ztrata nejvyse jedne damy) -> opening
+CHESS_PHASE_ENDGAME_MAX = 8  # <= 8 (slaby material, ekvivalent max dvou dam)
+
+
+def material_phase_value(fen: str) -> int | None:
+    """Materiálová hodnota fáze 0..24; ``None`` = chybný/prázdný FEN (totalita)."""
+    board = _board(fen)
+    if board is None:
+        return None
+    total = 0
+    for piece_type in (chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN):
+        weight = MATERIAL_WEIGHTS[piece_type]
+        total += len(board.pieces(piece_type, chess.WHITE)) * weight
+        total += len(board.pieces(piece_type, chess.BLACK)) * weight
+    return min(total, MATERIAL_PHASE_CAP)
+
+
+def chess_phase(fen: str) -> str:
+    """``opening``/``middlegame``/``endgame`` podle materiálu; ``""`` = chybný FEN.
+
+    P0-3: doplnek ply-segmentace (``game_analyzer._detect_segment``); ktery z
+    dvou zdroju je autoritativni pro detektory, rika ``phase_method``
+    (``models.game.effective_phase``). Zadna pattern logika sem nepatri.
+    """
+    value = material_phase_value(fen)
+    if value is None:
+        return ""
+    if value >= CHESS_PHASE_OPENING_MIN:
+        return "opening"
+    if value <= CHESS_PHASE_ENDGAME_MAX:
+        return "endgame"
+    return "middlegame"

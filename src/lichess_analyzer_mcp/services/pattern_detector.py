@@ -12,7 +12,7 @@ from collections import Counter
 import chess
 
 from lichess_analyzer_mcp.models.pattern import PatternMatch, PatternLibrary
-from lichess_analyzer_mcp.models.game import GameAnalysis
+from lichess_analyzer_mcp.models.game import GameAnalysis, effective_phase
 from lichess_analyzer_mcp.services import board_facts
 
 THRESHOLD_TUNNEL_CONSECUTIVE = 2
@@ -477,7 +477,7 @@ class PatternDetector:
                 if (
                     m.centipawn_loss >= THRESHOLD_ENDGAME_CP
                     and eb > THRESHOLD_ENDGAME_EVAL
-                    and m.phase == "endgame"
+                    and effective_phase(m) == "endgame"
                 ):
                     affected.append(analysis.game.id)
                     break
@@ -591,6 +591,7 @@ def per_move_patterns(
     - ``in_check``: výchozí ``move.was_in_check``; BFS předává svůj parametr.
     - Práh ``R`` chrání ``(move.eval_before or 0)`` (P0-3/None politika).
     - Predikát S: ``board_facts`` (P0-1), typ figury, ne SAN ``x``.
+    - Fáze ``R``: ``effective_phase`` (P0-3, oba režimy ``phase_method``).
     """
     if in_check is None:
         in_check = bool(getattr(move, "was_in_check", False))
@@ -620,8 +621,9 @@ def per_move_patterns(
         )
 
     # R — Endgame relaxation: endgame, eval_before > THRESHOLD_ENDGAME_EVAL, cp_loss >= THRESHOLD_ENDGAME_CP
+    # P0-3: faze pres effective_phase (oba rezimy phase_method; default = segment).
     if (
-        move.phase == "endgame"
+        effective_phase(move) == "endgame"
         and (move.eval_before or 0) > THRESHOLD_ENDGAME_EVAL
         and cp >= THRESHOLD_ENDGAME_CP
     ):
@@ -727,7 +729,7 @@ def detect_single_game(analysis: GameAnalysis) -> list[dict]:
                     "ply": move.ply,
                     "san": move.move_san,
                     "cp_loss": round(float(move.centipawn_loss), 1),
-                    "phase": move.phase,
+                    "phase": effective_phase(move),
                     "detail": cand["detail"],
                 }
             )

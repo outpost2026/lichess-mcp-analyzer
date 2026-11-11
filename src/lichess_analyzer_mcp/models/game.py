@@ -3,6 +3,12 @@ from typing import Optional
 
 from lichess_analyzer_mcp.models.analysis import BlunderFactSheet
 
+# P0-3 (D1): ktera faze je autoritativni pro detektory.
+# "ply_segment" = historicky stav (phase = segment podle ply, vychozi);
+# "material" = chess_phase (material-based, board_facts.chess_phase).
+PHASE_METHOD_DEFAULT = "ply_segment"
+PHASE_METHOD_MATERIAL = "material"
+
 
 @dataclass
 class GameSummary:
@@ -59,9 +65,20 @@ class MoveAnalysis:
     played_rank: int = 0
     explanation: str = ""
     explanation_source: str = "none"
+    # P0-3: ktera faze je autoritativni pro detektory (phase_method)
+    # a materialova faze pozice ("" = nevypoctena, napr. legacy cache).
+    phase_method: str = PHASE_METHOD_DEFAULT
+    chess_phase: str = ""
+
+    @property
+    def segment(self) -> str:
+        """Ply-segment podle ply (P0-3: ``phase`` je alias na segment, D1)."""
+        return self.phase
 
     def to_dict(self) -> dict:
         data = asdict(self)
+        # P0-3: publikujeme i alias segment (D1: v payloadu obojí).
+        data["segment"] = self.phase
         # Contract v1.1: an unmeasured move must never look like a perfect one.
         if not self.analyzed:
             data["centipawn_loss"] = None
@@ -70,7 +87,27 @@ class MoveAnalysis:
     @staticmethod
     def from_dict(d: dict) -> "MoveAnalysis":
         valid = {k: v for k, v in d.items() if k in MoveAnalysis.__dataclass_fields__}
+        # Legacy payload zna jen `phase`; novy klic `segment` neni field
+        # (alias je property) a ve filtru by zmizel - phase je povinny.
+        if "phase" not in valid:
+            valid["phase"] = d.get("segment", "")
         return MoveAnalysis(**valid)
+
+
+def effective_phase(move: MoveAnalysis) -> str:
+    """Fáze, podle které detektory rozhodují (P0-3: oba režimy `phase_method`).
+
+    - `phase_method == "material"` a vyplněné `chess_phase` → chess_phase;
+    - jinak (výchozí `ply_segment`, i legacy data bez nových klíčů) → `segment`,
+      což je alias `phase` (ply-segmentace).
+
+    Výchozí režim je chováním identický starému `move.phase == "endgame"`.
+    """
+    if getattr(move, "phase_method", PHASE_METHOD_DEFAULT) == PHASE_METHOD_MATERIAL:
+        chess_phase = (getattr(move, "chess_phase", "") or "").strip()
+        if chess_phase:
+            return chess_phase
+    return getattr(move, "segment", "") or getattr(move, "phase", "") or ""
 
 
 @dataclass

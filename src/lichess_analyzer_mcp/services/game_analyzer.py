@@ -328,7 +328,13 @@ def _classify_move(cp_loss: float) -> str:
     return "best"
 
 
-def _detect_phase(ply: int) -> str:
+def _detect_segment(ply: int) -> str:
+    """Časová segment podle ply (P0-3: není šachová fáze).
+
+    Dříve `_detect_phase`; skutečná materiálová fáze je
+    `board_facts.chess_phase`, autoritativní zdroj rizí `phase_method`
+    (`models.game.effective_phase`).
+    """
     if ply <= 20:
         return "opening"
     if ply <= 50:
@@ -456,7 +462,8 @@ def _unanalyzed_move(
         best_move_san="",
         is_tactical_motif=False,
         motif_type=None,
-        phase=_detect_phase(ply),
+        phase=_detect_segment(ply),
+        chess_phase=board_facts.chess_phase(fen_before),
         fen=fen_before,
         was_in_check=board.is_check(),
         gives_check=board.gives_check(move),
@@ -654,7 +661,7 @@ def _run_analyze_pgn(
 
             cp_loss = float(eval_result["centipawn_loss"])
             classification = _classify_move(cp_loss)
-            phase = _detect_phase(ply)
+            phase = _detect_segment(ply)
             was_in_check = board.is_check()
             gives_check = board.gives_check(move)
             is_capture = board.is_capture(move)
@@ -691,6 +698,7 @@ def _run_analyze_pgn(
                 is_tactical_motif=tactical,
                 motif_type=motif,
                 phase=phase,
+                chess_phase=board_facts.chess_phase(fen_before),
                 fen=fen_before,
                 was_in_check=was_in_check,
                 gives_check=gives_check,
