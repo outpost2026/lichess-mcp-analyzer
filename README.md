@@ -4,7 +4,7 @@
 
 **MCP server pro analýzu šachových partií, detekci vzorových chyb (pattern library jako kompresní model dle T. Mikolova) a spaced repetition trénink (FSRS/SM-2).**
 
-Verze: `0.1.0` | Stav: **single-game pipeline v4** (compact 2.0 default) | Testy: **193/193** (bez `test_engine_client.py`) | Nástrojů: **18** | v4: `7ce7f61`
+Verze: `0.1.0` | Stav: **single-game pipeline v4** (compact 2.0 default) | Testy: **206 fast + 15 real engine** | Nástrojů: **18** | v4: `7ce7f61`
 
 
 ## Proč?
@@ -386,10 +386,10 @@ lichess-analyzer-mcp/
 │   ├── pgn_to_compact.py        ← Deprecated shim nad coach.py
 │   ├── setup_stockfish.ps1      ← Automatické stažení Stockfish
 │   └── ...                      ← 20+ pomocných scriptů
-├── tests/                       ← 193 testů (bez test_engine_client.py)
+├── tests/                       ← 206 fast testů + 15 real-engine (marker real_engine)
 │   ├── test_services.py         ← modely, komprese, validace
 │   ├── test_prompt_contract.py  ← schema a mapování promptů
-│   ├── test_engine_client.py    ← Stockfish (sdílený engine, lokálně vylučován)
+│   ├── test_engine_client.py    ← Stockfish (sdílený engine; real-engine = marker real_engine)
 │   ├── test_pattern_semantic_contract.py ← semantic contract + min_games
 │   ├── test_dbcl.py             ← win_prob, BFS round-trip, narrative validator, N
 │   ├── test_depth_policy.py     ← depth a časová politika
@@ -452,8 +452,8 @@ lichess-analyzer-mcp/
 
 | Co | Stav |
 |---|------|
-| Testy (fast) | **193/193 pass** (`pytest tests -q --ignore=tests/test_engine_client.py`, 7,2 s) |
-| Testy (real engine) | **27/28 pass, 1 failed** (`tests/test_engine_client.py`, 26,2 s); RED |
+| Testy (fast) | **206/206 pass** (`pytest tests -q`, 5,4 s; default vylučuje `real_engine`) |
+| Testy (real engine) | **15/15 pass** (`pytest tests -m real_engine`, 9,2 s); GREEN — deterministické díky `clear_hash()` ve fixture |
 | MCP toolů | **18** (12 data + 5 coaching + `lichess_persist_report`) |
 | v4 / push | `7ce7f61` na `origin/main`; dokumentační změny lokálně, push jen na pokyn |
 | Single-game pipeline | **v4 hotová**: FIX-027 (mate), FIX-023 (containment v compactu; root fix pending), FIX-021 (slabé/čisté fáze), FIX-028 (cache refresh) |
@@ -463,7 +463,7 @@ lichess-analyzer-mcp/
 | Engine / cache | Stockfish depth 14, cache `d14n150000` |
 | CI ruff | **GREEN** (`uvx ruff check src/ tests/`, ruff 0.17.4, select E4/E7/E9/F) |
 | CI mypy | **RED** — 77 chyb/16 souborů (mypy 2.3.0); gate dlouhodobě neprochází, CI pytest krok je za ním |
-| CI pytest | fast 193/193 lokálně; engine suite RED (1 failed); v CI nedosažen kvůli mypy |
+| CI pytest | lokálně fast **206/206** + engine **15/15**; v CI je krok za RED mypy gate a `addopts` engine sadu vylučuje (rozhodnutí o engine kroku = D6) |
 | Patterny | 14 definovaných (A–S, I→I2), 13 aktivních detektorů + I manual_only |
 | Dokumentace | `README.md` aktuální; `README_en.md` a `docs/CONTEXT_INJECT.md` zastaralé |
 
@@ -490,12 +490,20 @@ lichess-analyzer-mcp/
   AttributeError, vyšetřit před ignorováním.
 - **`scripts/` je mimo CI ruff gate**: 146 nálezů (F541 74, E402 41,
   E401 16, F401 11, F841 3, E722 1).
-- **`tests/test_engine_client.py`** se lokálně vylučuje, ale CI ho spouští
-  v celé suite. Plný běh 2026-11-11: **27/28 pass, 1 failed** —
-  `TestIDGameQh4::test_analyze_position_qh4_rank1` čeká `f2c2`, ale
-  Stockfish 18 vrací při `multipv=1` `b1h7` (při `multipv=3` je `f2c2`
-  první linie). Jde o stale expectation závislou na buildu a `multipv`,
-  ne o náhodný flake. CI pytest krok je navíc za RED mypy gate.
+- **`tests/test_engine_client.py`** býval maskován dvakrát (lokálně
+  `--ignore`, v CI za RED mypy gate). Od 2026-11-11 je rozdělen markerem
+  `real_engine`: default `pytest` = 206 fast testů, `pytest -m real_engine`
+  = 15 testů proti skutečnému Stockfish. Stale expectation `top_move == "f2c2"`
+  (závislá na buildu a `multipv`; Stockfish 18 v `multipv=1` dává `b1h7`)
+  nahrazeny invariantami: hloubka ≥ 12 + Qh4 není #1.
+- **TT carry-over mění `cp_loss` v rámci procesu** (naměřeno 2026-11-11):
+  stejný FEN + tah `f2h4` = 212 cp v čerstvém procesu, ale 402 → 545 →
+  764/997 cp po předchozí `analyze_position(multipv=3)`, protože se překlopí
+  i `best_move` (`b1h7` → `f2c2`). S `clear_hash()` před každým měřením:
+  140/140/140 cp (3 identické běhy). Testy to řeší fixture
+  `_fresh_engine_state` (GT-106/P97, GT-093/P73); v produkci se hash maže
+  jednou za hru (`game_analyzer.py:929`). Dopad na FIX-023: provenance
+  musí reportovat i stav engine, ne jen depth.
 - **`king_capture_played`** je v `game_analyzer.py` odvozen z `x` v SAN
   během šachu, takže jakékoli braní potlačí pattern S. `pattern_detector.py`
   má správnou verzi přes typ figury; obě cesty se mohou rozcházet.

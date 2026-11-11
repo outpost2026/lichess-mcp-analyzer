@@ -1,4 +1,8 @@
-﻿"""Unit tests for engine_client with mocked Stockfish."""
+﻿"""Unit tests for engine_client with mocked Stockfish.
+
+Tests marked ``real_engine`` spawn a real Stockfish binary (see marker
+registration in pyproject.toml); everything else is mocked.
+"""
 
 import sys, os
 
@@ -6,6 +10,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from unittest.mock import patch, MagicMock
 import chess
+import pytest
 from lichess_analyzer_mcp.services.engine_client import (
     _find_stockfish,
     analyze_position,
@@ -13,8 +18,25 @@ from lichess_analyzer_mcp.services.engine_client import (
     evaluate_move,
     evaluate_move_with_confidence,
     check_blunder_sanity,
+    clear_hash,
     close_engine,
 )
+
+
+@pytest.fixture(autouse=True)
+def _fresh_engine_state(request):
+    """Real measurements must start from the same TT state (provenance).
+
+    Measured 2026-11-11: prior analyses in the same process change the result —
+    cp_loss for Qh4 on the CpEDieiZ FEN went 212 -> 402 -> 545 cp and reached
+    764/997 cp inside a pytest session, because best_move itself flipped
+    (b1h7 vs f2c2) on TT carry-over. With clear_hash() before every real-engine
+    test: 140/140/140 cp, best b1h7 (3 identical runs). The 300 cp product
+    threshold is unchanged; only the starting state is pinned.
+    """
+    if request.node.get_closest_marker("real_engine"):
+        clear_hash()
+    yield
 
 
 class TestFindStockfish:
@@ -52,12 +74,14 @@ class TestAnalyzePosition:
         assert isinstance(result, list), f"Expected list, got {type(result)}: {result}"
         assert len(result) == 1
 
+    @pytest.mark.real_engine
     def test_returns_results_from_target_depth(self):
         """analyze_position must return results from target depth, not depth 1,2,3.
 
         engine.analyse() with multipv returns results at the exact target depth.
         """
-        # CpEDieiZ FEN — at depth 14, best_move should be f2c2, not f2h4
+        # CpEDieiZ FEN (stejna jako TestIDGameQh4) — assert je jen na hloubku,
+        # konkretne tah se zde nestanovuje (viz stale-expectation fix nize).
         fen = "r4rk1/1p3pbp/p7/q2pP3/3B2b1/P7/1P3QPP/1B1R1RK1 w - - 2 23"
         result = analyze_position(fen, depth=14, multipv=3)
         assert len(result) >= 1
@@ -160,6 +184,8 @@ class TestEvaluateMoveDeterminism:
     FEN from CpEDieiZ game (the false-positive blunder case).
     """
 
+    pytestmark = pytest.mark.real_engine
+
     def setup_method(self):
         self.fen = "r4rk1/1p3pbp/p7/q2pP3/3B2b1/P7/1P3QPP/1B1R1RK1 w - - 2 23"
         self.move = "f2h4"
@@ -205,6 +231,8 @@ class TestEvaluateMoveDeterminism:
 class TestEvaluateMoveLegalGuard:
     """Legal-move guard: must prevent hang on illegal moves (original 4a55f1f fix)."""
 
+    pytestmark = pytest.mark.real_engine
+
     def test_legal_move_no_hang(self):
         """Legal move must complete without error."""
         fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
@@ -242,11 +270,13 @@ class TestEvaluateMoveD2Fix:
         source = inspect.getsource(engine_client.evaluate_move)
         assert "get_engine()" in source, "evaluate_move must use get_engine()"
 
+    @pytest.mark.real_engine
     def test_qh4_cp_loss_range(self):
         """D2: Qh4 at depth 14 should have cp_loss in expected range (0-1200 cp).
 
         NOTE: evaluate_move is nondeterministic between sessions.
-        At depth 14, f2c2 is best move, Qh4 can have cp_loss 0-1200 cp.
+        Qh4 neni v teto pozici engine #1, takze cp_loss muze byt i vyssi;
+        assert je rozsahovy, neurcujeme konkretni best move.
         """
         fen = "r4rk1/1p3pbp/p7/q2pP3/3B2b1/P7/1P3QPP/1B1R1RK1 w - - 2 23"
         result = evaluate_move(fen, "f2h4", depth=14)
@@ -257,6 +287,8 @@ class TestEvaluateMoveD2Fix:
 
 class TestEvaluateMoveConfidence:
     """D3: Confidence interval tests using evaluate_move_with_confidence."""
+
+    pytestmark = pytest.mark.real_engine
 
     def setup_method(self):
         self.fen = "r4rk1/1p3pbp/p7/q2pP3/3B2b1/P7/1P3QPP/1B1R1RK1 w - - 2 23"
@@ -337,6 +369,8 @@ class TestIDGameQh4:
     Must NOT be classified as a blunder.
     """
 
+    pytestmark = pytest.mark.real_engine
+
     def setup_method(self):
         self.fen = "r4rk1/1p3pbp/p7/q2pP3/3B2b1/P7/1P3QPP/1B1R1RK1 w - - 2 23"
         self.move = "f2h4"
@@ -350,17 +384,25 @@ class TestIDGameQh4:
         )
 
     def test_analyze_position_qh4_rank1(self):
-        """analyze_position at depth 14 must find f2c2 (Qc2) as #1 move.
+        """analyze_position na depth 14 musi vratit vysledky v cilove hloubce
+        a Qh4 (f2h4) nesmi byt engine #1.
 
-        NOTE: Before the fix, analyze_position returned depth 1,2,3 results
-        where Qh4 was #1. After the fix, it returns depth 14 results where
-        f2c2 is the correct best move.
+        NOTE: Stale expectation (FIX-031 / 2026-11-11): puvodni assert
+        `top_move == "f2c2"` vychazel z historickych vysledku (multipv=3).
+        Stockfish 18 s multipv=1 dava na te same FEN jiny tah (b1h7),
+        takze se konkretni tah NEPINUJE. Invarianty, ktere tady maji platit:
+          1) hloubka >= 12 (ne depth 1,2,3 — viz puvodni fix),
+          2) Qh4 neni #1 (to je ten falsny pozitiv, ktery FIX resil).
         """
         analysis = analyze_position(self.fen, depth=self.depth, multipv=1)
         assert len(analysis) >= 1
         top_move = analysis[0]["pv"][0].uci()
-        # At depth 14, f2c2 (Qc2) is the correct best move, not f2h4 (Qh4)
-        assert top_move == "f2c2", f"Expected #1 move f2c2 at depth 14, got {top_move}"
+        assert analysis[0].get("depth", 0) >= 12, (
+            f"Expected depth >= 12 (cilova 14), got {analysis[0].get('depth')}"
+        )
+        assert top_move != "f2h4", (
+            f"Qh4 (f2h4) nesmi byt engine #1 na depth {self.depth}, got {top_move}"
+        )
 
     def test_confidence_fields_present(self):
         """evaluate_move_with_confidence must return confidence fields."""

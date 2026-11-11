@@ -47,6 +47,13 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
+# real_engine = testy, ktere skutecne spousti Stockfish (realne mereni, ~26 s
+# na celou sadu). Defaultne vyloucene, aby `pytest` byl rychla brana.
+# Spusteni engine sady: pytest -m real_engine (posledni -m prepisuje addopts).
+markers = [
+    "real_engine: spousti realny Stockfish binary (pomaly; vylouceno z defaultu)",
+]
+addopts = ["-m", "not real_engine"]
 
 [tool.mypy]
 python_version = "3.12"
