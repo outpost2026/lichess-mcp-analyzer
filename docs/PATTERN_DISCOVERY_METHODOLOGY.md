@@ -11,7 +11,7 @@ návaznost: CANDIDATE_PATTERNS_2026-11-12.md, REFACTOR_PLAN_2026-11-11.md, MIKOL
 
 1. Pattern není „zajímavý tah“. Pattern je **podmínka na pozici a rozhodnutí**, která má (a) měřený support, (b) měřený kontrast proti dobrým tahům, (c) stabilitu, (d) deterministickou detekci a (e) kalibrovanou sílu. Bez (b) se jedná o popis, ne o pattern.
 2. Discovery není hledání nových ID. Discovery je **falsifikační loop**: kandidát → měření na univerzech U0/U1/U2 → FP strop → taxonomie → implementační gate → monitoring. Většina kandidátů má skončit zamítnuta; to je úspěch procesu, ne selhání.
-3. Současný systém má **15 patternů v baseline knihovně** (A, B, C, G, I, I2, J, N, O, P, Q, Q1, Q2, R, S) a **6 per-move eventů** (B, C, J, R, S, T); B/C/J/R/S jsou sdílené, T je pouze per-move. Per-move eventy nejsou patterny v cross-game smyslu: nemají jmenovatel ani kontrast.
+3. Současný systém má **15 definic v baseline knihovně** (A, B, C, G, I, I2, J, N, O, P, Q, Q1, Q2, R, S) a **6 per-move eventů** (B, C, J, R, S, T); B/C/J/R/S jsou sdílené, T je pouze per-move. Z 15 definic má **14 automatický detektor**; `I` (bait trap) je záměrně `manual_only` koncept a v runtime se nevydává. Per-move eventy nejsou patterny v cross-game smyslu: nemají jmenovatel ani kontrast.
 4. Měřené pokrytí na cache (259 dedup her, 2137 flagged tahů): **375 matched (17,5 %), 1762 unclassified (82,5 %)**. To není bug, to je kalibrovaná hranice znalosti. Nízké pokrytí je cenou za to, že si systém nevymýšlí mechanismus.
 5. Originalita je **v kombinaci kontraktů**, ne v algoritmech. Jednotlivé komponenty (frekvence, lift, MDL, conformance, motif discovery) mají prior art. Kombinace „explicitní unclassified + FP strop na dobrých tazích + dual single/cross-game kontrakt + deterministická evidence chain“ v publikovaných chess nástrojích doložena není (P~0,75; absence důkazu, ne důkaz absence).
 6. Efektivita: **vysoká explanační, nízká discovery výtěžnost, neprokázaná diskriminační validita**. `compressibility_validator` je v současné podobě proxy, ne MDL; to je nutné opravit nebo přejmenovat (P1).
@@ -165,6 +165,8 @@ Pokud discovery loop generuje mnoho nových patternů, je to signál, že gate j
 | **Cross-game** | `PatternDetector.detect_all()` | `list[GameAnalysis]` | `PatternMatch` | `min_games=3`, `min_occurrences=2` |
 
 Klíčové pravidlo (REFACTOR_PLAN §P0-2): **BFS a single-game musí volat stejnou implementaci**. `per_move_patterns()` je jediný zdroj pravdy pro B/J/R/S/C/T. Dva výstupy jedné pipeline si nesmí odporovat.
+
+Poznámka k pokrytí knihovny: `PatternLibrary` definuje 15 ID, ale `PatternDetector` má 14 `_detect_*` metod. Chybějící `I` není bug — je to `manual_only` koncept (bait trap), který nelze deterministicky detekovat bez inferenci záměru. `detect_all` ho proto tiše přeskakuje; to je správné chování, ale musí být dokumentované, aby nevznikl dojem, že pattern `I` je aktivní.
 
 ### 4.2 Proč cross-game detektory nesmí být „unlocked“ pro jednu hru
 
