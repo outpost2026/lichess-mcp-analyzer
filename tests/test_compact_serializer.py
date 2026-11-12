@@ -1,4 +1,4 @@
-"""Schema 2.0 compact serializer — unit tests (no engine, no network)."""
+"""Schema 2.1 compact serializer — unit tests (no engine, no network)."""
 
 import json
 import os
@@ -47,10 +47,12 @@ FLAG_TEMPLATE = {
     "in_check_before": False,
     "explanation": "Hráno Qg3; motor preferuje Qg6.",
     "explanation_source": "deterministic",
+    "pattern_status": "unclassified",
+    "unclassified_reason": "quiet_positional",
 }
 
 FULL = {
-    "schema_version": "1.1",
+    "schema_version": "1.2",
     "game_id": "lxO3gwd3",
     "username": "systeq",
     "color": "black",
@@ -79,6 +81,8 @@ FULL = {
             "best_move_san": "Nxe5",
             "played_rank": 2,
             "motif": "discovered_check_capture",
+            "pattern_status": "matched",
+            "unclassified_reason": None,
         },
         {
             **FLAG_TEMPLATE,
@@ -107,6 +111,37 @@ FULL = {
             "scope": "single_game",
             "evidence": [{"ply": 40, "san": "Bxc5+", "cp_loss": 65.0}],
         }
+    ],
+    "patterns_meta": {
+        "scope": "single_game",
+        "cross_game_suppressed": True,
+        "reason": "Single-game scope: only per-move evidence is aggregated. "
+        "Cross-game detectors need >=3 games and are suppressed.",
+        "detector_version": "DBCL-20261111-dev",
+        "coverage": {"flagged": 4, "matched": 1, "unclassified": 3},
+    },
+    "unclassified": [
+        {
+            "ply": 34,
+            "san": "Qg3",
+            "class": "inaccuracy",
+            "cp_loss": 84.0,
+            "reason": "quiet_positional",
+        },
+        {
+            "ply": 46,
+            "san": "Rfe8",
+            "class": "inaccuracy",
+            "cp_loss": 66.0,
+            "reason": "quiet_positional",
+        },
+        {
+            "ply": 68,
+            "san": "d3",
+            "class": "inaccuracy",
+            "cp_loss": 120.0,
+            "reason": "quiet_positional",
+        },
     ],
     "llm": {"status": "degraded", "provider": "deterministic", "reason": "all_providers_failed"},
     "report": "ACPL 18.2, accuracy 97.3 %. Čtyři nepřesnosti. Nejs slabší fáze: middlegame.",
@@ -138,7 +173,16 @@ def test_output_validates_against_json_schema_file():
 
 def test_metadata_and_summary():
     out = _compact()
-    assert out["v"] == "2.0"
+    assert out["v"] == "2.1"
+    assert out["phase_method"] == "ply_segment"
+    assert out["patterns_meta"] == {
+        "scope": "single_game",
+        "cross_game_suppressed": True,
+        "reason": "Single-game scope: only per-move evidence is aggregated. "
+        "Cross-game detectors need >=3 games and are suppressed.",
+        "detector_version": "DBCL-20261111-dev",
+        "coverage": {"flagged": 4, "matched": 1, "unclassified": 3},
+    }
     assert out["game"] == {
         "id": "lxO3gwd3",
         "username": "systeq",
@@ -188,7 +232,11 @@ def test_all_flags_preserved_in_ply_order():
         "cp": 84,
         "best": "Qg6",
         "rank": 3,
+        "pstatus": "unclassified",
+        "why": "quiet_positional",
     }
+    assert by_ply[40]["pstatus"] == "matched"
+    assert "why" not in by_ply[40]
     assert by_ply[40]["motif"] == "discovered_check_capture"
     assert "motif" not in by_ply[46]  # R8: no null noise
     assert by_ply[68]["cp"] == 120
@@ -459,5 +507,70 @@ def test_missing_game_meta_does_not_crash():
 def test_validator_rejects_broken_shape():
     out = _compact()
     out["flags"][0]["class"] = "blunder!!"
+    with pytest.raises(ValueError):
+        validate_compact(out)
+
+
+# ── P0-7 / P0-8: coverage semantics ─────────────────────────────────────────
+
+
+def test_unclassified_feed_lists_exactly_the_unclassified_flags():
+    out = _compact()
+    assert out["unclassified"] == [
+        {"ply": 34, "class": "inaccuracy", "cp": 84, "why": "quiet_positional"},
+        {"ply": 46, "class": "inaccuracy", "cp": 66, "why": "quiet_positional"},
+        {"ply": 68, "class": "inaccuracy", "cp": 120, "why": "quiet_positional"},
+    ]
+    assert out["patterns_meta"]["coverage"] == {"flagged": 4, "matched": 1, "unclassified": 3}
+
+
+def test_empty_patterns_still_has_a_reason_and_full_coverage():
+    full = json.loads(json.dumps(FULL))
+    full["patterns"] = []
+    for flag in full["flagged_moves"]:
+        flag["pattern_status"] = "unclassified"
+        flag["unclassified_reason"] = "quiet_positional"
+    out = to_compact_v2(full, game_meta=GAME_META, moves=MOVES)
+    validate_compact(out)
+    assert out["patterns"] == []
+    assert out["patterns_meta"]["reason"]
+    assert out["patterns_meta"]["coverage"] == {"flagged": 4, "matched": 0, "unclassified": 4}
+    assert len(out["unclassified"]) == 4
+
+
+def test_legacy_payload_without_pstatus_is_explicitly_not_classified():
+    """A payload predating P0-7 must not look classified."""
+    full = json.loads(json.dumps(FULL))
+    full.pop("patterns_meta")
+    full.pop("unclassified")
+    for flag in full["flagged_moves"]:
+        flag.pop("pattern_status", None)
+        flag.pop("unclassified_reason", None)
+    out = to_compact_v2(full, game_meta=GAME_META, moves=MOVES)
+    validate_compact(out)
+    by_ply = {flag["ply"]: flag for flag in out["flags"]}
+    assert by_ply[34]["pstatus"] == "unclassified"
+    assert by_ply[34]["why"] == "not_classified"
+    # The one ply covered by the pattern list is still matched.
+    assert by_ply[40]["pstatus"] == "matched"
+
+
+def test_validator_rejects_matched_flag_without_patterns():
+    out = _compact()
+    out["flags"][1].pop("patterns")
+    with pytest.raises(ValueError):
+        validate_compact(out)
+
+
+def test_validator_rejects_unclassified_flag_without_reason():
+    out = _compact()
+    out["flags"][0].pop("why")
+    with pytest.raises(ValueError):
+        validate_compact(out)
+
+
+def test_validator_rejects_coverage_that_does_not_add_up():
+    out = _compact()
+    out["patterns_meta"]["coverage"]["unclassified"] = 99
     with pytest.raises(ValueError):
         validate_compact(out)

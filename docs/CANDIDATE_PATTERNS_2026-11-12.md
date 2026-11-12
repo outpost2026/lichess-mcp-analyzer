@@ -289,8 +289,8 @@ zjistit, jak se tag počítá (nedařilo se zde dohledat jeho tvůrce — viz
 
 ## 8. Další kroky (v pořadí)
 
-1. **D4**: rozhodnout, zda quiet blunder dostane `unclassified` event
-   (FIX-029) — měřený objem zbytku 51/97 + F7 podporuje „ano, nejdřív event".
+1. **D4**: ROZHODNUTO 2026-11-12 (P0-7) — quiet blunder dostává explicitní
+   `unclassified` event s důvodem, žádný nový pattern. Měření pokrytí viz §9.
 2. **FP testy K1′, K2, K3, K4, K5** podle plánů v §5 (fixture z cache +
    negativní sady z U2) — až pak implementace patternů.
 3. Prošetřit **znaménkovou anomálii** (rank 2 vs cp_loss; L2 eval −75) —
@@ -304,7 +304,41 @@ zjistit, jak se tag počítá (nedařilo se zde dohledat jeho tvůrce — viz
 7. `automatic_grab`/`metacognition` — dohledat tvůrce pole, než se navrhne
    korelace (§6).
 
+## 9. P0-7 měření pokrytí (2026-11-12)
+
+Zdroj: `scripts/measure_pattern_coverage.py` (stejná cache, dedup
+`game_id+color`, nejhlubší analýza, bez engine/sítě). Na rozdíl od §2 se
+neměří proxy, ale **výstup produkčního detektoru**: `scan_single_game()`
+(per-move patterny B/J/R/S/C/T) vs explicitní `unclassified` důvod.
+
+| Metrika | Hodnota |
+|---|---|
+| soubory / hry po dedupu | 282 / 259 |
+| flagged tahy | 2137 (blunder 220, mistake 454, inaccuracy 1463) |
+| matched patternem | 375 (17,5 %) |
+| unclassified | 1762 (82,5 %) |
+| blunder matched | 124/220 (56,4 %) |
+| mistake matched | 148/454 (32,6 %) |
+| inaccuracy matched | 103/1463 (7,0 %) |
+| `quiet_positional` | 1523 (86,4 % unclassified) |
+| `forcing_move_unexplained` | 148 (8,4 %) |
+| `capture_unexplained` | 91 (5,2 %) |
+| flagged s `best_move_san` | 276/2137 (12,9 %) |
+
+Dva nálezy:
+
+1. **Pokrytí je dáno prahy, ne chybějícími daty.** Většina unclassified tahů
+   je tichá poziční chyba (`quiet_positional`), tedy přesně objem, který D4
+   nechává jako event — ne důkaz pro nový pattern.
+2. **Absence PV je globální, ne per-tah.** `engine_lines`/`played_rank` nese
+   jen 11 % flagged tahů v cache (jsou uložené ve fact sheets, ne v
+   `MoveAnalysis`). Proto `evidence_gap` není první větev klasifikace: jinak
+   by 88 % důvodů bylo „nemáme důkaz" a tvar tahu by se ztratil. Kvalita
+   podkladu se reportuje zvlášť (`patterns_meta`) a je zapsaná jako
+   `CACHE-PV-FIDELITY` v `.ai_state.json`.
+
 ---
 *Všechna čísla: `scripts/aggregate_candidate_moves.py`, běh 2026-11-12,
 cache 282 analýz. Cache je gitignored — bez ní nelze čísla reprodukovat,
-souřadnice her (id+ply) jsou v digestu pro ruční dohledání.*
+souřadnice her (id+ply) jsou v digestu pro ruční dohledání. Pokrytí v §9:
+`scripts/measure_pattern_coverage.py`, stejný běh/cache.*

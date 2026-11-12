@@ -79,7 +79,7 @@ class MoveAnalysis:
         data = asdict(self)
         # P0-3: publikujeme i alias segment (D1: v payloadu obojí).
         data["segment"] = self.phase
-        # Contract v1.1: an unmeasured move must never look like a perfect one.
+        # Contract: an unmeasured move must never look like a perfect one.
         if not self.analyzed:
             data["centipawn_loss"] = None
         return data

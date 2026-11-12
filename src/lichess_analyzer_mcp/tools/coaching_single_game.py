@@ -21,13 +21,18 @@ from lichess_analyzer_mcp.services.llm_client import (
     get_llm_status,
 )
 from lichess_analyzer_mcp.services.logger import get_logger
-from lichess_analyzer_mcp.services.pattern_detector import detect_single_game
+from lichess_analyzer_mcp.services.pattern_detector import (
+    PATTERN_STATUS_MATCHED,
+    PATTERN_STATUS_UNCLASSIFIED,
+    scan_single_game,
+    unclassified_reason_from_flag,
+)
 from lichess_analyzer_mcp.services.prompt_builder import build_prompt
 from lichess_analyzer_mcp.models.analysis import DETECTOR_VERSION
 
 log = get_logger("coaching_single_game")
 
-SCHEMA_VERSION = "1.1"
+SCHEMA_VERSION = "1.2"
 _FLAGGED = ("blunder", "mistake", "inaccuracy")
 _OUTPUT_FORMATS = ("compact", "detailed", "both")
 
@@ -115,6 +120,66 @@ def _flagged_moves(analysis: dict) -> list[dict]:
             }
         )
     return out
+
+
+def _annotate_coverage(flagged: list[dict], coverage: dict[int, dict]) -> None:
+    """P0-7: attach pattern coverage to every flagged move in place.
+
+    A flagged move that is missing from `coverage` (legacy cache without the
+    measurement) is still never silent: it becomes `unclassified` with a
+    derived reason instead of an empty story.
+    """
+    for item in flagged:
+        raw_ply = item.get("ply")
+        try:
+            cov = coverage.get(int(raw_ply)) if raw_ply is not None else None
+        except (TypeError, ValueError):
+            cov = None
+        if cov is None:
+            item["pattern_status"] = PATTERN_STATUS_UNCLASSIFIED
+            item["unclassified_reason"] = unclassified_reason_from_flag(item)
+        else:
+            item["pattern_status"] = cov["pattern_status"]
+            item["unclassified_reason"] = cov.get("unclassified_reason")
+
+
+def _coverage_summary(flagged: list[dict]) -> tuple[dict, dict]:
+    """Counts for `patterns_meta.coverage` and the reason histogram (P0-7/P0-8).
+
+    Derived from the annotated flags, never from a parallel map: the compact
+    validator requires `coverage.flagged == len(flags)`, so a stubbed or
+    legacy detection path must still add up.
+    """
+    flagged_count = len(flagged)
+    matched = sum(1 for item in flagged if item.get("pattern_status") == PATTERN_STATUS_MATCHED)
+    reasons: dict[str, int] = {}
+    for item in flagged:
+        if item.get("pattern_status") == PATTERN_STATUS_MATCHED:
+            continue
+        reason = item.get("unclassified_reason")
+        if reason:
+            reasons[reason] = reasons.get(reason, 0) + 1
+    summary = {
+        "flagged": flagged_count,
+        "matched": matched,
+        "unclassified": flagged_count - matched,
+    }
+    return summary, dict(sorted(reasons.items()))
+
+
+def _unclassified_items(flagged: list[dict]) -> list[dict]:
+    """Explicit queue of critical moments no pattern explains (discovery feed)."""
+    return [
+        {
+            "ply": item.get("ply"),
+            "san": item.get("san"),
+            "class": item.get("classification"),
+            "cp_loss": item.get("cp_loss"),
+            "reason": item.get("unclassified_reason"),
+        }
+        for item in flagged
+        if item.get("pattern_status") == PATTERN_STATUS_UNCLASSIFIED
+    ]
 
 
 def _phase_summary(analysis: dict) -> dict:
@@ -217,7 +282,7 @@ async def build_response(
     ctx,
     output_format: str,
 ) -> dict:
-    """Build a contract v1.1 response (optionally serialized to the 2.0 shape).
+    """Build a contract v1.2 response (optionally serialized to the 2.1 shape).
 
     Public so the CLI (`scripts/coach.py`) can reuse the exact same pipeline for
     PGN input, which never reaches the MCP tool's Lichess fetch.
@@ -239,8 +304,11 @@ async def build_response(
     if not analysis.get("moves"):
         raise ValueError("analysis produced no moves")
 
-    patterns = detect_single_game(analysis_obj)
+    patterns, coverage = scan_single_game(analysis_obj)
     flagged = _flagged_moves(analysis)
+    _annotate_coverage(flagged, coverage)
+    unclassified = _unclassified_items(flagged)
+    coverage_counts, unclassified_reasons = _coverage_summary(flagged)
     unanalyzed = analysis.get("unanalyzed_plies", []) or []
 
     game_info = analysis.get("game", {})
@@ -279,6 +347,7 @@ async def build_response(
         "inacc_list": inacc_list or "(žádné)",
         "phase_breakdown": phase_breakdown,
         "patterns_json": json.dumps(patterns, ensure_ascii=False, indent=2),
+        "unclassified_json": json.dumps(unclassified, ensure_ascii=False, indent=2),
         "bfs_json": json.dumps(bfs_raw, ensure_ascii=False, indent=2)[:2000],
         "time_control": game_info.get("time_control", "?"),
         "player_rating": game_info.get("player_rating", "?"),
@@ -373,10 +442,14 @@ async def build_response(
             "Cross-game detectors need >=3 games and are suppressed."
             if patterns
             else "No flagged move met a single-game pattern threshold. "
+            "Every flagged move carries an explicit unclassified_reason. "
             "Cross-game detectors need >=3 games and are suppressed."
         ),
         "detector_version": DETECTOR_VERSION,
+        "coverage": coverage_counts,
     }
+    if unclassified_reasons:
+        patterns_meta["unclassified_reasons"] = unclassified_reasons
 
     moves = analysis.get("moves", [])
     acpl_value = analysis.get("total_acpl")
@@ -414,6 +487,7 @@ async def build_response(
         "flagged_moves": flagged,
         "patterns": patterns,
         "patterns_meta": patterns_meta,
+        "unclassified": unclassified,
         "llm": {
             "status": "ok" if llm_ok else "degraded",
             "provider": report_source,
@@ -442,7 +516,7 @@ async def build_response(
         },
     }
 
-    # FIX-017: compact 2.0 is the default; schema 1.1 is opt-in as "detailed".
+    # FIX-017: compact 2.1 is the default; schema 1.2 is opt-in as "detailed".
     if output_format in ("compact", "both"):
         from lichess_analyzer_mcp.services.compact_serializer import (
             to_compact_v2,
@@ -479,7 +553,7 @@ async def lichess_coaching_single_game(
     Fetches PGN, runs Stockfish analysis, detects single-game patterns,
     and generates an LLM coaching report. Depth 0 = auto (14).
 
-    The detailed response follows contract v1.1 (see
+    The detailed response follows contract v1.2 (see
     docs/PLAN_SINGLE_GAME_CALIBRATION_2026-11-07.md): every stage reports
     time, every flagged move carries an explanation or an explicit
     `explanation_source="none"`, and an unmeasured move never looks like a
@@ -497,8 +571,8 @@ async def lichess_coaching_single_game(
         color: Your color ('white' or 'black', fallback if no username)
         depth: Stockfish analysis depth (8-24, 0=auto)
         mode: Budget profile — 'fast' (60 s hard deadline) or 'deep' (120 s)
-        output_format: 'compact' (schema 2.0, default), 'detailed' (contract
-            v1.1) or 'both' -> {"compact": ..., "detailed": ...}.
+        output_format: 'compact' (schema 2.1, default), 'detailed' (contract
+            v1.2) or 'both' -> {"compact": ..., "detailed": ...}.
             'full' is a deprecated alias for 'detailed'.
         use_llm: False skips every LLM provider (deterministic report only)
     """
@@ -594,7 +668,9 @@ async def lichess_coaching_single_game(
                 "cross_game_suppressed": True,
                 "reason": "Pipeline failed before pattern detection.",
                 "detector_version": DETECTOR_VERSION,
+                "coverage": {"flagged": 0, "matched": 0, "unclassified": 0},
             },
+            "unclassified": [],
             "llm": {
                 "status": "degraded",
                 "provider": "none",

@@ -17,6 +17,7 @@ K DISPOZICI:
 - Nepřesnosti: {inacc_list}
 - Fázový breakdown: {phase_breakdown}
 - Pattern detection: {patterns_json}
+- Nezařazené chyby (bez patternu, s důvodem): {unclassified_json}
 - BlunderFactSheet podrobnosti: {bfs_json}
 
 PRAVIDLA:
@@ -25,6 +26,7 @@ PRAVIDLA:
 3. Pokud nemáš data — NEVYMÝŠLEJ. Nahraď obecným popisem.
 4. [DATA] a [IM] oddělené sekce.
 5. KAŽDÝ blunder/mistake MUSÍ být klasifikován jako taktický nebo poziční — použij FEN, motif, check, engine lines.
+6. Chybu uvedenou v Nezařazené označ jako nezařazenou a cituj její reason; nevymýšlej mechanismus.
 
 STRUKTURA:
 [DATA] Základní info: výsledek, barva, zahájení, celková ACPL, accuracy %

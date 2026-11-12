@@ -16,6 +16,30 @@ when the semantic layer is incorrect."""
 from dataclasses import dataclass, field
 from typing import Optional
 
+# ── P0-7: coverage of flagged moves ──────────────────────────────────────────
+# Lives here (not in pattern_detector) so the compact serializer can validate
+# the same vocabulary without importing python-chess.
+PATTERN_STATUS_MATCHED = "matched"
+PATTERN_STATUS_UNCLASSIFIED = "unclassified"
+
+UNCLASSIFIED_EVIDENCE_GAP = "evidence_gap"
+UNCLASSIFIED_QUIET_POSITIONAL = "quiet_positional"
+UNCLASSIFIED_FORCING_MOVE = "forcing_move_unexplained"
+UNCLASSIFIED_CAPTURE = "capture_unexplained"
+UNCLASSIFIED_MECHANISM = "mechanism_not_identified"
+# Only the compact serializer emits this, for payloads that predate P0-7.
+UNCLASSIFIED_NOT_CLASSIFIED = "not_classified"
+
+UNCLASSIFIED_REASONS = (
+    UNCLASSIFIED_EVIDENCE_GAP,
+    UNCLASSIFIED_QUIET_POSITIONAL,
+    UNCLASSIFIED_FORCING_MOVE,
+    UNCLASSIFIED_CAPTURE,
+    UNCLASSIFIED_MECHANISM,
+    UNCLASSIFIED_NOT_CLASSIFIED,
+)
+PATTERN_STATUSES = (PATTERN_STATUS_MATCHED, PATTERN_STATUS_UNCLASSIFIED)
+
 
 @dataclass
 class PatternDef:

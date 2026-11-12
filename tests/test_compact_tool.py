@@ -1,9 +1,15 @@
 """MCP tool output_format integration (no engine, no network)."""
 
 import asyncio
+import json
+import os
+
+import pytest
 
 from lichess_analyzer_mcp.models.game import GameAnalysis, GameSummary, MoveAnalysis
 from lichess_analyzer_mcp.tools import coaching_single_game as cs
+
+ROOT = os.path.join(os.path.dirname(__file__), "..")
 
 
 def _analysis() -> GameAnalysis:
@@ -67,7 +73,7 @@ def _install(monkeypatch):
         "timings": {"io_s": 0.0},
     }
     monkeypatch.setattr(cs, "collect_single_game", lambda *a, **k: data)
-    monkeypatch.setattr(cs, "detect_single_game", lambda obj: [])
+    monkeypatch.setattr(cs, "scan_single_game", lambda obj: ([], {}))
 
 
 def test_default_is_compact_v2(monkeypatch):
@@ -75,21 +81,50 @@ def test_default_is_compact_v2(monkeypatch):
     result = asyncio.run(
         cs.lichess_coaching_single_game("testgame", color="white", depth=14, use_llm=False)
     )
-    assert result["v"] == "2.0"
+    assert result["v"] == "2.1"
     assert result["game"]["id"] == "testgame"
     assert result["flags"][0]["ply"] == 3
 
 
-def test_detailed_returns_schema_11(monkeypatch):
+def test_detailed_returns_schema_12(monkeypatch):
     _install(monkeypatch)
     result = asyncio.run(
         cs.lichess_coaching_single_game(
             "testgame", color="white", depth=14, output_format="detailed", use_llm=False
         )
     )
-    assert result["schema_version"] == "1.1"
+    assert result["schema_version"] == "1.2"
     assert result["game_id"] == "testgame"
     assert result["report_meta"]["truncated"] is False
+    # P0-7: the flagged inaccuracy has no pattern (detection is stubbed) and
+    # must therefore explain itself.
+    flag = result["flagged_moves"][0]
+    assert flag["pattern_status"] == "unclassified"
+    assert flag["unclassified_reason"] in (
+        "quiet_positional",
+        "forcing_move_unexplained",
+        "capture_unexplained",
+        "evidence_gap",
+        "mechanism_not_identified",
+    )
+    assert result["patterns_meta"]["coverage"] == {
+        "flagged": 1,
+        "matched": 0,
+        "unclassified": 1,
+    }
+    assert result["unclassified"][0]["ply"] == 3
+
+
+def test_detailed_payload_validates_against_schema_12(monkeypatch):
+    jsonschema = pytest.importorskip("jsonschema")
+    _install(monkeypatch)
+    result = asyncio.run(
+        cs.lichess_coaching_single_game(
+            "testgame", color="white", depth=14, output_format="detailed", use_llm=False
+        )
+    )
+    schema = json.load(open(os.path.join(ROOT, "schemas/single_game_v1.2.json"), encoding="utf-8"))
+    jsonschema.validate(result, schema)
 
 
 def test_full_is_deprecated_alias_for_detailed(monkeypatch):
@@ -99,21 +134,23 @@ def test_full_is_deprecated_alias_for_detailed(monkeypatch):
             "testgame", color="white", depth=14, output_format="full", use_llm=False
         )
     )
-    assert result["schema_version"] == "1.1"
+    assert result["schema_version"] == "1.2"
 
 
-def test_compact_output_is_schema_20(monkeypatch):
+def test_compact_output_is_schema_21(monkeypatch):
     _install(monkeypatch)
     result = asyncio.run(
         cs.lichess_coaching_single_game(
             "testgame", color="white", depth=14, output_format="compact", use_llm=False
         )
     )
-    assert result["v"] == "2.0"
+    assert result["v"] == "2.1"
     assert result["game"]["id"] == "testgame"
     assert result["flags"][0]["ply"] == 3
     assert result["flags"][0]["rank"] == 4
     assert result["summary"]["phases"]["opening"] == [60.0, 1]
+    assert result["flags"][0]["pstatus"] == "unclassified"
+    assert result["flags"][0]["why"] == "quiet_positional"
 
 
 def test_both_returns_compact_and_detailed(monkeypatch):
@@ -124,8 +161,8 @@ def test_both_returns_compact_and_detailed(monkeypatch):
         )
     )
     assert set(result) == {"compact", "detailed"}
-    assert result["compact"]["v"] == "2.0"
-    assert result["detailed"]["schema_version"] == "1.1"
+    assert result["compact"]["v"] == "2.1"
+    assert result["detailed"]["schema_version"] == "1.2"
 
 
 def test_invalid_output_format_returns_error(monkeypatch):

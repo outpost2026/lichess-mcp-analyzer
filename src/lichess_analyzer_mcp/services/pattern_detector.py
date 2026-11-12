@@ -11,7 +11,17 @@ Overlap note — S vs J:
 from collections import Counter
 import chess
 
-from lichess_analyzer_mcp.models.pattern import PatternMatch, PatternLibrary
+from lichess_analyzer_mcp.models.pattern import (
+    PATTERN_STATUS_MATCHED,
+    PATTERN_STATUS_UNCLASSIFIED,
+    PatternMatch,
+    PatternLibrary,
+    UNCLASSIFIED_CAPTURE,
+    UNCLASSIFIED_EVIDENCE_GAP,
+    UNCLASSIFIED_FORCING_MOVE,
+    UNCLASSIFIED_MECHANISM,
+    UNCLASSIFIED_QUIET_POSITIONAL,
+)
 from lichess_analyzer_mcp.models.game import GameAnalysis, effective_phase
 from lichess_analyzer_mcp.services import board_facts
 
@@ -683,14 +693,118 @@ def _single_game_candidate(move, prev_move) -> list[dict]:
     return per_move_patterns(move, prev_move)
 
 
-def detect_single_game(analysis: GameAnalysis) -> list[dict]:
-    """Deterministic per-game pattern surface.
+# ── P0-7: coverage of flagged moves ──────────────────────────────────────────
+# A coaching payload must never stay silent about a flagged move. Every
+# blunder/mistake/inaccuracy is either MATCHED by a per-move pattern or carries
+# an explicit UNCLASSIFIED reason. The reason states WHY the detector is silent
+# (a measured shape of the move), it is NOT a mechanism claim: D4 keeps new
+# patterns out until the taxonomy is calibrated (docs/CANDIDATE_PATTERNS_2026-11-12.md).
+# The vocabulary itself lives in `models.pattern` so the compact serializer can
+# validate it without importing python-chess.
 
-    Only per-move evidence is aggregated. Cross-game detectors are explicitly
-    not run; the caller reports `cross_game_suppressed`.
+
+def unclassified_reason_for(
+    *,
+    san: str,
+    in_check: bool,
+    gives_check: bool,
+    has_engine_evidence: bool,
+) -> str:
+    """Deterministic reason why no per-move pattern covers a flagged move.
+
+    Decision order (first match wins) — each branch is a measured property of
+    the move, not an interpretation:
+
+    1. `evidence_gap` — no SAN text and no engine comparison: the move has no
+       shape to describe (family Z). Measured 2026-11-12: the game cache carries
+       SAN for every flagged move, so this branch is a guard, not the norm.
+       Absence of a PV is NOT a per-move reason: it is a global property of the
+       payload and is reported in `patterns_meta` instead. Otherwise 88 % of the
+       cache would read "evidence_gap" while the shape (quiet/capture/check) is
+       known — the reason must describe the move, not the cache fidelity.
+    2. `quiet_positional` — no capture, no check, not in check (family F7 core:
+       the measured 51/97 quiet blunders without any proxy).
+    3. `forcing_move_unexplained` — the move gives check or was played out of
+       check but no pattern fired (family F3 candidate).
+    4. `capture_unexplained` — a capture below the `B` threshold (family F4).
+    5. `mechanism_not_identified` — fallback; still explicit.
+    """
+    text = san or ""
+    if not text:
+        return UNCLASSIFIED_EVIDENCE_GAP if not has_engine_evidence else UNCLASSIFIED_MECHANISM
+    is_capture = "x" in text
+    is_check = bool(gives_check) or "+" in text or "#" in text
+    if not is_capture and not is_check and not in_check:
+        return UNCLASSIFIED_QUIET_POSITIONAL
+    if is_check or in_check:
+        return UNCLASSIFIED_FORCING_MOVE
+    if is_capture:
+        return UNCLASSIFIED_CAPTURE
+    return UNCLASSIFIED_MECHANISM
+
+
+def _has_engine_evidence(move) -> bool:
+    if getattr(move, "best_move_san", ""):
+        return True
+    if getattr(move, "engine_lines", None):
+        return True
+    return int(getattr(move, "played_rank", 0) or 0) >= 1
+
+
+def unclassified_reason(move) -> str:
+    """Reason code for a `MoveAnalysis` that no per-move pattern covers."""
+    return unclassified_reason_for(
+        san=getattr(move, "move_san", "") or "",
+        in_check=bool(getattr(move, "was_in_check", False)),
+        gives_check=bool(getattr(move, "gives_check", False)),
+        has_engine_evidence=_has_engine_evidence(move),
+    )
+
+
+def unclassified_reason_from_flag(flag: dict) -> str:
+    """Same contract for a serialized flagged-move dict (payload/compact path).
+
+    Accepts both raw `GameAnalysis.to_dict()` keys (`move_san`, `gives_check`,
+    `was_in_check`) and `coaching_single_game._flagged_moves` keys (`san`,
+    `check`, `in_check_before`).
+    """
+    san = flag.get("san") or flag.get("move_san") or ""
+    in_check = flag.get("in_check_before")
+    if in_check is None:
+        in_check = flag.get("was_in_check", False)
+    gives_check = flag.get("check")
+    if gives_check is None:
+        gives_check = flag.get("gives_check", False)
+    has_evidence = bool(
+        flag.get("best_move_san")
+        or flag.get("engine_lines")
+        or int(flag.get("played_rank") or 0) >= 1
+    )
+    return unclassified_reason_for(
+        san=san,
+        in_check=bool(in_check),
+        gives_check=bool(gives_check),
+        has_engine_evidence=has_evidence,
+    )
+
+
+def scan_single_game(analysis: GameAnalysis) -> tuple[list[dict], dict[int, dict]]:
+    """Single pass over the game: aggregated patterns + per-ply coverage.
+
+    Returns `(patterns, coverage)`. `coverage` has one entry per flagged move
+    (blunder/mistake/inaccuracy) that was measured:
+
+        {ply: {"pattern_status": "matched"|"unclassified",
+               "unclassified_reason": str|None,
+               "pattern_ids": [str, ...]}}
+
+    Keeping both products in one function guarantees the pattern list and the
+    coverage map can never disagree (P0-7 acceptance: 100 % of flagged moves
+    has either a pattern or a reason).
     """
     library = PatternLibrary().load_baseline().patterns
     aggregated: dict[str, dict] = {}
+    coverage: dict[int, dict] = {}
 
     for idx, move in enumerate(analysis.moves):
         if not move.analyzed or move.centipawn_loss is None:
@@ -698,7 +812,13 @@ def detect_single_game(analysis: GameAnalysis) -> list[dict]:
         if move.classification not in ("blunder", "mistake", "inaccuracy"):
             continue
         prev_move = analysis.moves[idx - 1] if idx > 0 else None
-        for cand in _single_game_candidate(move, prev_move):
+        candidates = _single_game_candidate(move, prev_move)
+        coverage[move.ply] = {
+            "pattern_status": PATTERN_STATUS_MATCHED if candidates else PATTERN_STATUS_UNCLASSIFIED,
+            "unclassified_reason": None if candidates else unclassified_reason(move),
+            "pattern_ids": [cand["pattern_id"] for cand in candidates],
+        }
+        for cand in candidates:
             pid = cand["pattern_id"]
             entry = aggregated.get(pid)
             if entry is None:
@@ -735,7 +855,18 @@ def detect_single_game(analysis: GameAnalysis) -> list[dict]:
             )
 
     order = {"B": 0, "J": 1, "S": 2, "C": 3, "R": 4, "T": 5}
-    return sorted(
+    patterns = sorted(
         aggregated.values(),
         key=lambda x: (order.get(x["pattern_id"], 99), -x["confidence"]),
     )
+    return patterns, coverage
+
+
+def detect_single_game(analysis: GameAnalysis) -> list[dict]:
+    """Deterministic per-game pattern surface (list-only compatibility wrapper).
+
+    Only per-move evidence is aggregated. Cross-game detectors are explicitly
+    not run; the caller reports `cross_game_suppressed`. Callers that also need
+    P0-7 coverage use :func:`scan_single_game` instead of calling both.
+    """
+    return scan_single_game(analysis)[0]

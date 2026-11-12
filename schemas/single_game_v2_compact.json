@@ -2,12 +2,12 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://lichess-analyzer-mcp/schemas/single_game_v2_compact.json",
   "title": "single_game_v2_compact",
-  "description": "Compact single-game output for LLM self-coaching. Derived from contract v1.1; instrumentation and derivable fields are omitted. Null means 'not measured' - it is never replaced by a guessed number. Null policy per field: summary.acpl / summary.phases[*][0] are null when the phase had no measured move; flags[].rank is null when the engine did not measure the played-move rank; flags[].motif is omitted when the move has no tactical motif (a present motif is always a string); eval_before/eval_after are omitted outside the FIX-015 window (cp > 200 or class blunder/mistake) or when the evaluation was not measured. Unavailable PV for a blunder/mistake is published in pv_unavailable instead of being silently omitted.",
+  "description": "Compact single-game output for LLM self-coaching, schema 2.1. Derived from contract v1.2; instrumentation and derivable fields are omitted. Null means 'not measured' - it is never replaced by a guessed number. Null policy per field: summary.acpl / summary.phases[*][0] are null when the phase had no measured move; flags[].rank is null when the engine did not measure the played-move rank; flags[].motif is omitted when the move has no tactical motif (a present motif is always a string); eval_before/eval_after are omitted outside the FIX-015 window (cp > 200 or class blunder/mistake) or when the evaluation was not measured. Unavailable PV for a blunder/mistake is published in pv_unavailable instead of being silently omitted. P0-7: every flagged move is either covered by a pattern (pstatus=matched, patterns present) or states why no pattern covers it (pstatus=unclassified, why present). The reason is a measured shape of the move, not a claimed mechanism.",
   "type": "object",
-  "required": ["v", "game", "summary", "flags", "patterns"],
+  "required": ["v", "game", "summary", "phase_method", "flags", "patterns", "patterns_meta"],
   "additionalProperties": false,
   "properties": {
-    "v": { "const": "2.0" },
+    "v": { "const": "2.1" },
     "game": {
       "type": "object",
       "required": ["id", "color", "result", "opening", "depth"],
@@ -55,12 +55,16 @@
         }
       }
     },
+    "phase_method": {
+      "enum": ["ply_segment", "material", "mixed"],
+      "description": "P0-3: which phase source the detectors used. 'mixed' means the moves came from caches with different phase methods."
+    },
     "flags": {
       "type": "array",
       "description": "One entry per flagged move (blunder, mistake, inaccuracy), ordered by ply ascending.",
       "items": {
         "type": "object",
-        "required": ["ply", "move", "class", "cp", "best", "rank"],
+        "required": ["ply", "move", "class", "cp", "best", "rank", "pstatus"],
         "additionalProperties": false,
         "properties": {
           "ply": { "type": "integer", "minimum": 1 },
@@ -72,6 +76,21 @@
             "type": ["integer", "null"],
             "minimum": 1,
             "description": "Played move rank among engine candidates; null when not measured (engine timeout). Never 0."
+          },
+          "pstatus": {
+            "enum": ["matched", "unclassified"],
+            "description": "P0-7: 'matched' = at least one pattern covers this ply (patterns present); 'unclassified' = no pattern covers it (why present)."
+          },
+          "why": {
+            "enum": [
+              "evidence_gap",
+              "quiet_positional",
+              "forcing_move_unexplained",
+              "capture_unexplained",
+              "mechanism_not_identified",
+              "not_classified"
+            ],
+            "description": "P0-7: measured reason the detector is silent. 'evidence_gap' = no engine line/best move/rank. 'quiet_positional' = no capture, no check, not in check. 'forcing_move_unexplained' = check given or faced without a pattern. 'capture_unexplained' = capture below the B threshold. 'mechanism_not_identified' = explicit fallback. 'not_classified' = source payload predates P0-7. Never a claimed mechanism."
           },
           "motif": {
             "type": "string",
@@ -89,13 +108,29 @@
             "type": "array",
             "minItems": 1,
             "items": { "type": "string", "minLength": 1 },
-            "description": "Behavioural pattern ids whose evidence includes this ply (CAND-E). Omitted when no pattern covers the move."
+            "description": "Behavioural pattern ids whose evidence includes this ply (CAND-E). Present iff pstatus=matched."
           },
           "mate_in": {
             "type": "integer",
             "description": "FIX-027: forced mate in N moves from the engine's best line. Positive = mate for the player, negative = mate against the player. Only emitted for blunders whose best line is mate; eval_cp stays null in that case."
           }
-        }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": { "pstatus": { "const": "unclassified" } },
+              "required": ["pstatus"]
+            },
+            "then": {
+              "required": ["why"],
+              "not": { "required": ["patterns"] }
+            },
+            "else": {
+              "required": ["patterns"],
+              "not": { "required": ["why"] }
+            }
+          }
+        ]
       }
     },
     "patterns": {
@@ -110,6 +145,52 @@
           "freq": { "type": "integer", "minimum": 1 },
           "sev": { "enum": ["low", "medium", "high", "critical"] },
           "plie": { "type": "array", "items": { "type": "integer" } }
+        }
+      }
+    },
+    "patterns_meta": {
+      "type": "object",
+      "description": "P0-8: mandatory. An empty `patterns` list always has a reason, and coverage proves every flag is accounted for.",
+      "required": ["scope", "cross_game_suppressed", "reason", "coverage"],
+      "additionalProperties": false,
+      "properties": {
+        "scope": { "const": "single_game" },
+        "cross_game_suppressed": { "const": true },
+        "reason": { "type": "string", "minLength": 1 },
+        "detector_version": { "type": "string" },
+        "coverage": {
+          "type": "object",
+          "required": ["flagged", "matched", "unclassified"],
+          "additionalProperties": false,
+          "properties": {
+            "flagged": { "type": "integer", "minimum": 0 },
+            "matched": { "type": "integer", "minimum": 0 },
+            "unclassified": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "unclassified": {
+      "type": "array",
+      "description": "P0-7 discovery feed: critical moments no pattern explains, ordered by ply. Omitted when empty; when present it lists exactly the flags with pstatus=unclassified.",
+      "items": {
+        "type": "object",
+        "required": ["ply", "class", "cp", "why"],
+        "additionalProperties": false,
+        "properties": {
+          "ply": { "type": "integer", "minimum": 1 },
+          "class": { "enum": ["blunder", "mistake", "inaccuracy"] },
+          "cp": { "type": "number" },
+          "why": {
+            "enum": [
+              "evidence_gap",
+              "quiet_positional",
+              "forcing_move_unexplained",
+              "capture_unexplained",
+              "mechanism_not_identified",
+              "not_classified"
+            ]
+          }
         }
       }
     },

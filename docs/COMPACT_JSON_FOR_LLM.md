@@ -1,14 +1,14 @@
-# Compact JSON 2.0 — guide for an LLM agent
+# Compact JSON 2.1 — guide for an LLM agent
 
 Compact JSON is the hand-off format between this pipeline and an LLM. It is
 produced **offline** (no LLM at ETL time) and contains only what a coaching
 answer needs. Schema: `schemas/single_game_v2_compact.json`.
 
-It is the **default** output. Schema 1.1 (detailed) is opt-in via
+It is the **default** output. Schema 1.2 (detailed) is opt-in via
 `--format detailed` and exists for debugging and cross-game work.
 
 Typical size: **1.2–4.5 kB** per game (hard budget 4500 chars for the primary
-regression `FVhqtv1S`; measured 4400 chars) versus 13–26 kB for schema 1.1.
+regression `FVhqtv1S`; measured 4400 chars) versus 13–26 kB for schema 1.2.
 
 ## What is in it
 
@@ -25,7 +25,12 @@ regression `FVhqtv1S`; measured 4400 chars) versus 13–26 kB for schema 1.1.
 | `flags[].eval_before` / `eval_after` | eval swing in cp; present only for `cp > 200` or class blunder/mistake **and** consistent with `cp` (FIX-023) |
 | `flags[].mate_in` | blunder only: forced mate in N moves from the best line (FIX-027); positive = for the player, negative = against |
 | `flags[].patterns` | pattern ids whose evidence includes this ply; omitted when none |
+| `flags[].pstatus` | `matched` or `unclassified` — every flag states whether a pattern covers it (P0-7) |
+| `flags[].why` | reason code, present **only** when `pstatus == "unclassified"` (P0-7) |
 | `patterns[]` | behavioural layer: id, confidence 0–1, frequency, severity, affected plies |
+| `phase_method` | which phase source the detectors used: `ply_segment`, `material`, or `mixed` (P0-3) |
+| `patterns_meta` | mandatory: `scope`, `cross_game_suppressed`, `reason`, `coverage {flagged, matched, unclassified}`; an empty `patterns` list always has a reason |
+| `unclassified` | discovery feed: `{ply, class, cp, why}` for flagged moves without a pattern |
 | `pv` | `ply -> [SAN, SAN, SAN]` best line (max 3 moves) |
 | `pv_unavailable` | `ply -> reason` when a blunder/mistake has no PV (explicit gap) |
 | `clusters` | runs of >= 3 consecutive flagged own moves (time-pressure signal) |
@@ -58,10 +63,20 @@ regression `FVhqtv1S`; measured 4400 chars) versus 13–26 kB for schema 1.1.
   `engine_timeout`, `engine_error`, `no_engine_lines`, `engine_lines_empty`,
   `retry_budget_exhausted`, `no_fen`. Do not claim the position is simple;
   say the engine line was unavailable.
+- `flags[].pstatus` — always present. `matched` means at least one pattern in
+  `flags[].patterns`; `unclassified` means none did. `why` is present exactly
+  when `pstatus == "unclassified"` and absent when matched.
+- `why` values — `evidence_gap`, `quiet_positional`,
+  `forcing_move_unexplained`, `capture_unexplained`,
+  `mechanism_not_identified` (`not_classified` only in payloads that predate
+  P0-7). A reason describes the measured **shape** of the move, never a
+  mechanism: do not promote it to a named pattern.
+- `patterns_meta.coverage` — always satisfies
+  `matched + unclassified == flagged == len(flags)`.
 
 ## What the agent must do
 
-1. Validate the JSON (schema 2.0) before using it.
+1. Validate the JSON (schema 2.1) before using it.
 2. Pick the weakest phase from `summary.phases`: highest ACPL, tie-break by
    flagged count. A phase with `flagged == 0` **and** ACPL `0.0` (or `null`) is
    clean — it is never the weakest phase. If every phase is clean, say
@@ -72,7 +87,9 @@ regression `FVhqtv1S`; measured 4400 chars) versus 13–26 kB for schema 1.1.
 4. Use `flags[].eval_before/eval_after` verbatim when present — you cannot
    derive a swing that was not measured.
 5. Cross-reference `patterns[].plie` with `flags[].ply`; `flags[].patterns`
-   already tells you which pattern a specific mistake feeds.
+   already tells you which pattern a specific mistake feeds. For a flag with
+   `pstatus == "unclassified"`, say that no calibrated pattern covers it and
+   quote `why`; never invent a mechanism.
 6. Mention `clusters` as a time-pressure / attention hypothesis, not a proven
    cause. A cluster is a run of flagged own moves, not a diagnosis.
 7. Answer in this order: one-sentence verdict, weakest phase + one drill, top
@@ -81,6 +98,7 @@ regression `FVhqtv1S`; measured 4400 chars) versus 13–26 kB for schema 1.1.
    - never invent a move, eval, FEN or PV;
    - never say "no blunders" if any `flags[].class == "blunder"`;
    - never call an inaccuracy a blunder (severity is in `class`);
+   - never claim a cause for `pstatus == "unclassified"` — report `why`;
    - if `llm.status == "failed"`, do not present `report` as LLM analysis.
 
 ## Prompt template (copy-paste)
@@ -88,7 +106,7 @@ regression `FVhqtv1S`; measured 4400 chars) versus 13–26 kB for schema 1.1.
 System:
 
 ```text
-You are a chess coach. You receive one compact JSON analysis (schema 2.0) of a
+You are a chess coach. You receive one compact JSON analysis (schema 2.1) of a
 game played by the user. Base every statement on the JSON fields. Never invent
 moves, evaluations, FENs or variations. If a value is null or a key is absent,
 say it was not measured instead of guessing. The user's side is game.color.
@@ -108,6 +126,8 @@ Rules:
 4. Pattern advice only for patterns with conf >= 0.5. Use flags[].patterns to
    link a specific mistake to its pattern.
 5. Do not claim "no blunders" if flags contains class=blunder.
+6. A flag with pstatus=unclassified has no calibrated pattern: quote its why
+   and say the cause was not identified. Never invent a mechanism.
 
 JSON:
 <PASTE COMPACT JSON HERE>
@@ -115,10 +135,11 @@ JSON:
 
 ## Example (core fields)
 
-Input (`Sl1s8KmU`, White, 0-1, rapid 600+0, depth 14). The example predates the
-v3 additions and is intentionally limited to the core keys; current output can
-also carry `username`, `eval_before/eval_after`, per-flag `patterns`,
-`pv_unavailable` and `clusters`.
+Input (`Sl1s8KmU`, White, 0-1, rapid 600+0, depth 14). The example is a
+historical 2.0 payload and is intentionally limited to the core keys; a current
+2.1 payload additionally carries per-flag `pstatus`/`why`, top-level
+`phase_method` and mandatory `patterns_meta`, plus `username`,
+`eval_before/eval_after`, per-flag `patterns`, `pv_unavailable` and `clusters`.
 
 ```json
 {
@@ -196,7 +217,7 @@ above 0.5, so they justify targeted capture/check discipline work.
 # one game -> compact JSON (default, offline without --no-llm only if desired)
 .\.venv\Scripts\python.exe -X utf8 scripts\coach.py --game-id Sl1s8KmU --username systeq --no-llm --out data\reports\compact_Sl1s8KmU.json
 
-# exact schema 1.1 (debugging / cross-game)
+# exact schema 1.2 (debugging / cross-game)
 .\.venv\Scripts\python.exe -X utf8 scripts\coach.py --game-id Sl1s8KmU --format detailed --out detailed.json
 
 # both shapes in one payload {"compact": ..., "detailed": ...}
@@ -209,6 +230,6 @@ above 0.5, so they justify targeted capture/check discipline work.
 .\.venv\Scripts\python.exe -X utf8 scripts\mcp_call.py lichess_coaching_single_game --args '{"game_id":"Sl1s8KmU","username":"systeq","output_format":"compact"}'
 ```
 
-`output_format` accepts `compact` (default, schema 2.0), `detailed` (schema
-1.1) and `both` → `{"compact": …, "detailed": …}`. `full` remains a deprecated
+`output_format` accepts `compact` (default, schema 2.1), `detailed` (schema
+1.2) and `both` → `{"compact": …, "detailed": …}`. `full` remains a deprecated
 alias for `detailed` for one release cycle and logs a warning.

@@ -3,6 +3,63 @@
 Všechny změny formátu a pipeline. Verze odpovídají kontraktu compact JSON /
 single-game pipeline, ne balíčku `0.1.0` (ten zůstává beze změny).
 
+## [2.3] — 2026-11-12
+
+P0-7 (unclassified flagged moves) + P0-8 (compact schema 2.1). Bez nových
+pattern ID a bez nových MCP toolů. D4: tichý blunder = explicitní
+`unclassified` stav s důvodem, ne nový pattern bez kalibrace (GT-070/P54).
+
+### Added
+
+- **P0-7 coverage.** `pattern_detector.scan_single_game()` vrací
+  `(patterns, coverage)`; `detect_single_game()` zůstává list-only wrapper.
+  Každý flagged tah (blunder/mistake/inaccuracy) má právě jeden záznam
+  `{pattern_status, unclassified_reason, pattern_ids}`.
+- **Důvody unclassified** (`models/pattern.py`): `quiet_positional`,
+  `forcing_move_unexplained`, `capture_unexplained`,
+  `mechanism_not_identified`, `evidence_gap` (jen tah bez SAN textu),
+  `not_classified` (jen legacy payloady). Důvod popisuje měřený tvar tahu,
+  ne mechanismus.
+- **Detailed kontrakt 1.2** (`schemas/single_game_v1.2.json`):
+  `flagged_moves[].pattern_status` + `unclassified_reason`,
+  `patterns_meta.coverage` + `unclassified_reasons`, top-level `unclassified`.
+- **Compact 2.1** (`schemas/single_game_v2_compact.json`): `flags[].pstatus`
+  + `why`, top-level `phase_method`, povinné `patterns_meta`
+  (`scope`, `cross_game_suppressed`, `reason`, `coverage`), top-level
+  `unclassified`. Validátor kontroluje aritmetiku coverage i coupling
+  matched => `patterns`, unclassified => `why`.
+- **Prompt** (`prompt_builder`): šablona má "Nezařazené chyby" a pravidlo
+  nevymýšlet mechanismus.
+- **`scripts/measure_pattern_coverage.py`**: offline měření na cache
+  (dedup game_id+color, nejhlubší analýza, bez engine/sítě).
+
+### Measured (2026-11-12, cache)
+
+| Metrika | Hodnota |
+|---|---|
+| soubory / hry po dedupu | 282 / 259 |
+| flagged tahy | 2137 (blunder 220, mistake 454, inaccuracy 1463) |
+| matched | 375 (17,5 %) |
+| unclassified | 1762 (82,5 %) |
+| blunder matched | 124/220 (56,4 %) |
+| mistake matched | 148/454 (32,6 %) |
+| inaccuracy matched | 103/1463 (7,0 %) |
+| quiet_positional | 1523 (86,4 % unclassified) |
+| forcing_move_unexplained | 148 (8,4 %) |
+| capture_unexplained | 91 (5,2 %) |
+| flagged s best_move_san | 276/2137 (12,9 %) |
+
+Nález: absence PV je globální vlastnost cache/payloadu (12,9 %), ne tvar tahu.
+Proto `evidence_gap` není první větev klasifikace (jinak 88 % důvodů), ale
+guard pro tah bez SAN; kvalita podkladu se reportuje zvlášť.
+
+### Tests
+
+263 passed (bez `tests/test_engine_client.py`), z toho 15 v
+`tests/test_pattern_coverage.py` a 1 validace detailed payloadu proti
+`schemas/single_game_v1.2.json`. `tests/test_engine_client.py` 13/13
+prochází, ale proces po summary visí (REVIEW-EXIT-HANG, nesouvisí s P0-7/8).
+
 ## [2.2] — 2026-11-10
 
 v4: tři P0 bugy blokující LLM narativ + overhead při cache hitu. Bez změny
