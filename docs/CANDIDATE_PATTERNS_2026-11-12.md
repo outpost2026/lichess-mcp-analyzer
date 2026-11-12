@@ -289,6 +289,11 @@ zjistit, jak se tag počítá (nedařilo se zde dohledat jeho tvůrce — viz
 
 ## 8. Další kroky (v pořadí)
 
+**Metodologický rámec:** `docs/PATTERN_DISCOVERY_METHODOLOGY.md` (2026-11-12)
+— evidence hierarchie E0-E5, discovery loop, cross-domain srovnání,
+originalita a roadmapa P1-P7. Tento dokument je závazný pro každý nový
+pattern; zdejší taxonomie F1-F8/Z je jeho measurement appendix.
+
 1. **D4**: ROZHODNUTO 2026-11-12 (P0-7) — quiet blunder dostává explicitní
    `unclassified` event s důvodem, žádný nový pattern. Měření pokrytí viz §9.
 2. **FP testy K1′, K2, K3, K4, K5** podle plánů v §5 (fixture z cache +
