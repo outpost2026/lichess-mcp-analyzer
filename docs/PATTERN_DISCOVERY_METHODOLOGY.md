@@ -446,6 +446,8 @@ Měříme fitness (kolik tahů vysvětlíme), ne precision (kolik tahů model do
 
 P1 je epistemická oprava, ne feature. Bez ní je každé další číslo nedůvěryhodné. P3 (sekvence) může bez P1 vyrobit více falešných patternů, ne lepší coaching.
 
+**Stav 2026-11-12:** T1 provenance blok implementován (`services/provenance.py`, `PatternMatch.provenance`, `--json-out` v measurement skriptu, 8 testů). T2 (skutečná komprese) a T3 (drift guard) jsou další v pořadí — viz `CROSS_REPO_TRANSFER_MAP.md` §5.
+
 ---
 
 ## 13. Závěry

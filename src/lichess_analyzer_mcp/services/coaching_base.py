@@ -128,6 +128,8 @@ def collect_patterns_for_games(analyses: list, username: str) -> list[dict]:
         }
         if m.hypothesis:
             entry["hypothesis"] = m.hypothesis
+        if m.provenance:
+            entry["provenance"] = m.provenance
         mitigation = detector.library.patterns.get(m.pattern_id)
         if mitigation:
             entry["mitigation"] = mitigation.mitigation

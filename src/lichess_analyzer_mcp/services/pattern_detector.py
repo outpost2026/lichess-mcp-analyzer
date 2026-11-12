@@ -24,6 +24,7 @@ from lichess_analyzer_mcp.models.pattern import (
 )
 from lichess_analyzer_mcp.models.game import GameAnalysis, effective_phase
 from lichess_analyzer_mcp.services import board_facts
+from lichess_analyzer_mcp.services.provenance import build_provenance
 
 THRESHOLD_TUNNEL_CONSECUTIVE = 2
 THRESHOLD_GRAB_CP = 100
@@ -56,6 +57,9 @@ class PatternDetector:
                     if match.frequency < pdef.min_occurrences:
                         continue
                     matches.append(match)
+        provenance = build_provenance(analyses, self.library)
+        for match in matches:
+            match.provenance = provenance
         return matches
 
     def _detect_a(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch:

@@ -2,7 +2,7 @@
 title: Cross-repo transfer map - ML_Ops_edukace a mcp-retrieval
 date: 2026-11-12
 verze: 1.0
-status: ANALYTICKÝ ARTEFAKT (návrh transferu, nic neimplementováno)
+status: T1 IMPLEMENTOVÁNO 2026-11-12; T2-T7 návrh
 účel: Vyhodnotit, které kontrakty, metriky a implementace z pracovního prostředí autora jsou přenositelné do lichess pattern discovery, a v jakém pořadí.
 navaznost: PATTERN_DISCOVERY_METHODOLOGY.md, CANDIDATE_PATTERNS_2026-11-12.md
 ---
@@ -13,7 +13,7 @@ navaznost: PATTERN_DISCOVERY_METHODOLOGY.md, CANDIDATE_PATTERNS_2026-11-12.md
 2. Nejsilnější transfer není algoritmus. Je to **měřicí disciplína**: každé číslo s dataset hash + commit + `n` + before/after, a žádný tichý fallback.
 3. `mcp-retrieval` je produkční reference pro BM25 + RRF + abstention + freshness + drift (MIT, malé moduly). `ML_Ops_edukace` je výzkumná laboratoř pro evaluaci na malém korpusu, kompresi a negativní výsledky.
 4. **Nepřebírat:** dense embeddings (jejich vlastní měření: MRR 0,26-0,31 vs 0,70 BM25), MMR pro ranking (0,5987 vs 0,7067), LLM v detection path.
-5. Tři konkrétní návrhy s nejvyšším poměrem hodnota/úsilí: **T1 provenance blok**, **T2 skutečná komprese**, **T3 drift guard pattern knihovny**. Teprve pak T4 (RRF pro řazení lekcí) a T5 (`pattern_search` MCP tool).
+5. Tři konkrétní návrhy s nejvyšším poměrem hodnota/úsilí: **T1 provenance blok (hotovo 2026-11-12)**, **T2 skutečná komprese**, **T3 drift guard pattern knihovny**. Teprve pak T4 (RRF pro řazení lekcí) a T5 (`pattern_search` MCP tool).
 
 ---
 
@@ -138,9 +138,27 @@ Návrh `python -m lichess_analyzer_mcp.drift`:
 
 ## 5. Konkrétní návrhy
 
-### T1 — Provenance blok (P1, nízké úsilí)
+### T1 — Provenance blok (P1, nízké úsilí) — **HOTOVO 2026-11-12**
 
-Převzít `data_version` shape. Acceptance: každý `PatternMatch` a každý measurement JSON má `dataset_sha256`, `pattern_lib_sha256`, `code_commit`, `n`. Test: report bez těchto polí neprojde schema validací.
+Převzít `data_version` shape. Acceptance: každý `PatternMatch` a každý measurement JSON má `dataset_sha256`, `pattern_lib_sha256`, `code_commit`, `n`. Vynucení na úrovni schématu je odloženo do T3 (drift guard); nyní to hlídají unit testy.
+
+**Implementace:**
+
+- `src/lichess_analyzer_mcp/services/provenance.py` — `build_provenance()`, `dataset_sha256()`, `pattern_lib_sha256()`, `code_commit()`.
+- `PatternMatch.provenance` (default `None`) se plní v `PatternDetector.detect_all()`.
+- `collect_patterns_for_games()` předává provenance do report dictu.
+- `scripts/measure_pattern_coverage.py --json-out <path>` zapisuje strukturovaný JSON včetně provenance.
+- `tests/test_provenance.py` — 8 testů: order-independence, citlivost na kompozici, citlivost na změnu pattern definice, shape, fallback commitu, attach do `detect_all`, report path.
+
+**Naměřená identita (2026-11-12, cache 282 souborů / 259 dedup her):**
+
+```
+dataset_sha256:      5e41461a60453289268f6a919362a37f53efd701a438f32bbf19674e2a77b57f
+pattern_lib_sha256:  64ebbc6a4bd2cb8d8a9ea44ac2d328a08325e53b6cf6a49b1c4e14a7b31f4db2
+n_games: 259   n_moves: 8109
+```
+
+**Omezení:** hash datasetu je kompozice `(game_id, color, len(moves), date)`, ne obsah engine analýzy. Hloubka engine je vlastnost payloadu, ne identity datasetu; pokud bude potřeba, přidá se jako samostatné pole `engine_depths`.
 
 ### T2 — Skutečná komprese místo proxy (P1, střední úsilí)
 
@@ -247,7 +265,7 @@ Jejich výsledky ukazují, že **jednoduché deterministické jádro + poctivá 
 
 | Priorita | Akce | Proč |
 |---|---|---|
-| 1 | T1 provenance blok | bez něj jsou všechna čísla neporovnatelná |
+| 1 | T1 provenance blok — **HOTOVO** | bez něj jsou všechna čísla neporovnatelná |
 | 2 | T2 skutečná komprese | odstraňuje falešné tvrzení v confidence |
 | 3 | T3 drift guard | eliminuje tichý rozchod kódu a dokumentace |
 | 4 | T4 RRF ranking | zlepšuje report bez zásahu do detekce |

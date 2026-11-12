@@ -67,6 +67,7 @@ class PatternMatch:
     severity: str
     hypothesis: Optional[str] = None
     compression_ratio: Optional[float] = None
+    provenance: Optional[dict] = None
 
 
 @dataclass

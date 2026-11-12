@@ -30,7 +30,9 @@ import pathlib
 import sys
 
 from lichess_analyzer_mcp.models.game import GameAnalysis
+from lichess_analyzer_mcp.models.pattern import PatternLibrary
 from lichess_analyzer_mcp.services.pattern_detector import scan_single_game
+from lichess_analyzer_mcp.services.provenance import build_provenance
 
 CACHE_DIR = pathlib.Path("data/game_cache")
 FLAGGED = ("blunder", "mistake", "inaccuracy")
@@ -81,12 +83,20 @@ def load_games(cache_dir: pathlib.Path) -> tuple[list[tuple[str, GameAnalysis]],
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--cache-dir", default=str(CACHE_DIR))
+    ap.add_argument(
+        "--json-out",
+        default="",
+        help="zapsat strukturovany vysledek včetně provenance do JSON souboru",
+    )
     args = ap.parse_args()
 
     games, files = load_games(pathlib.Path(args.cache_dir))
     if not games:
         print("CHYBA: zadne analyzy v cache", file=sys.stderr)
         return 1
+
+    library = PatternLibrary().load_baseline()
+    provenance = build_provenance([analysis for _, analysis in games], library)
 
     flagged_by_class: collections.Counter = collections.Counter()
     status_by_class: dict[str, collections.Counter] = collections.defaultdict(collections.Counter)
@@ -216,6 +226,42 @@ def main() -> int:
             print(f"  flagged s {label}: {evidence[key]}/{n} ({100 * evidence[key] / n:.1f}%)")
     print("  Chybejici PV je vlastnost cache/payloadu, ne tvar tahu;")
     print("  proto se nepromita do unclassified_reason (viz pattern_detector).")
+
+    print()
+    print("=" * 72)
+    print("G) PROVENANCE (T1)")
+    print("=" * 72)
+    for key in ("dataset_sha256", "pattern_lib_sha256", "code_commit", "n_games", "n_moves"):
+        print(f"  {key}: {provenance[key]}")
+
+    if args.json_out:
+        summary = {
+            "provenance": provenance,
+            "cache_files": files,
+            "games_deduped": len(games),
+            "flagged": total_flagged,
+            "matched": total_matched,
+            "unclassified": total_unclassified,
+            "flagged_by_class": dict(flagged_by_class),
+            "status_by_class": {cls: dict(counter) for cls, counter in status_by_class.items()},
+            "unclassified_reasons": dict(reason_all),
+            "pattern_ids": dict(pattern_ids),
+            "multi_pattern_moves": multi_pattern,
+            "evidence_coverage": {
+                "flagged": evidence["flagged"],
+                "best_move_san": evidence["best_move_san"],
+                "engine_lines": evidence["engine_lines"],
+                "played_rank": evidence["played_rank"],
+            },
+            "invariant_errors": invariant_errors,
+        }
+        out = pathlib.Path(args.json_out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(
+            json.dumps(summary, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        print(f"  json_out: {out}")
     return 0
 
 
