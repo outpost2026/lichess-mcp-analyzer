@@ -594,6 +594,7 @@ lichess-analyzer-mcp/
 ### Lossy Compression Principle
 - `docs/MIKOLOV_KOMPRESE_V_PATTERN_ARCHITEKTURE.md` — LCP formalizace
 - `docs/PATTERN_DISCOVERY_METHODOLOGY.md` — metodologie discovery/detection, evidence hierarchie, cross-domain srovnani, originalita a roadmapa
+- `docs/CROSS_REPO_TRANSFER_MAP.md` — transfer kontraktu z `ML_Ops_edukace` a `mcp-retrieval` (provenance, komprese, drift, RRF)
 - `B2B-KB/05_EPISTEMIKA/00_kompresni_realismus/Kompresni_modelovani_v_praxi_synteza_v1.md` — syntéza
 - `B2B-KB/05_EPISTEMIKA/00_kompresni_realismus/brain_geometric_processor_summary_v2.1.md` — teoretické základy
 

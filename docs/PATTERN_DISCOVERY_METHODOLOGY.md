@@ -467,6 +467,7 @@ P1 je epistemická oprava, ne feature. Bez ní je každé další číslo nedův
 - `docs/MIKOLOV_KOMPRESE_V_PATTERN_ARCHITEKTURE.md` — kompresní rámec (v1.0; viz korekce §11.1).
 - `docs/COMPACT_JSON_FOR_LLM.md` — compact 2.1 kontrakt.
 - `docs/DEEP_DIVE_SINGLE_GAME_PATTERNS_2026-08-02.md` — single-game pattern surface.
+- `docs/CROSS_REPO_TRANSFER_MAP.md` — přenositelné kontrakty z `ML_Ops_edukace` a `mcp-retrieval` (abstention, data identity, drift guard, RRF, kompresní měření).
 - `src/lichess_analyzer_mcp/services/pattern_detector.py` — `per_move_patterns`, `scan_single_game`, cross-game detektory.
 - `src/lichess_analyzer_mcp/models/pattern.py` — `PatternDef`, `PatternLibrary.load_baseline`.
 - `src/lichess_analyzer_mcp/services/compressibility_validator.py` — confidence mix (předmět P1).
