@@ -16,7 +16,7 @@ regression `FVhqtv1S`; measured 4400 chars) versus 13–26 kB for schema 1.2.
 |---|---|
 | `game` | id, username (omitted for anonymous games), color (side you played), result, opening (ECO + name), tc, date, depth |
 | `summary.acpl` / `summary.acc` | centipawn loss = lower is better; accuracy 0–100 |
-| `summary.phases` | `[acpl, flagged_count]` for opening / middlegame / endgame |
+| `summary.phases` | `[acpl, flagged_count]` for opening / middlegame / endgame, grouped by `effective_phase` — the same phase the detectors used (`phase_method`), not the raw ply segment (P1) |
 | `flags[]` | one entry per blunder/mistake/inaccuracy, ordered by ply |
 | `flags[].ply` | half-move number (1 = White's 1st move) |
 | `flags[].move` / `best` | SAN played vs SAN the engine preferred |
@@ -28,7 +28,7 @@ regression `FVhqtv1S`; measured 4400 chars) versus 13–26 kB for schema 1.2.
 | `flags[].pstatus` | `matched` or `unclassified` — every flag states whether a pattern covers it (P0-7) |
 | `flags[].why` | reason code, present **only** when `pstatus == "unclassified"` (P0-7) |
 | `patterns[]` | behavioural layer: id, confidence 0–1, frequency, severity, affected plies |
-| `phase_method` | which phase source the detectors used: `ply_segment`, `material`, or `mixed` (P0-3) |
+| `phase_method` | which phase source the detectors used: `ply_segment`, `material`, or `mixed` (P0-3). `summary.phases` follows this source; the detailed payload additionally publishes `segment_stats` and `chess_phase_stats` so the difference is auditable (P1) |
 | `patterns_meta` | mandatory: `scope`, `cross_game_suppressed`, `reason`, `coverage {flagged, matched, unclassified}`; an empty `patterns` list always has a reason |
 | `unclassified` | discovery feed: `{ply, class, cp, why}` for flagged moves without a pattern |
 | `pv` | `ply -> [SAN, SAN, SAN]` best line (max 3 moves) |

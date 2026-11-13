@@ -274,3 +274,66 @@ class TestAnalyzerConstruction:
         assert result.chess_phase == "opening"
         assert result.phase_method == PHASE_METHOD_DEFAULT
         assert effective_phase(result) == "opening"
+
+
+class TestPhaseStatsUseEffectivePhase:
+    """P1: souhrn po fázích musí použít stejnou fázi jako detektory."""
+
+    def test_phase_stats_follow_material_mode(self):
+        analysis = _analysis(
+            _move(phase="middlegame", chess_phase="endgame", phase_method=PHASE_METHOD_MATERIAL)
+        )
+        analysis.auto_annotate()
+        assert "endgame" in analysis.phase_stats
+        assert "middlegame" not in analysis.phase_stats
+
+    def test_segment_stats_always_use_ply_segment(self):
+        analysis = _analysis(
+            _move(phase="middlegame", chess_phase="endgame", phase_method=PHASE_METHOD_MATERIAL)
+        )
+        analysis.auto_annotate()
+        assert "middlegame" in analysis.segment_stats
+        assert "endgame" not in analysis.segment_stats
+
+    def test_chess_phase_stats_use_material_phase(self):
+        analysis = _analysis(
+            _move(phase="middlegame", chess_phase="endgame", phase_method=PHASE_METHOD_MATERIAL)
+        )
+        analysis.auto_annotate()
+        assert "endgame" in analysis.chess_phase_stats
+        assert "middlegame" not in analysis.chess_phase_stats
+
+    def test_legacy_move_has_no_chess_phase_stats(self):
+        analysis = _analysis(_move(phase="endgame", chess_phase=""))
+        analysis.auto_annotate()
+        assert analysis.chess_phase_stats == {}
+        assert analysis.phase_stats == analysis.segment_stats
+
+    def test_unanalyzed_move_is_excluded_from_all_slices(self):
+        move = _move(phase="endgame")
+        move.analyzed = False
+        analysis = _analysis(move)
+        analysis.auto_annotate()
+        assert analysis.phase_stats == {}
+        assert analysis.segment_stats == {}
+        assert analysis.chess_phase_stats == {}
+
+    def test_payload_publishes_all_three_slices(self):
+        analysis = _analysis(_move(phase="endgame", chess_phase="endgame"))
+        analysis.auto_annotate()
+        payload = analysis.to_dict()
+        for key in ("phase_stats", "segment_stats", "chess_phase_stats"):
+            assert key in payload
+            assert payload[key]["endgame"]["move_count"] == 1
+
+    def test_from_dict_recomputes_missing_slices_only(self):
+        analysis = _analysis(_move(phase="endgame", chess_phase="endgame"))
+        analysis.auto_annotate()
+        payload = analysis.to_dict()
+        payload.pop("segment_stats")
+        payload.pop("chess_phase_stats")
+        restored = GameAnalysis.from_dict(payload)
+        assert restored.segment_stats == analysis.segment_stats
+        assert restored.chess_phase_stats == analysis.chess_phase_stats
+        # Uložený phase_stats se nepřepisuje (součást identity cache).
+        assert restored.phase_stats == analysis.phase_stats

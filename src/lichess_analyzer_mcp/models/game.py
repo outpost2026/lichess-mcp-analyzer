@@ -9,6 +9,9 @@ from lichess_analyzer_mcp.models.analysis import BlunderFactSheet
 PHASE_METHOD_DEFAULT = "ply_segment"
 PHASE_METHOD_MATERIAL = "material"
 
+PHASES = ("opening", "middlegame", "endgame")
+FLAGGED_CLASSES = ("blunder", "mistake", "inaccuracy")
+
 
 @dataclass
 class GameSummary:
@@ -110,6 +113,37 @@ def effective_phase(move: MoveAnalysis) -> str:
     return getattr(move, "segment", "") or getattr(move, "phase", "") or ""
 
 
+def phase_stats_by(moves: list[MoveAnalysis], phase_of) -> dict:
+    """Agregace měřených tahů podle jedné fázové funkce.
+
+    Jediný zdroj pravdy pro všechny tři publikované řezy:
+
+    - `phase_stats`     → `effective_phase` (stejná fáze, jakou vidí detektory),
+    - `segment_stats`   → `segment` (ply-segmentace, historické chování),
+    - `chess_phase_stats` → `chess_phase` (material-based, jen měřené tahy).
+
+    Tah bez fáze (např. legacy cache bez `chess_phase`) se do daného řezu
+    nezapočítá; chybějící fáze se nikdy nedopočítává odhadem.
+    """
+    stats: dict = {}
+    for phase in PHASES:
+        phase_moves = [m for m in moves if m.analyzed and phase_of(m) == phase]
+        if not phase_moves:
+            continue
+        acpl = sum(m.centipawn_loss for m in phase_moves) / len(phase_moves)
+        acc = sum(max(0, 100 - m.centipawn_loss * 0.15) for m in phase_moves) / len(phase_moves)
+        flagged = sum(1 for m in phase_moves if m.classification in FLAGGED_CLASSES)
+        stats[phase] = {
+            "acpl": round(acpl, 1),
+            "accuracy": round(acc, 1),
+            "move_count": len(phase_moves),
+            # `errors` je legacy klíč kontraktu 1.2 (prompt/LLM cache); hodnota
+            # je totožná s `flagged` v detailed payloadu.
+            "errors": flagged,
+        }
+    return stats
+
+
 @dataclass
 class GameAnalysis:
     game: GameSummary
@@ -120,6 +154,10 @@ class GameAnalysis:
     mistakes: list[MoveAnalysis] = field(default_factory=list)
     inaccuracies: list[MoveAnalysis] = field(default_factory=list)
     phase_stats: dict = field(default_factory=dict)
+    # P1: tři fáze-řezy. `phase_stats` = effective_phase (autoritativní pro
+    # detektory), `segment_stats` = ply segment, `chess_phase_stats` = material.
+    segment_stats: dict = field(default_factory=dict)
+    chess_phase_stats: dict = field(default_factory=dict)
     blunder_fact_sheets: list[BlunderFactSheet] = field(default_factory=list)
     evaluation_errors: int = 0
     # P0.1/P0.2: observable contract fields.
@@ -146,6 +184,8 @@ class GameAnalysis:
             "mistakes": [m.to_dict() for m in self.mistakes],
             "inaccuracies": [m.to_dict() for m in self.inaccuracies],
             "phase_stats": self.phase_stats,
+            "segment_stats": self.segment_stats,
+            "chess_phase_stats": self.chess_phase_stats,
             "blunder_fact_sheets": [bfs.to_dict() for bfs in self.blunder_fact_sheets],
             "evaluation_errors": self.evaluation_errors,
             "unanalyzed_plies": self.unanalyzed_plies,
@@ -178,7 +218,12 @@ class GameAnalysis:
                 2800,
             )
         self.accuracy = self._compute_accuracy()
+        # P1: phase_stats je autoritativní řez (effective_phase), takže souhrn
+        # a detektory mluví o stejné fázi. Oba alternativní řezy se publikují
+        # vedle, aby šel rozdíl kdykoli auditovat.
         self.phase_stats = self._compute_phase_stats()
+        self.segment_stats = self._compute_segment_stats()
+        self.chess_phase_stats = self._compute_chess_phase_stats()
 
     def _compute_accuracy(self) -> float:
         measured = [m for m in self.moves if m.analyzed]
@@ -188,27 +233,20 @@ class GameAnalysis:
         return round(max(0, min(100, total / len(measured))), 1)
 
     def _compute_phase_stats(self) -> dict:
-        stats = {}
-        for phase in ("opening", "middlegame", "endgame"):
-            phase_moves = [m for m in self.moves if m.analyzed and m.phase == phase]
-            if not phase_moves:
-                continue
-            acpl = sum(m.centipawn_loss for m in phase_moves) / len(phase_moves)
-            acc = sum(max(0, 100 - m.centipawn_loss * 0.15) for m in phase_moves) / len(phase_moves)
-            errors = [
-                m for m in phase_moves if m.classification in ("blunder", "mistake", "inaccuracy")
-            ]
-            stats[phase] = {
-                "acpl": round(acpl, 1),
-                "accuracy": round(acc, 1),
-                "move_count": len(phase_moves),
-                "errors": len(errors),
-            }
-        return stats
+        """Souhrn podle `effective_phase` — stejná fáze, jakou vidí detektory."""
+        return phase_stats_by(self.moves, effective_phase)
+
+    def _compute_segment_stats(self) -> dict:
+        """Souhrn podle ply segmentu (historické chování, auditní řez)."""
+        return phase_stats_by(self.moves, lambda m: m.segment)
+
+    def _compute_chess_phase_stats(self) -> dict:
+        """Souhrn podle material-based `chess_phase`; prázdná fáze se vynechá."""
+        return phase_stats_by(self.moves, lambda m: (m.chess_phase or "").strip())
 
     @staticmethod
     def from_dict(d: dict) -> "GameAnalysis":
-        return GameAnalysis(
+        analysis = GameAnalysis(
             game=GameSummary.from_dict(d["game"]),
             moves=[MoveAnalysis.from_dict(m) for m in d["moves"]],
             total_acpl=d.get("total_acpl", 0.0),
@@ -217,6 +255,8 @@ class GameAnalysis:
             mistakes=[MoveAnalysis.from_dict(m) for m in d.get("mistakes", [])],
             inaccuracies=[MoveAnalysis.from_dict(m) for m in d.get("inaccuracies", [])],
             phase_stats=d.get("phase_stats", {}),
+            segment_stats=d.get("segment_stats", {}),
+            chess_phase_stats=d.get("chess_phase_stats", {}),
             blunder_fact_sheets=[
                 BlunderFactSheet.from_dict(bfs) for bfs in d.get("blunder_fact_sheets", [])
             ],
@@ -230,3 +270,11 @@ class GameAnalysis:
             deadline_hit=d.get("deadline_hit", False),
             mode=d.get("mode", "fast"),
         )
+        # Legacy cache nemá alternativní řezy; dopočítají se z tahů (determinismus).
+        # `phase_stats` z cache se nepřepisuje — starší payload mohl vzniknout
+        # jinou fázovou metodou a jeho hodnota je součástí identity cache.
+        if not analysis.segment_stats:
+            analysis.segment_stats = analysis._compute_segment_stats()
+        if not analysis.chess_phase_stats:
+            analysis.chess_phase_stats = analysis._compute_chess_phase_stats()
+        return analysis

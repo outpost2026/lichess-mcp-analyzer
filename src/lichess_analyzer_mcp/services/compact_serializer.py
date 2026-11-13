@@ -30,6 +30,9 @@ v3 additions (handoff lichess_fix_v3):
   - phase_method = which phase source the detectors used (P0-3).
   - top-level `unclassified` = the discovery feed: critical moments no pattern
     explains, ordered by ply. Omitted only when empty.
+  - summary.phases is grouped by `effective_phase` (the phase the detectors
+    used), not by the raw ply segment; the detailed payload publishes
+    `segment_stats` and `chess_phase_stats` next to it (P1).
 
 Null policy (FIX-016), documented in the schema as well:
   - `rank: null`  -> rank was not measured (engine timeout), never 0 or 1.

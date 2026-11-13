@@ -29,6 +29,7 @@ from lichess_analyzer_mcp.services.pattern_detector import (
 )
 from lichess_analyzer_mcp.services.prompt_builder import build_prompt
 from lichess_analyzer_mcp.models.analysis import DETECTOR_VERSION
+from lichess_analyzer_mcp.models.game import GameAnalysis, effective_phase
 
 log = get_logger("coaching_single_game")
 
@@ -182,23 +183,27 @@ def _unclassified_items(flagged: list[dict]) -> list[dict]:
     ]
 
 
-def _phase_summary(analysis: dict) -> dict:
-    moves = analysis.get("moves", [])
+def _phase_summary(analysis: GameAnalysis) -> dict:
+    """Souhrn po fázích — stejná fáze, jakou používají detektory (P1).
+
+    Dřív se četl surový `phase` (ply segment), zatímco detektory rozhodují
+    přes `effective_phase`; u `phase_method=material` se tím souhrn a detekce
+    rozešly. `segment_stats` a `chess_phase_stats` zůstávají jako auditní řezy.
+    """
     result = {}
+    moves = analysis.moves
     for phase in ("opening", "middlegame", "endgame"):
-        phase_moves = [m for m in moves if m.get("phase") == phase and m.get("analyzed", True)]
+        phase_moves = [m for m in moves if m.analyzed and effective_phase(m) == phase]
         if not phase_moves:
             continue
-        measured = [m for m in phase_moves if isinstance(m.get("centipawn_loss"), (int, float))]
+        measured = [m for m in phase_moves if isinstance(m.centipawn_loss, (int, float))]
         acpl = (
-            round(sum(m["centipawn_loss"] for m in measured) / len(measured), 1)
-            if measured
-            else None
+            round(sum(m.centipawn_loss for m in measured) / len(measured), 1) if measured else None
         )
         result[phase] = {
             "acpl": acpl,
             "move_count": len(phase_moves),
-            "flagged": sum(1 for m in phase_moves if m.get("classification") in _FLAGGED),
+            "flagged": sum(1 for m in phase_moves if m.classification in _FLAGGED),
         }
     return result
 
@@ -312,7 +317,7 @@ async def build_response(
     unanalyzed = analysis.get("unanalyzed_plies", []) or []
 
     game_info = analysis.get("game", {})
-    phase_stats = _phase_summary(analysis)
+    phase_stats = _phase_summary(analysis_obj)
     phase_breakdown = _phase_breakdown(phase_stats)
 
     def _move_lines(items: list[dict], limit: int = 10) -> str:
@@ -460,6 +465,8 @@ async def build_response(
         "moves_total": len(moves),
         "evaluation_errors": analysis.get("evaluation_errors", 0),
         "phase_stats": phase_stats,
+        "segment_stats": analysis_obj.segment_stats,
+        "chess_phase_stats": analysis_obj.chess_phase_stats,
     }
 
     cache = {
