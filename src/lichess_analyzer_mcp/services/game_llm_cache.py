@@ -253,6 +253,8 @@ def analyze_game_llm(
             _save_llm_cache(game_id, color, result)
             return result
 
+    return None
+
 
 def _validate_json_output(content: str) -> Optional[dict]:
     """Validate LLM output is parseable JSON. Extracts from ```json blocks if needed."""

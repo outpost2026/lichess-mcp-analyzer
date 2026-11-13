@@ -564,21 +564,24 @@ def _run_analyze_pgn(
     # of the game budget, not from a constant (the "15 s × N" failure mode).
     player_plies_total = 0
     _probe = game_node.board()
-    _pnode = game_node
+    _pnode: chess.pgn.GameNode = game_node
     while _pnode.variations:
         _pnode = _pnode.variations[0]
         if _probe.turn == player_side:
             player_plies_total += 1
-        _probe.push(_pnode.move)
+        if _pnode.move is not None:
+            _probe.push(_pnode.move)
     player_plies_seen = 0
 
     ply = 0
-    total_cp = 0
+    total_cp = 0.0
     move_count = 0
-    node = game_node
+    node: chess.pgn.GameNode = game_node
     while node.variations:
         node = node.variations[0]
         move = node.move
+        if move is None:
+            break
         ply += 1
         fen_before = board.fen()
         if board.turn == player_side:

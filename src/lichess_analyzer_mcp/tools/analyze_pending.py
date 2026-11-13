@@ -110,7 +110,7 @@ async def lichess_analyze_pending(
     for r in results:
         if r["status"] == "ok":
             try:
-                update_games_index_with_game(username, r["game_id"])
+                update_games_index_with_game(username, str(r["game_id"]))
             except Exception:
                 pass
 

@@ -7,8 +7,8 @@ from typing import Optional
 
 def generate_md_report(
     username: str,
-    games_data: list[dict],
-    analyses_data: list[dict],
+    games_data: dict,
+    analyses_data: dict,
     pattern_results: list[dict],
     weakness_report: Optional[dict],
     llm_report: str,

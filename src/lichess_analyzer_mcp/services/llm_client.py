@@ -11,7 +11,7 @@ Token usage is tracked per call.
 """
 
 import os
-from typing import Optional
+from typing import Any, Optional
 
 # ── Provider cascade configuration ────────────────────────────────────────
 # Order matters: first provider with valid API key is tried first.
@@ -543,7 +543,10 @@ def get_llm_status() -> dict:
     health = provider_health.snapshot()
     available = []
     for p in PROVIDERS:
-        entry = {"provider": p["name"], "model": os.environ.get(p["model_var"], p["default_model"])}
+        entry: dict[str, Any] = {
+            "provider": p["name"],
+            "model": os.environ.get(p["model_var"], p["default_model"]),
+        }
         entry["key_set"] = bool(os.environ.get(p["api_key_var"], ""))
         entry["healthy"] = provider_health.should_attempt(p["name"])
         if p["name"] in health:
@@ -600,7 +603,12 @@ def run_coaching_pipeline(
         mode if mode != "auto" else (env_mode or ("mono" if n <= 30 else "incremental"))
     )
 
-    meta = {"mode": effective_mode, "games_analyzed": n, "per_game_calls": 0, "per_game_tokens": 0}
+    meta: dict[str, Any] = {
+        "mode": effective_mode,
+        "games_analyzed": n,
+        "per_game_calls": 0,
+        "per_game_tokens": 0,
+    }
 
     if effective_mode == "mono":
         report, log = generate_coaching_report_with_logs(

@@ -24,6 +24,8 @@ FEN_CHECK = "6k1/8/8/4Q3/8/8/4q3/4K3 w - - 0 1"
 FEN_NO_CHECK = "4k3/8/8/3q4/4P3/8/8/4K3 w - - 0 1"
 # F5: Ke1 v sachu od Re8, Bc4 nema ZADNE legarni brani => False/False.
 FEN_CHECK_NO_CAPTURE = "4r1k1/8/8/8/2B5/8/8/4K3 w - - 0 1"
+# F6: Ke1 v sachu od Qe5; kral muze sebrat Vd2 (Kxd2), ale ne sachujici Qe5.
+FEN_CHECK_OTHER_CAPTURE = "6k1/8/8/4q3/8/8/3r4/4K3 w - - 0 1"
 
 
 def _move(fen: str, uci: str, san: str, cp: float, in_check: bool) -> MoveAnalysis:
@@ -86,6 +88,26 @@ class TestKingCanCaptureChecker:
     def test_false_when_checker_out_of_reach(self):
         assert board_facts.king_can_capture_checker(FEN_CHECK_NO_CAPTURE) is False
 
+    def test_false_when_king_can_only_capture_other_piece(self):
+        """Kral muze vzit Vd2, ale ne sachujici Qe5 => checker neni branitelny."""
+        assert board_facts.king_capture_possible(FEN_CHECK_OTHER_CAPTURE) is True
+        assert board_facts.king_can_capture_checker(FEN_CHECK_OTHER_CAPTURE) is False
+
+
+class TestPlayedKingCaptureOfChecker:
+    def test_true_when_king_takes_checker(self):
+        assert board_facts.played_king_capture_of_checker(FEN_CHECK, "e1e2") is True
+
+    def test_false_when_king_takes_non_checking_piece(self):
+        """Kxd2 je brani kralem, ale ne sachujici figury => False."""
+        assert board_facts.played_king_capture_of_checker(FEN_CHECK_OTHER_CAPTURE, "e1d2") is False
+
+    def test_false_for_illegal_move(self):
+        assert board_facts.played_king_capture_of_checker(FEN_CHECK, "e1e8") is False
+
+    def test_false_when_queen_captures_checker(self):
+        assert board_facts.played_king_capture_of_checker(FEN_CHECK, "e5e2") is False
+
 
 class TestTotality:
     def test_malformed_fen_never_raises(self):
@@ -96,6 +118,7 @@ class TestTotality:
             assert board_facts.king_can_capture_checker(bad) is False
             assert board_facts.is_king_capture(bad, "e1e2") is False
             assert board_facts.king_capture_played(bad, "e1e2", True) is False
+            assert board_facts.played_king_capture_of_checker(bad, "e1e2") is False
             assert board_facts.played_piece_type(bad, "e1e2") is None
 
 
@@ -123,5 +146,11 @@ class TestBfsSingleGameAgreement:
     def test_s_absent_in_both_paths_without_king_capture_option(self):
         """V sachu, ale kral nemuze vzit sachujiho (Re8 daleko) => S nikde."""
         move = _move(FEN_CHECK_NO_CAPTURE, "c4e6", "Be6", 600.0, True)
+        assert "S" not in self._ids_bfs(move)
+        assert "S" not in self._ids_single(move)
+
+    def test_s_absent_in_both_paths_when_king_can_only_capture_other_piece(self):
+        """Kral muze vzit Vd2, ale ne sachujici Qe5 => zadny FP patternu S."""
+        move = _move(FEN_CHECK_OTHER_CAPTURE, "e1f1", "Kf1", 600.0, True)
         assert "S" not in self._ids_bfs(move)
         assert "S" not in self._ids_single(move)

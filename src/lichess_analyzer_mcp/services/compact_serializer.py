@@ -372,12 +372,12 @@ def to_compact_v2(
             continue
         flag = _flag(raw, fens, pattern_plies)
         flags.append(flag)
-        ply = str(flag["ply"])
+        ply_key = str(flag["ply"])
         line = _pv(raw)
         if line:
-            pv[ply] = line
+            pv[ply_key] = line
         elif flag["class"] in ("blunder", "mistake"):
-            missing_pv.append((ply, raw.get("pv_error")))
+            missing_pv.append((ply_key, raw.get("pv_error")))
 
     coverage = {
         "flagged": len(flags),
@@ -409,12 +409,12 @@ def to_compact_v2(
         compact["pv"] = pv
     unavailable: dict[str, str] = {}
     for key, reason in (pv_unavailable or {}).items():
-        ply = str(int(key))
-        if ply not in pv and reason:
-            unavailable[ply] = str(reason)
-    for ply, reason in missing_pv:
-        if ply not in pv and ply not in unavailable:
-            unavailable[ply] = str(reason or "engine_lines_empty")
+        key_str = str(int(key))
+        if key_str not in pv and reason:
+            unavailable[key_str] = str(reason)
+    for missing_ply, missing_reason in missing_pv:
+        if missing_ply not in pv and missing_ply not in unavailable:
+            unavailable[missing_ply] = str(missing_reason or "engine_lines_empty")
     if unavailable:
         compact["pv_unavailable"] = unavailable
 

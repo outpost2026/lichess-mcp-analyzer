@@ -4,7 +4,7 @@ import json
 import os
 import re
 import time
-from typing import Optional
+from typing import Optional, cast
 
 import berserk
 
@@ -101,7 +101,7 @@ def _games_index_path(username: str) -> str:
 
 
 def _build_games_index(games: list[dict], username: str) -> dict:
-    by_result = {"win": [], "loss": [], "draw": []}
+    by_result: dict[str, list[str]] = {"win": [], "loss": [], "draw": []}
     summary = []
     for g in games:
         gid = g.get("id", "")
@@ -197,8 +197,8 @@ def fetch_user_profile(username: str) -> dict:
     client = get_client()
     data = client.users.get_by_id(username)
     if isinstance(data, list) and len(data) > 0:
-        return data[0]
-    return data
+        return cast(dict, data[0])
+    return cast(dict, data)
 
 
 def _json_safe(obj):
@@ -230,7 +230,7 @@ def _export_by_player(username: str, max_games: int = 999) -> list[dict]:
                     evals=True,
                 )
             )
-            return page[:max_games]
+            return cast(list[dict], page[:max_games])
         except Exception as e:
             err_str = str(e)
             if "429" in err_str or "rate limit" in err_str.lower():
@@ -412,7 +412,7 @@ def fetch_game_pgn(game_id: str) -> str:
     if cached is not None:
         return cached
     client = get_client()
-    pgn = client.games.export(game_id, as_pgn=True)
+    pgn = cast(str, client.games.export(game_id, as_pgn=True))
     _save_pgn_cache(game_id, pgn)
     return pgn
 
@@ -420,7 +420,7 @@ def fetch_game_pgn(game_id: str) -> str:
 def fetch_cloud_eval(fen: str) -> Optional[dict]:
     client = get_client()
     try:
-        return client.analysis.get_cloud_evaluation(fen)
+        return dict(client.analysis.get_cloud_evaluation(fen))
     except Exception as e:
         import logging
 

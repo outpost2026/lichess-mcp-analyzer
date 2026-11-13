@@ -43,7 +43,7 @@ def recover_missing_pv(
     depth: int,
     timeout_s: float = DEFAULT_TIMEOUT_S,
     max_retries: int = MAX_RETRIES,
-) -> dict[int, str]:
+) -> dict[int | str, str]:
     """Retry the engine-line lookup for blunders/mistakes without a PV.
 
     Mutates `analysis.moves` in place (engine_lines, played_rank,
@@ -64,7 +64,7 @@ def recover_missing_pv(
     if not candidates:
         return {}
 
-    missing: dict[int, str] = {}
+    missing: dict[int | str, str] = {}
     prev_hash = engine_client.get_current_hash()
     if prev_hash is not None and prev_hash != RETRY_HASH_MB:
         try:

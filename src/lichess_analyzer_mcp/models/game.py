@@ -132,6 +132,9 @@ class GameAnalysis:
     deadline_s: float = 0.0
     deadline_hit: bool = False
     mode: str = "fast"
+    # Runtime-only cache provenance; intentionally not serialized by to_dict().
+    _cache_hit: bool = False
+    _cache_layer: str = "none"
 
     def to_dict(self) -> dict:
         return {

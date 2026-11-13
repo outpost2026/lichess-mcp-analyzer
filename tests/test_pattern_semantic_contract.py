@@ -308,6 +308,29 @@ class TestPatternSemanticContract:
         match = self._detect("S", analyses)
         assert match is not None, "S should detect king could capture checker but moved away"
 
+    def test_s_absent_when_king_actually_captured_checker(self):
+        """Hrac sebral sachujiho kralem => S nesmi vystrelit v cross-game ceste."""
+        fen_check = "6k1/8/8/4Q3/8/8/4q3/4K3 w - - 0 1"
+        base = [
+            _move(
+                1,
+                "Kxe2",
+                "e1e2",
+                600,
+                "blunder",
+                fen=fen_check,
+                was_in_check=True,
+                eval_before=500,
+                eval_after=-100,
+            ),
+        ]
+        analyses = [
+            _make_analysis("g_s2", "white", "0-1", list(base)),
+            _make_analysis("g_s2b", "white", "0-1", list(base)),
+            _make_analysis("g_s2n", "white", "1-0", [_move(1, "e4", "e2e4", 0, "best")]),
+        ]
+        assert self._detect("S", analyses) is None
+
     def test_s_capture_aversion_negative(self):
         analyses = [
             _make_analysis(

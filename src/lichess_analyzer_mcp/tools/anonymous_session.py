@@ -131,7 +131,7 @@ async def lichess_analyze_anonymous_session(
     total_inaccuracies = 0
     total_moves = 0
     acpl_values = []
-    openings = {}
+    openings: dict[str, int] = {}
     player_wins = 0
     player_losses = 0
     player_draws = 0

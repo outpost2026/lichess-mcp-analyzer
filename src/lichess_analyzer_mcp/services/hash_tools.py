@@ -56,7 +56,7 @@ def calibrate_from_measurements(measurements: List[Dict]) -> Dict:
     Deterministické: pro každý ply bucket vyber nejmenší hash kde hashfull<10% a time je min.
     """
     # measurements: list of {ply, depth, hash, time, hashfull}
-    buckets = {}
+    buckets: dict[tuple[int, int], list[Dict]] = {}
     for m in measurements:
         key = (m["ply"] // 20 * 20, m["depth"])  # bucket po 20 ply
         buckets.setdefault(key, []).append(m)

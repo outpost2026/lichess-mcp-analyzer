@@ -62,7 +62,7 @@ class PatternDetector:
             match.provenance = provenance
         return matches
 
-    def _detect_a(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch:
+    def _detect_a(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch | None:
         anonymous_games = [a for a in analyses if "anonymous" in a.game.opponent_name.lower()]
         named_games = [a for a in analyses if "anonymous" not in a.game.opponent_name.lower()]
         if not anonymous_games or not named_games:
@@ -89,7 +89,7 @@ class PatternDetector:
             )
         return None
 
-    def _detect_b(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch:
+    def _detect_b(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch | None:
         total_captures = 0
         blunder_captures = 0
         affected_games = []
@@ -125,7 +125,7 @@ class PatternDetector:
             )
         return None
 
-    def _detect_c(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch:
+    def _detect_c(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch | None:
         affected = []
         total_tunneling = 0
         for analysis in analyses:
@@ -165,7 +165,7 @@ class PatternDetector:
             )
         return None
 
-    def _detect_g(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch:
+    def _detect_g(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch | None:
         white_analyses = [a for a in analyses if a.game.color == "white"]
         black_analyses = [a for a in analyses if a.game.color == "black"]
         if not white_analyses or not black_analyses:
@@ -206,7 +206,7 @@ class PatternDetector:
                 )
         return None
 
-    def _detect_i2(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch:
+    def _detect_i2(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch | None:
         gift_count = 0
         affected = []
         for analysis in analyses:
@@ -239,7 +239,7 @@ class PatternDetector:
             )
         return None
 
-    def _detect_j(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch:
+    def _detect_j(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch | None:
         affected = []
         block_count = 0
         for analysis in analyses:
@@ -275,7 +275,7 @@ class PatternDetector:
             )
         return None
 
-    def _detect_o(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch:
+    def _detect_o(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch | None:
         affected_repetition = []
         affected_fallback = []
         for analysis in analyses:
@@ -330,7 +330,7 @@ class PatternDetector:
             )
         return None
 
-    def _detect_p(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch:
+    def _detect_p(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch | None:
         affected = []
         for analysis in analyses:
             for m in analysis.moves:
@@ -365,7 +365,7 @@ class PatternDetector:
             )
         return None
 
-    def _detect_q(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch:
+    def _detect_q(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch | None:
         affected = []
         for analysis in analyses:
             had_deficit = False
@@ -404,7 +404,7 @@ class PatternDetector:
             )
         return None
 
-    def _detect_q1(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch:
+    def _detect_q1(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch | None:
         affected = []
         for analysis in analyses:
             big_blunders = [
@@ -448,7 +448,7 @@ class PatternDetector:
             )
         return None
 
-    def _detect_q2(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch:
+    def _detect_q2(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch | None:
         resilient_wins = []
         for analysis in analyses:
             big_blunders = [
@@ -483,7 +483,7 @@ class PatternDetector:
             )
         return None
 
-    def _detect_r(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch:
+    def _detect_r(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch | None:
         affected = []
         for analysis in analyses:
             for m in analysis.moves:
@@ -517,14 +517,18 @@ class PatternDetector:
             )
         return None
 
-    def _detect_s(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch:
+    def _detect_s(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch | None:
         affected = []
         for analysis in analyses:
             for m in analysis.moves:
-                if m.was_in_check and m.centipawn_loss >= THRESHOLD_S_CAPTURE_AVERSION_CP and m.fen:
-                    # P0-1: kral muze primo sebrat sachujiho (board_facts, ne rucni cyklus)
-                    if board_facts.king_can_capture_checker(m.fen):
-                        affected.append(analysis.game.id)
+                if (
+                    m.was_in_check
+                    and m.centipawn_loss >= THRESHOLD_S_CAPTURE_AVERSION_CP
+                    and m.fen
+                    and board_facts.king_can_capture_checker(m.fen)
+                    and not board_facts.played_king_capture_of_checker(m.fen, m.move_uci)
+                ):
+                    affected.append(analysis.game.id)
         if affected:
             total_games = len(analyses)
             return PatternMatch(
@@ -546,7 +550,7 @@ class PatternDetector:
             )
         return None
 
-    def _detect_n(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch:
+    def _detect_n(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch | None:
         affected = []
         pin_events = 0
         for analysis in analyses:
@@ -650,13 +654,13 @@ def per_move_patterns(
             }
         )
 
-    # S — Capture aversion under check: in check, king capture possible but not played
-    # P0-1: predikaty z board_facts; totalita FEN resi primo (zadny silent except).
+    # S — Capture aversion under check: in check, king could capture the checker
+    # but did not. Same predicate as cross-game `_detect_s` (board_facts).
     if (
         in_check
         and cp >= THRESHOLD_S_CAPTURE_AVERSION_CP
-        and board_facts.king_capture_possible(move.fen)
-        and not board_facts.is_king_capture(move.fen, move.move_uci)
+        and board_facts.king_can_capture_checker(move.fen)
+        and not board_facts.played_king_capture_of_checker(move.fen, move.move_uci)
     ):
         out.append(
             {

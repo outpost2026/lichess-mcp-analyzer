@@ -6,6 +6,7 @@ from lichess_analyzer_mcp.config.depth import DEPTH_DEFAULTS
 from lichess_analyzer_mcp.services.lichess_client import fetch_user_games, fetch_game_pgn
 from lichess_analyzer_mcp.services.game_analyzer import analyze_pgn, _load_cached_analysis
 from lichess_analyzer_mcp.services.game_analyzer import CACHE_DIR as GAME_CACHE_DIR
+from lichess_analyzer_mcp.models.game import GameAnalysis
 from lichess_analyzer_mcp.services.pattern_detector import PatternDetector
 from lichess_analyzer_mcp.services.compressibility_validator import compute_compression
 from lichess_analyzer_mcp.services.pattern_artifact_validator import (
@@ -17,14 +18,13 @@ from lichess_analyzer_mcp.services.logger import get_logger
 log = get_logger("match_patterns")
 
 
-def _find_cached_analysis(game_id: str) -> object | None:
+def _find_cached_analysis(game_id: str) -> GameAnalysis | None:
     """Load cached GameAnalysis for a game_id regardless of color/depth."""
     pattern = os.path.join(GAME_CACHE_DIR, f"{game_id}_*.json")
     for fpath in sorted(glob_mod.glob(pattern), reverse=True):
         try:
             with open(fpath, "r", encoding="utf-8") as f:
                 import json
-                from lichess_analyzer_mcp.models.game import GameAnalysis
 
                 return GameAnalysis.from_dict(json.load(f))
         except Exception:
@@ -69,7 +69,7 @@ async def lichess_match_patterns(
             ids = [g.strip()[:8] for g in game_ids.split(",") if g.strip()]
             log.info("patterns from ids | ids=%d | depth=%d", len(ids), depth)
 
-            analyses = []
+            analyses: list[GameAnalysis] = []
             for gid in ids:
                 try:
                     cached = _find_cached_analysis(gid)

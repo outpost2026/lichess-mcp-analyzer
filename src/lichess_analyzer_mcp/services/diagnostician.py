@@ -9,7 +9,7 @@ def diagnose(analyses: list[GameAnalysis], username: str) -> WeaknessReport:
     total_mistakes = 0
     total_inaccuracies = 0
     phase_blunders = {"opening": 0, "middlegame": 0, "endgame": 0}
-    phase_acpl = {"opening": [], "middlegame": [], "endgame": []}
+    phase_acpl: dict[str, list[float]] = {"opening": [], "middlegame": [], "endgame": []}
     total_acpl_sum = 0.0
     move_count = 0
     openings = {}

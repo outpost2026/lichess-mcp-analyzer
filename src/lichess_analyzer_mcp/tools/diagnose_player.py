@@ -1,4 +1,5 @@
 ﻿from lichess_analyzer_mcp.app import app
+from typing import Any
 from lichess_analyzer_mcp.services.audit import auditable
 from lichess_analyzer_mcp.services.batch_guard import BatchBudget
 from lichess_analyzer_mcp.config.depth import DEPTH_DEFAULTS
@@ -116,7 +117,7 @@ async def lichess_diagnose_player(
                 "top_weaknesses": report.top_weaknesses,
             },
         )
-        result = {
+        payload: dict[str, Any] = {
             "username": username,
             "games_analyzed": report.total_games_analyzed,
             "total_available": total_available,
@@ -129,22 +130,22 @@ async def lichess_diagnose_player(
             "top_weaknesses": report.top_weaknesses,
         }
         if pending:
-            result["warning"] = (
+            payload["warning"] = (
                 f"{len(pending)} game(s) pending analysis at depth={depth}. "
                 f"Run lichess_analyze_pending(username='{username}', depth={depth}) "
                 "for a full dataset, or these will be analyzed on first use."
             )
-            result["pending_analysis"] = pending
+            payload["pending_analysis"] = pending
         if unprocessed_ids:
-            result["unprocessed_ids"] = unprocessed_ids
-            result["budget_exceeded"] = True
-            result["warning"] = (
-                result.get("warning", "")
+            payload["unprocessed_ids"] = unprocessed_ids
+            payload["budget_exceeded"] = True
+            payload["warning"] = (
+                payload.get("warning", "")
                 + f" Time budget exceeded — {len(unprocessed_ids)} game(s) not processed. "
                 "Call again or increase max_seconds."
             ).strip()
-        result["elapsed_seconds"] = round(budget.elapsed, 1)
-        return result
+        payload["elapsed_seconds"] = round(budget.elapsed, 1)
+        return payload
     except Exception as e:
         log.exception("diagnose error | user=%s", username)
         return {"error": str(e)}

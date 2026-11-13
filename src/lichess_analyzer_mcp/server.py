@@ -1,7 +1,8 @@
 ﻿import os
 import sys
 
-sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 from lichess_analyzer_mcp.app import app
 

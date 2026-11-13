@@ -4,7 +4,6 @@ Checks for inconsistent, missing, or anomalous data before output.
 Maps to KALIBRACE_PLAN v2.3 task K7.1.
 """
 
-
 VALID_SEVERITIES = {"low", "medium", "high", "critical"}
 
 
@@ -23,7 +22,7 @@ def validate_pattern_artifact(artifact: dict) -> list[str]:
     if not isinstance(patterns, list):
         issues.append("patterns_detected must be a list")
     else:
-        seen_ids = {}
+        seen_ids: dict[str, int] = {}
         for i, p in enumerate(patterns):
             pid = p.get("pattern_id", "")
             if not pid:

@@ -62,11 +62,13 @@ def king_capture_possible(fen: str) -> bool:
 
 
 def is_king_capture(fen: str, move_uci: str) -> bool:
-    """Odehrany tah je braní králem (typ figury + is_capture, ne SAN 'x')."""
+    """Odehrany tah je legalni braní králem (typ figury + is_capture, ne SAN 'x')."""
     parsed = _move(fen, move_uci)
     if parsed is None:
         return False
     board, move = parsed
+    if move not in board.legal_moves:
+        return False
     piece = board.piece_at(move.from_square)
     if piece is None or piece.piece_type != chess.KING:
         return False
@@ -136,6 +138,27 @@ def king_can_capture_checker(fen: str) -> bool:
         if board.is_legal(chess.Move(king_square, checker)):
             return True
     return False
+
+
+def played_king_capture_of_checker(fen: str, move_uci: str) -> bool:
+    """Odehrany tah byl legalni brani kralem prave sachujici figury.
+
+    Kontrakt patternu S (docs/PATTERN_DISCOVERY_METHODOLOGY.md): pokud kral
+    mohl sebrat sachujiho a udelal presne to, pattern S nesmi vystrelit.
+    Brani jine (nesachujici) figury kralem se za sebrání sachujiho nepovazuje.
+    """
+    parsed = _move(fen, move_uci)
+    if parsed is None:
+        return False
+    board, move = parsed
+    if move not in board.legal_moves or not board.is_check():
+        return False
+    piece = board.piece_at(move.from_square)
+    if piece is None or piece.piece_type != chess.KING:
+        return False
+    if not board.is_capture(move):
+        return False
+    return move.to_square in board.checkers()
 
 
 def played_piece_type(fen: str, move_uci: str) -> int | None:
