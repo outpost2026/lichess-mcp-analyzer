@@ -47,6 +47,7 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
+pythonpath = ["src"]
 # real_engine = testy, ktere skutecne spousti Stockfish (realne mereni, ~26 s
 # na celou sadu). Defaultne vyloucene, aby `pytest` byl rychla brana.
 # Spusteni engine sady: pytest -m real_engine (posledni -m prepisuje addopts).
