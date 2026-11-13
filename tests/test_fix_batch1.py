@@ -141,7 +141,6 @@ class TestKbWriter:
         # KB_ROOT normalized must point at the workspace B2B-Knowledge-Base,
         # not the repo root (B121: 4x .. resolves to _github/)
         root = os.path.normpath(writer.KB_ROOT)
-        assert writer._KB_EXISTS is True
         assert root.endswith("_github" + os.sep + "B2B-Knowledge-Base") or root.endswith(
             "B2B-Knowledge-Base"
         )

@@ -335,6 +335,7 @@ class TestCheckBlunderSanity:
         assert result["valid"] is True
         assert len(result["warnings"]) == 0
 
+    @pytest.mark.real_engine
     def test_blunder_in_won_position_flags(self):
         """Blunder in won position must be flagged."""
         # White to move, game result 1-0 (white won)
@@ -343,6 +344,7 @@ class TestCheckBlunderSanity:
         assert result["valid"] is False
         assert any("BLUNDER_IN_WON_POSITION" in w for w in result["warnings"])
 
+    @pytest.mark.real_engine
     def test_blunder_is_top_move_flags(self):
         """Blunder that is actually top engine move must be flagged."""
         # Use starting position where e2e4 is clearly top move
@@ -351,6 +353,7 @@ class TestCheckBlunderSanity:
         assert result["valid"] is False
         assert any("BLUNDER_IS_TOP_MOVE" in w for w in result["warnings"])
 
+    @pytest.mark.real_engine
     def test_no_warnings_for_legal_blunder(self):
         """Real blunder (not top move, not in won position) must have no warnings."""
         fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
