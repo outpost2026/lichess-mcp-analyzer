@@ -47,8 +47,10 @@ async def lichess_match_patterns(
     imported from chess_pattern_v5.json. Returns detected patterns with
     ordinal strength (0-100, not a probability), measured rate with a Wilson
     95 % CI, N (games affected / games analysed), and lift with a Katz 95 % CI
-    only where a real contrast group exists. Evidence, mitigation advice and
-    coverage validation are included.
+    only where a real contrast group exists. Each pattern also carries
+    `stability`: split-half rates with a two-proportion z, and temporal drift
+    on chronological halves; `unstable` is a flag to investigate, not a
+    verdict. Evidence, mitigation advice and coverage validation are included.
     Uses cache-first — pre-analyze games via lichess_analyze_game first.
 
     For anonymous games, pass comma-separated game_ids instead of username.
@@ -188,7 +190,7 @@ async def lichess_match_patterns(
         result_list.sort(key=lambda x: (x["severity"] == "critical", x["confidence"]), reverse=True)
 
         artifact = {
-            "schema_version": "1.3",
+            "schema_version": "1.4",
             "username": username,
             "games_analyzed": len(analyses),
             "patterns_detected": result_list,

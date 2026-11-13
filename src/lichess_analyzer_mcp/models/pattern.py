@@ -92,6 +92,10 @@ class PatternMatch:
     lift_ci_high: Optional[float] = None
     lift_basis: Optional[str] = None
     lift_unavailable_reason: Optional[str] = None
+    # ── P2 / schema 1.4: stability layer ────────────────────────────────────
+    # Split-half comparison, temporal drift and the resulting `unstable` flag.
+    # None = not measured (single-game or manual paths).
+    stability: Optional[dict] = None
 
     @property
     def confidence(self) -> float:
@@ -99,7 +103,7 @@ class PatternMatch:
         return self.strength
 
     def stats_dict(self) -> dict:
-        """Schema 1.3 uncertainty block (JSON-ready, no None noise in keys)."""
+        """Schema 1.3/1.4 uncertainty + stability block (JSON-ready)."""
         out: dict = {
             "n_games": self.n_games,
             "n_units": self.n_units,
@@ -112,6 +116,8 @@ class PatternMatch:
             out["lift_basis"] = self.lift_basis
         elif self.lift_unavailable_reason:
             out["lift_unavailable_reason"] = self.lift_unavailable_reason
+        if self.stability is not None:
+            out["stability"] = self.stability
         return out
 
 

@@ -1,18 +1,22 @@
 """JSON schema definitions for KB pattern artifact output.
 
-Maps to KALIBRACE_PLAN v2.3 task K6.1 and schema 1.3 (P1 uncertainty layer).
-Ensures machine-readable, structurally consistent artifact output.
+Maps to KALIBRACE_PLAN v2.3 task K6.1 and schema 1.4 (P1 uncertainty + P2
+stability). Ensures machine-readable, structurally consistent artifact output.
 
 Schema 1.3 adds, per pattern: `n_games`, `n_units`, `rate` + Wilson `rate_ci`,
 and `lift` + Katz `lift_ci` where a real contrast group exists. `confidence`
 stays as a legacy alias of the ordinal `strength` (0-100), never a probability.
+
+Schema 1.4 adds `stability`: split-half rates + two-proportion z, temporal
+drift on chronological halves, and the resulting `unstable` flag. `unstable`
+is a flag to investigate, not a verdict.
 """
 
 PATTERN_SCHEMA = {
     "type": "object",
     "required": ["username", "games_analyzed", "patterns_detected"],
     "properties": {
-        "schema_version": {"enum": ["1.3"]},
+        "schema_version": {"enum": ["1.4"]},
         "username": {"type": "string", "minLength": 1},
         "games_analyzed": {"type": "integer", "minimum": 1},
         "patterns_detected": {
@@ -54,6 +58,56 @@ PATTERN_SCHEMA = {
                     },
                     "lift_basis": {"type": "string"},
                     "lift_unavailable_reason": {"type": "string"},
+                    "stability": {
+                        "type": "object",
+                        "required": ["half", "split_half", "drift", "unstable"],
+                        "properties": {
+                            "half": {
+                                "type": "object",
+                                "required": ["estimable", "unstable"],
+                                "properties": {
+                                    "rate_a": {"type": ["number", "null"]},
+                                    "rate_b": {"type": ["number", "null"]},
+                                    "delta": {"type": ["number", "null"]},
+                                    "z": {"type": ["number", "null"]},
+                                    "estimable": {"type": "boolean"},
+                                    "reason": {"type": ["string", "null"]},
+                                    "unstable": {"type": ["boolean", "null"]},
+                                },
+                            },
+                            "split_half": {
+                                "type": "object",
+                                "required": ["method", "n_a", "n_b", "cosine"],
+                                "properties": {
+                                    "method": {"type": "string"},
+                                    "salt": {"type": "string"},
+                                    "n_a": {"type": "integer", "minimum": 0},
+                                    "n_b": {"type": "integer", "minimum": 0},
+                                    "cosine": {"type": ["number", "null"]},
+                                    "unavailable_reason": {"type": "string"},
+                                },
+                            },
+                            "drift": {
+                                "type": "object",
+                                "required": ["estimable", "flag"],
+                                "properties": {
+                                    "method": {"type": "string"},
+                                    "estimable": {"type": "boolean"},
+                                    "flag": {"type": ["boolean", "null"]},
+                                    "reason": {"type": ["string", "null"]},
+                                    "n_dated": {"type": "integer", "minimum": 0},
+                                    "n_old": {"type": "integer", "minimum": 0},
+                                    "n_new": {"type": "integer", "minimum": 0},
+                                    "cut_date": {"type": ["string", "null"]},
+                                    "rate_old": {"type": ["number", "null"]},
+                                    "rate_new": {"type": ["number", "null"]},
+                                    "delta": {"type": ["number", "null"]},
+                                    "z": {"type": ["number", "null"]},
+                                },
+                            },
+                            "unstable": {"type": ["boolean", "null"]},
+                        },
+                    },
                 },
             },
         },
@@ -92,8 +146,8 @@ def validate_against_schema(artifact: dict) -> list[str]:
         if req not in artifact:
             errors.append(f"missing required field: {req}")
     version = artifact.get("schema_version")
-    if version is not None and version != "1.3":
-        errors.append(f"schema_version '{version}' not supported (expected 1.3)")
+    if version is not None and version != "1.4":
+        errors.append(f"schema_version '{version}' not supported (expected 1.4)")
     username = artifact.get("username", "")
     if not isinstance(username, str) or len(username) < 1:
         errors.append("username must be non-empty string")
@@ -131,4 +185,42 @@ def validate_against_schema(artifact: dict) -> list[str]:
                 _check_ci(errors, i, "lift", p.get("lift"), p.get("lift_ci"))
             if "lift" in p and p.get("lift") is None and not p.get("lift_unavailable_reason"):
                 errors.append(f"patterns[{i}] has no lift and no lift_unavailable_reason")
+
+            # ── schema 1.4 stability invariants ──
+            _check_stability(errors, i, p.get("stability"))
     return errors
+
+
+def _check_stability(errors: list[str], index: int, stab) -> None:
+    """A pattern cannot be called stable while one of its sub-tests is unstable."""
+    if stab is None:
+        return
+    if not isinstance(stab, dict):
+        errors.append(f"patterns[{index}].stability must be an object")
+        return
+    for key in ("half", "split_half", "drift", "unstable"):
+        if key not in stab:
+            errors.append(f"patterns[{index}].stability missing {key}")
+    raw_half = stab.get("half")
+    raw_drift = stab.get("drift")
+    half = raw_half if isinstance(raw_half, dict) else {}
+    drift = raw_drift if isinstance(raw_drift, dict) else {}
+    unstable = stab.get("unstable")
+
+    if unstable is not None and not isinstance(unstable, bool):
+        errors.append(f"patterns[{index}].stability.unstable must be bool or null")
+    for side in ("rate_a", "rate_b"):
+        value = half.get(side)
+        if value is not None and not (isinstance(value, (int, float)) and 0.0 <= value <= 1.0):
+            errors.append(f"patterns[{index}].stability.half.{side} out of [0, 1]")
+    if drift.get("estimable") is False and drift.get("flag") is not None:
+        errors.append(
+            f"patterns[{index}].stability.drift.flag must be null when drift is not estimable"
+        )
+    sub_flags = [half.get("unstable"), drift.get("flag")]
+    if unstable is False and any(flag is True for flag in sub_flags):
+        errors.append(
+            f"patterns[{index}].stability.unstable=false contradicts an unstable sub-test"
+        )
+    if unstable is True and not (half.get("estimable") or drift.get("estimable")):
+        errors.append(f"patterns[{index}].stability.unstable=true requires an estimable sub-test")

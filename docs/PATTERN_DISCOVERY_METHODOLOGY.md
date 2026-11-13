@@ -1,7 +1,7 @@
 ---
 title: Metodologie pattern discovery a detection
 date: 2026-11-13
-verze: 1.4
+verze: 1.5
 status: ZÁVAZNÝ METODOLOGICKÝ ARTEFAKT
 účel: Popsat, jak vznikají a jak se ověřují kandidátní chess patterny; porovnat metodologii s pattern discovery v jiných doménách; vyhodnotit originalitu a efektivitu.
 návaznost: CANDIDATE_PATTERNS_2026-11-12.md, REFACTOR_PLAN_2026-11-11.md, MIKOLOV_KOMPRESE_V_PATTERN_ARCHITEKTURE.md, COMPACT_JSON_FOR_LLM.md, DEEP_DIVE_SINGLE_GAME_PATTERNS_2026-08-02.md
@@ -9,6 +9,7 @@ změny_1_1: Univerza přejmenována na obsahové názvy (§2.1) a sjednocena s m
 změny_1_2: P1 — tři dimenze confidence (§2.4), coverage validator místo falešného MDL (§11.1), `strength` jako ordinální pole (§11.2); roadmap P1 rows aktualizovány.
 změny_1_3: P1 uzavřeno — schema 1.3 s Wilson CI a podmíněným liftem (§5.2), pravidlo „lift se nevymýšlí“.
 změny_1_4: P2 krok B — skutečná dvoučlenná MDL (`services/mdl.py`, §11.1) jako měřicí vrstva; naměřené gainy proxy mechanismů; `non_estimable` pro hraniční MLE.
+změny_1_5: P2 krok C — split-half stabilita a časový drift (§5.5, §11.5); Page-Hinkley zamítnut pro nekalibrovatelnost `delta`/`lambda`, nahrazen dvouvýběrovým z-testem na chronologických polovinách; schema 1.4, `PatternMatch.stability`; roadmap P2 split-half uzavřen.
 ---
 
 ## 0. TL;DR
@@ -19,6 +20,7 @@ změny_1_4: P2 krok B — skutečná dvoučlenná MDL (`services/mdl.py`, §11.1
 4. Měřené pokrytí na cache (259 dedup her, 2137 flagged tahů): **375 matched (17,5 %), 1762 unclassified (82,5 %)**. To není bug, to je kalibrovaná hranice znalosti. Nízké pokrytí je cenou za to, že si systém nevymýšlí mechanismus.
 5. Originalita je **v kombinaci kontraktů**, ne v algoritmech. Jednotlivé komponenty (frekvence, lift, MDL, conformance, motif discovery) mají prior art. Kombinace „explicitní unclassified + FP strop na dobrých tazích + dual single/cross-game kontrakt + deterministická evidence chain“ v publikovaných chess nástrojích doložena není (P~0,75; absence důkazu, ne důkaz absence).
 6. Efektivita: **vysoká explanační, nízká discovery výtěžnost, neprokázaná diskriminační validita**. `compressibility_validator` je od 2026-11-13 **coverage validator** (`coverage_score`, `support`), ne MDL; `confidence` je jen alias `strength` a nikde se nečte jako pravděpodobnost. Skutečná dvoučlenná MDL je od 2026-11-13 implementovaná v měřicí vrstvě (§11.1); kalibrace zůstává P2.
+7. Stabilita je od 2026-11-13 **měřená, ne tvrzená**: split-half s deterministickým hashem a časový drift na chronologických polovinách (§5.5). `unstable` je příznak k prošetření, ne verdikt; když není co testovat, je `null`, nikdy `false`.
 
 ---
 
@@ -267,6 +269,27 @@ Proxy (`free_capture_after`, `missed_capture`, `hanging_piece`) je **jen generá
 
 **Pravidlo po P2 kroku B:** proxy bez kladného `gain_bits` proti `good_moves_control` se nesmí stát patternem ani novým ID — ani když má lift > 1,3. Naměřeno: `hanging_piece` lift 1,33, ale MDL −2,86 bitů (§11.1).
 
+### 5.5 Stabilita a drift (implementováno, schema 1.4)
+
+Pattern, který existuje jen v jedné polovině korpusu, není vlastnost hráče, ale artefakt vzorku. Proto každý cross-game pattern nese blok `stability` se dvěma nezávislými testy:
+
+| Test | Metoda | Jednotka | Práh |
+|---|---|---|---|
+| `half` | deterministická polovina podle parity `sha256(salt + game_id + color)` | hra | dvouvýběrový z-test, `abs(z) >= 1,96` |
+| `drift` | chronologické poloviny podle data, řez na mediánu | hra | stejný z-test, `abs(z) >= 1,96` |
+
+Kontraktní pravidla:
+
+- **Determinismus.** Žádný `random` seed; členství v polovině závisí jen na hashi klíče, takže přidání hry nepřesune ostatní hry a report je reprodukovatelný bez uloženého stavu.
+- **Jednotka = hra (`game_id`),** stejná jako `n_games`. Když cache obsahuje tutéž hru analyzovanou za oba hráče, počítá se jednou.
+- **`unstable` je jen `true`/`false`/`null`.** `true` nastane, jen když zabere estimovatelný sub-test. Když ani jeden sub-test není estimovatelný (málo her, málo datovaných her, nulová pooled variance), je `null` — nikdy `false`, protože „neměřeno“ není „stabilní“.
+- **Nedatované hry se z driftu vyřazují,** nikdy se neřadí doprostřed. Počet je v `drift.n_dated`.
+- **`cosine` je jen tvar profilu.** Při několika málo nezáporných dimenzích je blízko 1, kdykoli se v obou polovinách vyskytují stejné patterny; diskriminační je per-pattern z-test, ne cosine.
+- **Family-wise error není kontrolován.** Dva testy na pattern znamenají, že při 24 testech a `alpha = 0,05` čekáme ~1 falešný poplach. `unstable` je proto příznak k prošetření, ne verdikt o existenci patternu.
+- **Drift nemusí být hráč.** Když korpus míchá více hráčů nebo obě barvy, změna mezi érami může odrážet složení korpusu, ne vývoj hráče. Report musí uvést, z čeho je korpus složen (§2.1.1), jinak je drift neinterpretovatelný.
+
+Proč ne Page-Hinkley: jeho dvě konstanty (`delta` tolerance, `lambda` alarm) nelze zvolit bez ladění na datech, což tento projekt zakazuje (§3.1, D4). Dvouvýběrový z-test na chronologických polovinách nepotřebuje žádnou novou konstantu — znovu použije `Z95` — a efekt (`delta`) reportuje, místo aby ho předpokládal. Vícenásobný scan s Bonferroniho korekcí je pozdější rozšíření, ne podmínka.
+
 ---
 
 ## 6. Současný stav měření
@@ -413,7 +436,7 @@ Metodologie je **epistemicky nadstandardní, algoritmicky neoriginální**. To j
 | **Discovery výtěžnost** | nízká | 17,5 % matched; 82,5 % unclassified |
 | **Precision** | dobrá u matched | blunder matched 56,4 %; žádný pattern bez `good_moves_control` |
 | **Generalizace** | neprokázaná | žádný held-out test, žádná stylometrie |
-| **Stabilita** | neprokázaná | žádný split-half / drift test |
+| **Stabilita** | částečně prokázaná | split-half bez rozdílu (max `abs(z) = 1,58`, N=2), cosine 0,9962; drift: 4 příznaky z 24 testů, Bonferroni přežívá jen `B` (§11.5) |
 | **Actionability** | střední | pattern → mitigation text, chybí tréninkový loop |
 | **Škálovatelnost** | dobrá | determinismus, cache, 2s runtime |
 
@@ -483,9 +506,28 @@ Ad hoc vzorce (`cp/500`, `pin_events/games*0.8`) nejsou pravděpodobnosti. **Sta
 
 Měříme fitness (kolik tahů vysvětlíme), ne precision (kolik tahů model dovoluje). **Fix:** doplnit `precision = |model ∩ log| / |model|` na úrovni typu pozice; reportovat spolu s `unclassified`.
 
-### 11.5 Chybí drift a generalizace (P2, dopad: vysoký)
+### 11.5 Drift a generalizace (P2 krok C — split-half a drift hotové)
 
-Žádný split-half, žádný časový test, žádná stylometrie. **Fix:** (a) split-half cosine stabilita, (b) Page-Hinkley / ADWIN-like deterministická detekce změny na `v_p`, (c) few-shot identifikace hráče jako external validity test.
+**Stav:** split-half i časový drift jsou od 2026-11-13 implementované (`services/stability.py`, §5.5, schema 1.4). Otevřená zůstává external validity (few-shot stylometrie, P6).
+
+**Proč ne Page-Hinkley.** Původní plán (§12, verze 1.4) předpokládal Page-Hinkley/ADWIN. Zamítnuto: `delta` i `lambda` jsou konstanty, jejichž správná hodnota závisí na délce streamu a velikosti efektu; na ~107 post-referenčních hrách každá pevná dvojice buď alarmuje pod nulou (statistika roste o `delta` na vzorek), nebo nikdy nezabere. Zvolit je na tomto korpusu = ladit na datech, což §3.1 a D4 zakazují. Nahrazeno dvouvýběrovým z-testem na chronologických polovinách: žádná nová konstanta, stejný `Z95` práh jako split-half, efekt (`delta`) se reportuje.
+
+**Naměřeno** (cache 2026-11-13: 270 analýz `(game_id, color)`, 215 unikátních her, 214 s parsovatelným datem):
+
+| Test | Výsledek |
+|---|---|
+| Split-half (96 / 119 her, hash parita) | žádný pattern nepřekročil `abs(z) >= 1,96`; max `abs(z) = 1,58` u `S` (N=2, test nic neříká); cosine profilu 0,9962 |
+| Drift (řez 2026-08-02, 107 / 107 her) | `B` 0,336 → 0,579 (`z = -3,57`), `Q2` 0,122 → 0,234 (`z = -2,15`), `Q` 0,103 → 0,215 (`z = -2,24`), `R` 0,112 → 0,215 (`z = -2,03`); ostatní `abs(z) < 1,2` |
+| Bonferroni (24 testů, `alpha = 0,05`) | `abs(z) > 3,08`; přežívá jen `B` |
+
+Interpretace, kterou report **nesmí** přeskočit:
+
+- Split-half je čistý: profil patternů se mezi dvěma deterministickými polovinami neliší. To je slabý, ale skutečný test reprodukovatelnosti, ne důkaz validity.
+- Cosine 0,9962 není silný důkaz. S 12 nezápornými dimenzemi je blízko 1, kdykoli se v obou polovinách vyskytují stejné patterny; diskriminační je z-test.
+- Čtyři drift příznaky při 24 testech nejsou překvapení (`alpha = 0,05` → ~1 očekávaný falešný poplach), ale `B` vydrží i Bonferroniho korekci. To je hypotéza k prošetření, ne potvrzený posun.
+- **Korpus míchá hráče i barvy.** 55 her je v cache za oba hráče a část korpusu tvoří soupeři, ne jen `Systeq`. Změna mezi érami proto může odrážet změnu složení korpusu, ne vývoj hráče. Bez homogenního korpusu (§2.1.1) je drift neinterpretovatelný; to je přesně úloha P6, ne důvod číslo smazat.
+
+**Zbývá:** (a) homogenní korpus pro interpretovatelný drift, (b) few-shot identifikace hráče jako external validity test (P6), (c) případný multi-cut scan s Bonferroniho korekcí, pokud se ukáže, že jeden řez na mediánu nestačí.
 
 ### 11.6 PV sparsity (P1, dopad: střední)
 
@@ -500,7 +542,7 @@ Měříme fitness (kolik tahů vysvětlíme), ne precision (kolik tahů model do
 | **P1** ✅ | Odstranit falešný MDL; přejmenovat `confidence` → `strength` | hotovo 2026-11-13: `coverage_score`/`support` jsou mimo `strength`, `confidence` je alias; žádný report netvrdí „pravděpodobnost“ |
 | **P1** ✅ | Wilson CI + lift + N do každého `PatternMatch` | hotovo 2026-11-13: schema 1.3, `n_games`/`n_units`/`rate` + Wilson CI pro každý cross-game pattern; `lift` + Katz CI jen u A a G, ostatní s explicitním důvodem |
 | **P2** ✅ | Skutečná dvoučlenná MDL (měřicí vrstva) | hotovo 2026-11-13: `services/mdl.py` (`log2 C(n,k) + n*H(p)`, BIC cena za parametr); `scripts/measure_pattern_mdl.py`; hraniční MLE = `non_estimable`; 31 testů |
-| **P2** | Split-half + časová stabilita | `stab` a `drift` v reportu; pattern bez stability označen `unstable` |
+| **P2** ✅ | Split-half + časová stabilita | hotovo 2026-11-13: `services/stability.py`, schema 1.4, `PatternMatch.stability`; hash split + drift na chronologických polovinách; `unstable = null` při nedostatku dat; naměřeno §11.5 |
 | **P2** | Precision modelu | `precision` a `fitness` v reportu vedle `unclassified` |
 | **P3** | Sekvenční vrstva (PrefixSpan, gap <= 4) | nový pattern jen při `N>=30`, `lift>=1.4`, 2 analýzy |
 | **P4** | Poziční featury pro `quiet_positional` | snížení unclassified pod 70 % bez poklesu precision |
@@ -514,7 +556,7 @@ P1 je epistemická oprava, ne feature. Bez ní je každé další číslo nedův
 
 **Stav 2026-11-12:** T1 provenance blok implementován (`services/provenance.py`, `PatternMatch.provenance`, `--json-out` v measurement skriptu, 8 testů). T2 (skutečná komprese) a T3 (drift guard) jsou další v pořadí — viz `CROSS_REPO_TRANSFER_MAP.md` §5.
 
-**Stav 2026-11-13:** P1 uzavřeno. Univerza obsahově (§2.1), `phase_stats` = `effective_phase` + dva auditní řezy, `accuracy_method = internal_cp_linear`, confidence rozdělená na `strength`/`support`/`hypothesis_confidence`, falešný MDL přejmenován na `coverage_score`, schema 1.3 s Wilson CI a podmíněným liftem. Z P2 hotový krok B (skutečná dvoučlenná MDL v měřicí vrstvě, §11.1); otevřené zůstávají split-half/drift a precision model.
+**Stav 2026-11-13:** P1 uzavřeno. Univerza obsahově (§2.1), `phase_stats` = `effective_phase` + dva auditní řezy, `accuracy_method = internal_cp_linear`, confidence rozdělená na `strength`/`support`/`hypothesis_confidence`, falešný MDL přejmenován na `coverage_score`, schema 1.3 s Wilson CI a podmíněným liftem. Z P2 hotové kroky B (skutečná dvoučlenná MDL, §11.1) a C (split-half + drift, §5.5, §11.5, schema 1.4); otevřený zůstává precision model a external validity.
 
 ---
 
@@ -543,6 +585,8 @@ P1 je epistemická oprava, ne feature. Bez ní je každé další číslo nedův
 - `src/lichess_analyzer_mcp/services/compressibility_validator.py` — coverage validator (`coverage_score`, `support`); `strength` nemění (P1).
 - `src/lichess_analyzer_mcp/services/statistics.py` — Wilson CI a Katz rate-ratio CI (schema 1.3).
 - `src/lichess_analyzer_mcp/services/mdl.py` — skutečná dvoučlenná MDL (§11.1); `scripts/measure_pattern_mdl.py` — měření proxy mechanismů.
+- `src/lichess_analyzer_mcp/services/stability.py` — split-half (hash parita) a drift (chronologické poloviny, z-test); §5.5, §11.5.
+- `src/lichess_analyzer_mcp/kb/schemas.py` — validace artefaktu, schema 1.4 (`stability` invarianty).
 - `scripts/measure_pattern_coverage.py`, `scripts/aggregate_candidate_moves.py` — měření.
 
 ### Externí (ověřeno 2026-11-12)

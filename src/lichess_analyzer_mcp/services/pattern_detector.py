@@ -25,6 +25,7 @@ from lichess_analyzer_mcp.models.pattern import (
 from lichess_analyzer_mcp.models.game import GameAnalysis, effective_phase
 from lichess_analyzer_mcp.services import board_facts
 from lichess_analyzer_mcp.services.provenance import build_provenance
+from lichess_analyzer_mcp.services.stability import build_stability
 from lichess_analyzer_mcp.services.statistics import rate_ratio_with_ci, rate_with_ci
 
 THRESHOLD_TUNNEL_CONSECUTIVE = 2
@@ -69,7 +70,32 @@ class PatternDetector:
         for match in matches:
             match.provenance = provenance
             self._attach_statistics(match, analyses)
+        self._attach_stability(matches, analyses)
         return matches
+
+    @staticmethod
+    def _attach_stability(matches: list[PatternMatch], analyses: list[GameAnalysis]) -> None:
+        """Attach split-half stability and temporal drift (schema 1.4).
+
+        Both metrics are per-pattern and depend only on which games contain the
+        pattern, so they are computed once for the cohort and copied onto every
+        match. Nothing here changes detection or `strength`.
+        """
+        if not matches:
+            return
+        # Unit = game id, matching `n_games`: when the cache holds the same game
+        # analysed for both colours, it collapses to one unit instead of
+        # counting the same game twice.
+        key_of: dict[str, str] = {}
+        for a in analyses:
+            key_of.setdefault(a.game.id, f"{a.game.id}|{a.game.color}")
+        games = [(key_of[a.game.id], a.game.date) for a in analyses]
+        pattern_games = {
+            m.pattern_id: [key_of[gid] for gid in set(m.game_ids) if gid in key_of] for m in matches
+        }
+        stability = build_stability(pattern_games, games)
+        for match in matches:
+            match.stability = stability["patterns"].get(match.pattern_id)
 
     @staticmethod
     def _attach_statistics(match: PatternMatch, analyses: list[GameAnalysis]) -> None:

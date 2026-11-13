@@ -1,4 +1,4 @@
-"""P1 / schema 1.3: every cross-game pattern publishes N, rate, Wilson CI and
+"""P1/P2 schema 1.4: every cross-game pattern publishes N, rate, Wilson CI and
 (only where a real contrast exists) lift with a Katz CI.
 
 Contract under test:
@@ -145,8 +145,24 @@ class TestSerialization:
         entry_a = next(e for e in entries if e["pattern_id"] == "A")
         assert entry_a["lift_basis"] == "anonymous_vs_named"
 
+    def test_entries_carry_stability_block(self):
+        entries = collect_patterns_for_games(_mixed_cohort(), "t")
+        assert entries
+        for entry in entries:
+            stability = entry["stability"]
+            assert {"half", "split_half", "drift", "unstable"} <= set(stability)
+            assert (
+                stability["split_half"]["n_a"] + stability["split_half"]["n_b"] == entry["n_units"]
+            )
 
-class TestSchema13Validation:
+    def test_small_cohort_is_neither_stable_nor_unstable(self):
+        # 8 games, no dates: neither half-test nor drift is estimable, so the
+        # combined flag must be None (unknown), never False.
+        entries = collect_patterns_for_games(_mixed_cohort(), "t")
+        assert all(entry["stability"]["unstable"] is None for entry in entries)
+
+
+class TestSchema14Validation:
     def _artifact(self, **pattern_overrides) -> dict:
         pattern = {
             "pattern_id": "C",
@@ -166,7 +182,7 @@ class TestSchema13Validation:
         }
         pattern.update(pattern_overrides)
         return {
-            "schema_version": "1.3",
+            "schema_version": "1.4",
             "username": "t",
             "games_analyzed": 4,
             "patterns_detected": [pattern],
