@@ -1,11 +1,12 @@
 ---
 title: Metodologie pattern discovery a detection
 date: 2026-11-13
-verze: 1.1
+verze: 1.2
 status: ZÁVAZNÝ METODOLOGICKÝ ARTEFAKT
 účel: Popsat, jak vznikají a jak se ověřují kandidátní chess patterny; porovnat metodologii s pattern discovery v jiných doménách; vyhodnotit originalitu a efektivitu.
 návaznost: CANDIDATE_PATTERNS_2026-11-12.md, REFACTOR_PLAN_2026-11-11.md, MIKOLOV_KOMPRESE_V_PATTERN_ARCHITEKTURE.md, COMPACT_JSON_FOR_LLM.md, DEEP_DIVE_SINGLE_GAME_PATTERNS_2026-08-02.md
 změny_1_1: Univerza přejmenována na obsahové názvy (§2.1) a sjednocena s měřicím appendixem; přidána identita datasetu (§2.1.1).
+změny_1_2: P1 — tři dimenze confidence (§2.4), coverage validator místo falešného MDL (§11.1), `strength` jako ordinální pole (§11.2); roadmap P1 rows aktualizovány.
 ---
 
 ## 0. TL;DR
@@ -15,7 +16,7 @@ změny_1_1: Univerza přejmenována na obsahové názvy (§2.1) a sjednocena s m
 3. Současný systém má **15 definic v baseline knihovně** (A, B, C, G, I, I2, J, N, O, P, Q, Q1, Q2, R, S) a **6 per-move eventů** (B, C, J, R, S, T); B/C/J/R/S jsou sdílené, T je pouze per-move. Z 15 definic má **14 automatický detektor**; `I` (bait trap) je záměrně `manual_only` koncept a v runtime se nevydává. Per-move eventy nejsou patterny v cross-game smyslu: nemají jmenovatel ani kontrast.
 4. Měřené pokrytí na cache (259 dedup her, 2137 flagged tahů): **375 matched (17,5 %), 1762 unclassified (82,5 %)**. To není bug, to je kalibrovaná hranice znalosti. Nízké pokrytí je cenou za to, že si systém nevymýšlí mechanismus.
 5. Originalita je **v kombinaci kontraktů**, ne v algoritmech. Jednotlivé komponenty (frekvence, lift, MDL, conformance, motif discovery) mají prior art. Kombinace „explicitní unclassified + FP strop na dobrých tazích + dual single/cross-game kontrakt + deterministická evidence chain“ v publikovaných chess nástrojích doložena není (P~0,75; absence důkazu, ne důkaz absence).
-6. Efektivita: **vysoká explanační, nízká discovery výtěžnost, neprokázaná diskriminační validita**. `compressibility_validator` je v současné podobě proxy, ne MDL; to je nutné opravit nebo přejmenovat (P1).
+6. Efektivita: **vysoká explanační, nízká discovery výtěžnost, neprokázaná diskriminační validita**. `compressibility_validator` je od 2026-11-13 **coverage validator** (`coverage_score`, `support`), ne MDL; `confidence` je jen alias `strength` a nikde se nečte jako pravděpodobnost. Skutečná dvoučlenná MDL a kalibrace zůstávají P2.
 
 ---
 
@@ -106,24 +107,27 @@ Bez `good_moves_control` nelze odlišit „pattern“ od „běžná vlastnost p
 
 **Důležité rozlišení:** těchto `N >= 30` se týká **admission gate pro nové patterny**, ne runtime detekce. Runtime cross-game detektory mají `min_games = 3` a `min_occurrences = 2` (`models/pattern.py:55-56`). To je záměrné: runtime má vysoký recall, admission má vysokou precision. Obě hranice se nesmí zaměňovat.
 
-### 2.4 Confidence
+### 2.4 Confidence — tři dimenze (P1 implementováno)
 
-Současné `PatternMatch.confidence` je **ordinální skóre**, ne pravděpodobnost. Vzorce v `pattern_detector.py` jsou ad hoc (např. `min(pin_events / games * 0.8, 0.75)`), v `compressibility_validator.py` je lineární mix:
+`PatternMatch` už nemá jedno číslo vydávané za pravděpodobnost. Má tři oddělené dimenze:
+
+| Pole | Význam | Škála | Kalibrace |
+|---|---|---|---|
+| `strength` | ordinální síla detektoru (jak silně podmínka platí) | 0..1 | ne, ordinální |
+| `support` | podíl analyzovaných her, ve kterých pattern nastal | 0..1 | měřený podíl |
+| `hypothesis_confidence` | důvěra, že uvedený mechanismus je správný | 0..1 nebo `None` | `None` = nekalibrováno |
+
+`confidence` zůstává **jen jako alias** `strength` pro starší skripty a 1.2 payload; v reportu se nesmí číst jako pravděpodobnost. `strength` se počítá v detektoru (ad hoc vzorce typu `min(pin_events / games * 0.8, 0.75)`) a **nikdy** ho nepřepisuje kompresní validátor.
+
+Bývalý `compressibility_validator` je nyní **coverage validator**. Počítá:
 
 ```
-confidence = 0.5 * compression_score + 0.3 * entropy_score + 0.2 * sample_score
-```
-
-kde:
-
-```
-compression_score = min(compression_ratio / 10, 1)
 compression_ratio = total_moves / (10 + 2 * evidence_count)
-entropy_score     = games_with_pattern / total_games
-sample_score      = min(frequency / total_games * 2, 1)
+coverage_score    = min(compression_ratio / 10, 1)
+support           = games_with_pattern / total_games
 ```
 
-**Nález (P>0,95):** při velkém korpusu `compression_ratio` saturuje (např. 18 000 tahů / 110 = 164 → skóre 1,0) a `confidence >= 0,5` dostane i slabý pattern. Vzorec tedy měří **velikost korpusu**, ne kvalitu komprese. To není MDL. Nápravu viz §11.1 a §12 P1.
+`coverage_score` je ordinální **proxy pokrytí**, ne MDL a ne pravděpodobnost. Při velkém korpusu saturuje (18 000 tahů / 110 = 164 → 1,0), takže měří velikost korpusu; proto je z reportu oddělený a `strength` neovlivňuje. Skutečné dvoučlenné MDL (`L(model) + L(data | model)`) zůstává P2.
 
 ### 2.5 Důkazová hierarchie
 
@@ -414,9 +418,11 @@ Metodologie je **epistemicky nadstandardní, algoritmicky neoriginální**. To j
 
 ## 11. Kritické slabiny a jejich dopad
 
-### 11.1 `compressibility_validator` není MDL (P1, dopad: vysoký)
+### 11.1 `compressibility_validator` není MDL (P1 — OPRAVENO přejmenováním)
 
-`compression_ratio = total_moves / (10 + 2 * evidence_count)` roste s korpusem a saturuje. `confidence` pak dostane >= 0,5 i slabý pattern. **Fix:** buď (a) přejmenovat na `coverage_score` a odstranit z confidence, nebo (b) implementovat dvoučlennou MDL:
+`compression_ratio = total_moves / (10 + 2 * evidence_count)` roste s korpusem a saturuje. Původně tento poměr vstupoval do `confidence`, takže >= 0,5 dostal i slabý pattern.
+
+**Stav 2026-11-13:** varianta (a) implementována. Validátor je `coverage validator`, výstup je `coverage_score` a `support`; `strength` detektoru se nemění. Skutečná dvoučlenná MDL zůstává P2:
 
 ```
 L_total = L(model) + L(data | model)
@@ -424,11 +430,9 @@ L(model) = delka definice patternu (bity)
 L(data | model) = -sum log2 P(tah | model)
 ```
 
-Doporučení: (a) okamžitě, (b) v P2. Do té doby nesmí být `confidence` prezentována jako pravděpodobnost.
+### 11.2 Confidence je ordinální, ne kalibrovaná (P1 — OPRAVENO rozdělením dimenzí)
 
-### 11.2 Confidence je ordinální, ne kalibrovaná (P1, dopad: vysoký)
-
-Ad hoc vzorce (`cp/500`, `pin_events/games*0.8`) nejsou pravděpodobnosti. **Fix:** přejmenovat pole na `strength`, nebo kalibrovat isotonic regression na held-out labeled datasetu. Do té doby v reportu uvádět „strength“, ne „confidence“.
+Ad hoc vzorce (`cp/500`, `pin_events/games*0.8`) nejsou pravděpodobnosti. **Stav 2026-11-13:** `PatternMatch` má `strength` (ordinální), `support` (měřený podíl) a `hypothesis_confidence` (`None` = nekalibrováno); `confidence` je už jen alias `strength`. Kalibrace (isotonic regression) zůstává P2 — do té doby se `strength` nesmí číst jako pravděpodobnost.
 
 ### 11.3 Nezávislost patternů (P2, dopad: střední)
 
@@ -452,8 +456,8 @@ Měříme fitness (kolik tahů vysvětlíme), ne precision (kolik tahů model do
 
 | ID | Akce | Acceptance |
 |---|---|---|
-| **P1** | Odstranit falešný MDL; přejmenovat `confidence` → `strength` nebo kalibrovat | žádný report netvrdí „pravděpodobnost“; testy prošly |
-| **P1** | Wilson CI + lift + N do každého `PatternMatch` | schema v1.3; všechny matched eventy mají CI |
+| **P1** ✅ | Odstranit falešný MDL; přejmenovat `confidence` → `strength` | hotovo 2026-11-13: `coverage_score`/`support` jsou mimo `strength`, `confidence` je alias; žádný report netvrdí „pravděpodobnost“ |
+| **P1** | Wilson CI + lift + N do každého `PatternMatch` | schema v1.3; všechny matched eventy mají CI (otevřeno) |
 | **P2** | Split-half + časová stabilita | `stab` a `drift` v reportu; pattern bez stability označen `unstable` |
 | **P2** | Precision modelu | `precision` a `fitness` v reportu vedle `unclassified` |
 | **P3** | Sekvenční vrstva (PrefixSpan, gap <= 4) | nový pattern jen při `N>=30`, `lift>=1.4`, 2 analýzy |
@@ -475,7 +479,7 @@ P1 je epistemická oprava, ne feature. Bez ní je každé další číslo nedův
 1. **Discovery je falsifikace, ne generování.** Hodnota systému je v tom, co odmítne (K1) a co přizná jako neznámé (82,5 % unclassified).
 2. **Originalita je v kontraktu, ne v algoritmu.** Kombinace unclassified + FP strop + deterministická evidence chain je obhajitelná; jednotlivé komponenty jsou komodita.
 3. **Efektivita je asymetrická.** Vysoká explanace, nízká výtěžnost, neprokázaná generalizace. Produktový další krok není „více patternů“, ale **lesson loop a external validity**.
-4. **Největší technický dluh je falešný MDL a nekalibrovaná confidence.** To se musí opravit dříve, než se přidá jakýkoli nový pattern.
+4. **Největší technický dluh byl falešný MDL a nekalibrovaná confidence.** P1 ho 2026-11-13 odstranil přejmenováním (coverage, tři dimenze); skutečná MDL a kalibrace jsou P2 a musí být hotové dříve, než se přidá jakýkoli nový pattern.
 5. **Cross-domain inspirace je konkrétní:** process mining (precision, drift), matrix profile (parameter-free discovery), causal discovery (intervence), stylometrie (external validity). Žádná z nich není „víc patternů“; všechny jsou „lepší důkaz“.
 
 ---
@@ -492,7 +496,7 @@ P1 je epistemická oprava, ne feature. Bez ní je každé další číslo nedův
 - `docs/CROSS_REPO_TRANSFER_MAP.md` — přenositelné kontrakty z `ML_Ops_edukace` a `mcp-retrieval` (abstention, data identity, drift guard, RRF, kompresní měření).
 - `src/lichess_analyzer_mcp/services/pattern_detector.py` — `per_move_patterns`, `scan_single_game`, cross-game detektory.
 - `src/lichess_analyzer_mcp/models/pattern.py` — `PatternDef`, `PatternLibrary.load_baseline`.
-- `src/lichess_analyzer_mcp/services/compressibility_validator.py` — confidence mix (předmět P1).
+- `src/lichess_analyzer_mcp/services/compressibility_validator.py` — coverage validator (`coverage_score`, `support`); `strength` nemění (P1).
 - `scripts/measure_pattern_coverage.py`, `scripts/aggregate_candidate_moves.py` — měření.
 
 ### Externí (ověřeno 2026-11-12)

@@ -90,7 +90,7 @@ def migrate_file(path: str, apply: bool) -> dict:
             {
                 "pattern_id": c["pattern_id"],
                 "pattern_name": c["pattern_name"],
-                "confidence": c["confidence"],
+                "confidence": c.get("strength", c.get("confidence")),
                 "evidence": c["detail"],
             }
             for c in per_move_patterns(move, prev, was_in_check)

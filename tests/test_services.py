@@ -90,7 +90,7 @@ class TestModels:
         m = PatternMatch(
             pattern_id="A",
             pattern_name="Test",
-            confidence=0.8,
+            strength=0.8,
             evidence=[{"key": "val"}],
             game_ids=["g1"],
             frequency=3,
@@ -136,7 +136,7 @@ class TestModels:
         m = PatternMatch(
             pattern_id="Q",
             pattern_name="Active Defense",
-            confidence=0.8,
+            strength=0.8,
             evidence=[{"key": "val"}],
             game_ids=["g1"],
             frequency=3,
@@ -200,7 +200,7 @@ class TestModels:
         m = PatternMatch(
             pattern_id="B",
             pattern_name="Auto grab",
-            confidence=0.8,
+            strength=0.8,
             evidence=[{"cap": 2}],
             game_ids=["g1"],
             frequency=2,
@@ -212,7 +212,12 @@ class TestModels:
         assert compression_score(result) > 0
         assert entropy_score(result, [a]) >= 0
         assert sample_score(result, [a]) >= 0
-        assert result.confidence > 0
+        # P1: corpus size may not inflate the detector's ordinal strength.
+        assert result.strength == 0.8
+        assert result.coverage_score is not None
+        assert 0.0 <= result.coverage_score <= 1.0
+        assert result.support == 1.0
+        assert result.hypothesis_confidence is None
 
     def test_validator_passes(self):
         artifact = {

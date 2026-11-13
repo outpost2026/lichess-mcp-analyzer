@@ -28,7 +28,7 @@ regression `FVhqtv1S`; measured 4400 chars) versus 13–26 kB for schema 1.2.
 | `flags[].patterns` | pattern ids whose evidence includes this ply; omitted when none |
 | `flags[].pstatus` | `matched` or `unclassified` — every flag states whether a pattern covers it (P0-7) |
 | `flags[].why` | reason code, present **only** when `pstatus == "unclassified"` (P0-7) |
-| `patterns[]` | behavioural layer: id, confidence 0–1, frequency, severity, affected plies |
+| `patterns[]` | behavioural layer: id, **ordinal `strength`** 0–1 (emitted as `conf`), frequency, severity, affected plies. `conf` is not a probability (P1) |
 | `phase_method` | which phase source the detectors used: `ply_segment`, `material`, or `mixed` (P0-3). `summary.phases` follows this source; the detailed payload additionally publishes `segment_stats` and `chess_phase_stats` so the difference is auditable (P1) |
 | `patterns_meta` | mandatory: `scope`, `cross_game_suppressed`, `reason`, `coverage {flagged, matched, unclassified}`; an empty `patterns` list always has a reason |
 | `unclassified` | discovery feed: `{ply, class, cp, why}` for flagged moves without a pattern |
@@ -124,8 +124,9 @@ Rules:
 3. Top 2 flags by cp: what was played, what pv[ply] says was better, why.
    Use eval_before/eval_after when present. If pv_unavailable has the ply, say
    the engine line was unavailable.
-4. Pattern advice only for patterns with conf >= 0.5. Use flags[].patterns to
-   link a specific mistake to its pattern.
+4. Pattern advice only for patterns with conf >= 0.5 (conf is ordinal
+   `strength`, not a probability). Use flags[].patterns to link a specific
+   mistake to its pattern.
 5. Do not claim "no blunders" if flags contains class=blunder.
 6. A flag with pstatus=unclassified has no calibrated pattern: quote its why
    and say the cause was not identified. Never invent a mechanism.

@@ -59,7 +59,17 @@ def _bfs(move, in_check, prev=None) -> dict[str, float]:
 
 
 def _single(move, prev=None) -> dict[str, float]:
-    return {c["pattern_id"]: c["confidence"] for c in _single_game_candidate(move, prev)}
+    return {c["pattern_id"]: c["strength"] for c in _single_game_candidate(move, prev)}
+
+
+def test_per_move_candidates_expose_strength_not_confidence():
+    """P1: per-move event nese `strength`; `confidence` zůstává jen v 1.2 payloadu."""
+    candidates = per_move_patterns(_move(san="Qxe5", uci="e5e5", cp=400.0), None, False)
+    assert candidates
+    for candidate in candidates:
+        assert "strength" in candidate
+        assert "confidence" not in candidate
+        assert 0.0 <= candidate["strength"] <= 1.0
 
 
 class TestBfsEqualsSingleGame:
@@ -143,5 +153,5 @@ class TestSingleImplementation:
         move = _move(san="exd5", uci="e4d5", cp=150.0)
         core = per_move_patterns(move, None, False)
         assert [(m.pattern_id, m.confidence) for m in _per_blunder_patterns(move, False)] == [
-            (c["pattern_id"], c["confidence"]) for c in core
+            (c["pattern_id"], c["strength"]) for c in core
         ]

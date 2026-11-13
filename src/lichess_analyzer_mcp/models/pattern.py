@@ -60,14 +60,26 @@ class PatternDef:
 class PatternMatch:
     pattern_id: str
     pattern_name: str
-    confidence: float
+    # P1: `strength` je ordinální síla detektoru (0..1), NENÍ pravděpodobnost.
+    strength: float
     evidence: list[dict]
     game_ids: list[str]
     frequency: int
     severity: str
     hypothesis: Optional[str] = None
+    # P1: support = podíl her s patternem (měřený), ne odhad.
+    support: float = 0.0
+    # P1: kalibrovaná důvěra v hypotézu mechanismu; None = nekalibrováno.
+    hypothesis_confidence: Optional[float] = None
+    # P1: `coverage_score` je přejmenovaný compression proxy (0..1).
+    coverage_score: Optional[float] = None
     compression_ratio: Optional[float] = None
     provenance: Optional[dict] = None
+
+    @property
+    def confidence(self) -> float:
+        """Deprecated alias for `strength` (starší skripty); nikdy pravděpodobnost."""
+        return self.strength
 
 
 @dataclass

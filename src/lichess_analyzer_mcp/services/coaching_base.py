@@ -120,12 +120,20 @@ def collect_patterns_for_games(analyses: list, username: str) -> list[dict]:
         entry = {
             "pattern_id": m.pattern_id,
             "pattern_name": m.pattern_name,
-            "confidence": round(m.confidence * 100, 0),
+            # P1: `strength` je ordinální síla (0-100), ne pravděpodobnost.
+            # `confidence` zůstává jako kompatibilní alias pro 1.2 konzumenty.
+            "strength": round(m.strength * 100, 0),
+            "confidence": round(m.strength * 100, 0),
+            "support": m.support,
             "frequency": m.frequency,
             "severity": m.severity,
             "evidence": m.evidence,
             "affected_games": list(m.game_ids),
         }
+        if m.coverage_score is not None:
+            entry["coverage_score"] = m.coverage_score
+        if m.hypothesis_confidence is not None:
+            entry["hypothesis_confidence"] = m.hypothesis_confidence
         if m.hypothesis:
             entry["hypothesis"] = m.hypothesis
         if m.provenance:

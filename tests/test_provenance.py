@@ -110,7 +110,7 @@ def test_pattern_match_provenance_defaults_to_none() -> None:
     match = PatternMatch(
         pattern_id="A",
         pattern_name="Anonymous effect",
-        confidence=0.5,
+        strength=0.5,
         evidence=[],
         game_ids=[],
         frequency=1,

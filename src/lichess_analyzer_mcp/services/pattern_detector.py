@@ -73,7 +73,7 @@ class PatternDetector:
             return PatternMatch(
                 pattern_id="A",
                 pattern_name="Anonymous effect",
-                confidence=min(anon_blunder_rate / named_blunder_rate / 2, 0.95),
+                strength=min(anon_blunder_rate / named_blunder_rate / 2, 0.95),
                 evidence=[
                     {
                         "anonymous_blunder_rate": round(anon_blunder_rate, 2),
@@ -108,7 +108,7 @@ class PatternDetector:
             return PatternMatch(
                 pattern_id="B",
                 pattern_name="Automatic grab",
-                confidence=min(ratio * 2, 0.95),
+                strength=min(ratio * 2, 0.95),
                 evidence=[
                     {
                         "blunder_captures": blunder_captures,
@@ -148,7 +148,7 @@ class PatternDetector:
             return PatternMatch(
                 pattern_id="C",
                 pattern_name="Attention tunneling",
-                confidence=min(len(set(affected)) / total_games * 0.9, 0.85),
+                strength=min(len(set(affected)) / total_games * 0.9, 0.85),
                 evidence=[
                     {
                         "affected_games": list(set(affected)),
@@ -189,7 +189,7 @@ class PatternDetector:
                 return PatternMatch(
                     pattern_id="G",
                     pattern_name="Color as modulator",
-                    confidence=min(ratio / 3, 0.95),
+                    strength=min(ratio / 3, 0.95),
                     evidence=[
                         {
                             "white_blunder_rate": round(white_blunder_rate, 2),
@@ -222,7 +222,7 @@ class PatternDetector:
             return PatternMatch(
                 pattern_id="I2",
                 pattern_name="Opponent's gift exploitation",
-                confidence=min(0.05 + gift_count / max(total_games, 1) * 0.8, 0.9),
+                strength=min(0.05 + gift_count / max(total_games, 1) * 0.8, 0.9),
                 evidence=[
                     {
                         "gift_captures": gift_count,
@@ -258,7 +258,7 @@ class PatternDetector:
             return PatternMatch(
                 pattern_id="J",
                 pattern_name="Impulsive check block",
-                confidence=min(block_count / total_games * 0.9, 0.85),
+                strength=min(block_count / total_games * 0.9, 0.85),
                 evidence=[
                     {
                         "impulsive_blocks": block_count,
@@ -313,7 +313,7 @@ class PatternDetector:
             return PatternMatch(
                 pattern_id="O",
                 pattern_name="Stagnační panika",
-                confidence=min(len(set(affected)) / total_games * 0.8, 0.85),
+                strength=min(len(set(affected)) / total_games * 0.8, 0.85),
                 evidence=[
                     {
                         "affected_games": list(set(affected)),
@@ -348,7 +348,7 @@ class PatternDetector:
             return PatternMatch(
                 pattern_id="P",
                 pattern_name="Visual misrecognition",
-                confidence=min(len(set(affected)) / total_games * 0.7, 0.75),
+                strength=min(len(set(affected)) / total_games * 0.7, 0.75),
                 evidence=[
                     {
                         "affected_games": list(set(affected)),
@@ -387,7 +387,7 @@ class PatternDetector:
             return PatternMatch(
                 pattern_id="Q",
                 pattern_name="Active defense",
-                confidence=min(len(set(affected)) / total_games * 0.9, 0.85),
+                strength=min(len(set(affected)) / total_games * 0.9, 0.85),
                 evidence=[
                     {
                         "defensive_wins": len(set(affected)),
@@ -432,7 +432,7 @@ class PatternDetector:
             return PatternMatch(
                 pattern_id="Q1",
                 pattern_name="Desperate Gambit Mode",
-                confidence=min(len(set(affected)) / total_games * 0.8, 0.75),
+                strength=min(len(set(affected)) / total_games * 0.8, 0.75),
                 evidence=[
                     {
                         "affected_games": list(set(affected)),
@@ -466,7 +466,7 @@ class PatternDetector:
             return PatternMatch(
                 pattern_id="Q2",
                 pattern_name="Win despite blunder",
-                confidence=min(len(set(resilient_wins)) / total_games * 0.9, 0.85),
+                strength=min(len(set(resilient_wins)) / total_games * 0.9, 0.85),
                 evidence=[
                     {
                         "resilient_wins": len(set(resilient_wins)),
@@ -500,7 +500,7 @@ class PatternDetector:
             return PatternMatch(
                 pattern_id="R",
                 pattern_name="Endgame relaxation",
-                confidence=min(len(set(affected)) / total_games * 0.8, 0.75),
+                strength=min(len(set(affected)) / total_games * 0.8, 0.75),
                 evidence=[
                     {
                         "affected_games": list(set(affected)),
@@ -534,7 +534,7 @@ class PatternDetector:
             return PatternMatch(
                 pattern_id="S",
                 pattern_name="Capture aversion under check",
-                confidence=min(len(set(affected)) / total_games * 0.5, 0.5),
+                strength=min(len(set(affected)) / total_games * 0.5, 0.5),
                 evidence=[
                     {
                         "affected_games": list(set(affected)),
@@ -569,7 +569,7 @@ class PatternDetector:
             return PatternMatch(
                 pattern_id="N",
                 pattern_name="X-ray pin violation",
-                confidence=min(pin_events / max(total_games, 1) * 0.8, 0.75),
+                strength=min(pin_events / max(total_games, 1) * 0.8, 0.75),
                 evidence=[
                     {
                         "pin_events": pin_events,
@@ -622,7 +622,7 @@ def per_move_patterns(
             {
                 "pattern_id": "B",
                 "pattern_name": "Automatic grab",
-                "confidence": min(cp / 500, 0.95),
+                "strength": min(cp / 500, 0.95),
                 "detail": f"capture with cp_loss={cp:.0f}",
             }
         )
@@ -633,7 +633,7 @@ def per_move_patterns(
             {
                 "pattern_id": "J",
                 "pattern_name": "Impulsive check block",
-                "confidence": min(cp / 600, 0.85),
+                "strength": min(cp / 600, 0.85),
                 "detail": f"check block with cp_loss={cp:.0f}",
             }
         )
@@ -649,7 +649,7 @@ def per_move_patterns(
             {
                 "pattern_id": "R",
                 "pattern_name": "Endgame relaxation",
-                "confidence": min(cp / 1000, 0.85),
+                "strength": min(cp / 1000, 0.85),
                 "detail": f"endgame eval_before={move.eval_before or 0:.0f}, cp_loss={cp:.0f}",
             }
         )
@@ -666,7 +666,7 @@ def per_move_patterns(
             {
                 "pattern_id": "S",
                 "pattern_name": "Capture aversion under check",
-                "confidence": 0.4,
+                "strength": 0.4,
                 "detail": "king capture available but not played",
             }
         )
@@ -677,7 +677,7 @@ def per_move_patterns(
             {
                 "pattern_id": "C",
                 "pattern_name": "Attention tunneling",
-                "confidence": min(cp / 500, 0.8),
+                "strength": min(cp / 500, 0.8),
                 "detail": f"consecutive error after ply={prev_move.ply} cp_loss={cp:.0f}",
             }
         )
@@ -688,7 +688,7 @@ def per_move_patterns(
             {
                 "pattern_id": "T",
                 "pattern_name": "Tactical oversight",
-                "confidence": min(cp / 400, 0.8),
+                "strength": min(cp / 400, 0.8),
                 "detail": f"motif={move.motif_type or 'tactical'} cp_loss={cp:.0f}",
             }
         )
@@ -834,7 +834,9 @@ def scan_single_game(analysis: GameAnalysis) -> tuple[list[dict], dict[int, dict
                 entry = {
                     "pattern_id": pid,
                     "pattern_name": cand["pattern_name"],
-                    "confidence": 0.0,
+                    # P1: strength = ordinal event strength (0..1), not a probability.
+                    "strength": 0.0,
+                    "confidence": 0.0,  # legacy alias kept for 1.2 consumers
                     "frequency": 0,
                     "severity": pdef.severity if pdef else "medium",
                     "scope": "single_game",
@@ -851,7 +853,8 @@ def scan_single_game(analysis: GameAnalysis) -> tuple[list[dict], dict[int, dict
                 )
                 aggregated[pid] = entry
             entry["frequency"] += 1
-            entry["confidence"] = round(max(entry["confidence"], cand["confidence"]), 2)
+            entry["strength"] = round(max(entry["strength"], cand["strength"]), 2)
+            entry["confidence"] = entry["strength"]
             entry["evidence"].append(
                 {
                     "ply": move.ply,
@@ -865,7 +868,7 @@ def scan_single_game(analysis: GameAnalysis) -> tuple[list[dict], dict[int, dict
     order = {"B": 0, "J": 1, "S": 2, "C": 3, "R": 4, "T": 5}
     patterns = sorted(
         aggregated.values(),
-        key=lambda x: (order.get(x["pattern_id"], 99), -x["confidence"]),
+        key=lambda x: (order.get(x["pattern_id"], 99), -x["strength"]),
     )
     return patterns, coverage
 

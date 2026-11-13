@@ -61,8 +61,15 @@ class EngineLine:
 class PatternMatchInfo:
     pattern_id: str = ""
     pattern_name: str = ""
+    # Ordinal event strength (0..1), never a probability. `strength` is the
+    # preferred name (P1); `confidence` stays for fact-sheet cache compatibility.
     confidence: float = 0.0
     evidence: str = ""
+
+    @property
+    def strength(self) -> float:
+        """Alias of `confidence`: ordinal strength, not a probability."""
+        return self.confidence
 
     def to_dict(self) -> dict:
         return asdict(self)

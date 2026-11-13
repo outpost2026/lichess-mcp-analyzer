@@ -159,7 +159,10 @@ async def lichess_match_patterns(
             entry = {
                 "pattern_id": m.pattern_id,
                 "pattern_name": m.pattern_name,
-                "confidence": round(m.confidence * 100, 0),
+                # P1: strength = ordinal detector strength, not a probability.
+                "strength": round(m.strength * 100, 0),
+                "confidence": round(m.strength * 100, 0),
+                "support": m.support,
                 "frequency": m.frequency,
                 "severity": m.severity,
                 "evidence": m.evidence,
@@ -168,6 +171,8 @@ async def lichess_match_patterns(
                 if m.pattern_id in detector.library.patterns
                 else "",
             }
+            if m.coverage_score is not None:
+                entry["coverage_score"] = m.coverage_score
             if m.hypothesis:
                 entry["hypothesis"] = m.hypothesis
             if m.compression_ratio is not None:

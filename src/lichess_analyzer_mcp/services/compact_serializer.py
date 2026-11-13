@@ -362,9 +362,11 @@ def to_compact_v2(
         patterns.append(
             {
                 "id": pattern_id,
-                "conf": pattern.get("confidence"),
+                "conf": pattern.get("strength", pattern.get("confidence")),
                 "freq": int(pattern.get("frequency") or 1),
-                "sev": _severity(pattern.get("confidence"), pattern.get("severity")),
+                "sev": _severity(
+                    pattern.get("strength", pattern.get("confidence")), pattern.get("severity")
+                ),
                 "plie": plies,
             }
         )

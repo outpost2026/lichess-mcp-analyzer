@@ -357,7 +357,7 @@ def _per_blunder_patterns(
         PatternMatchInfo(
             pattern_id=c["pattern_id"],
             pattern_name=c["pattern_name"],
-            confidence=c["confidence"],
+            confidence=c["strength"],
             evidence=c["detail"],
         )
         for c in per_move_patterns(move, prev_move, in_check)
