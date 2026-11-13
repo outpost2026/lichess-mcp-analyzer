@@ -1,13 +1,14 @@
 ---
 title: Metodologie pattern discovery a detection
 date: 2026-11-13
-verze: 1.3
+verze: 1.4
 status: ZÁVAZNÝ METODOLOGICKÝ ARTEFAKT
 účel: Popsat, jak vznikají a jak se ověřují kandidátní chess patterny; porovnat metodologii s pattern discovery v jiných doménách; vyhodnotit originalitu a efektivitu.
 návaznost: CANDIDATE_PATTERNS_2026-11-12.md, REFACTOR_PLAN_2026-11-11.md, MIKOLOV_KOMPRESE_V_PATTERN_ARCHITEKTURE.md, COMPACT_JSON_FOR_LLM.md, DEEP_DIVE_SINGLE_GAME_PATTERNS_2026-08-02.md
 změny_1_1: Univerza přejmenována na obsahové názvy (§2.1) a sjednocena s měřicím appendixem; přidána identita datasetu (§2.1.1).
 změny_1_2: P1 — tři dimenze confidence (§2.4), coverage validator místo falešného MDL (§11.1), `strength` jako ordinální pole (§11.2); roadmap P1 rows aktualizovány.
 změny_1_3: P1 uzavřeno — schema 1.3 s Wilson CI a podmíněným liftem (§5.2), pravidlo „lift se nevymýšlí“.
+změny_1_4: P2 krok B — skutečná dvoučlenná MDL (`services/mdl.py`, §11.1) jako měřicí vrstva; naměřené gainy proxy mechanismů; `non_estimable` pro hraniční MLE.
 ---
 
 ## 0. TL;DR
@@ -17,7 +18,7 @@ změny_1_3: P1 uzavřeno — schema 1.3 s Wilson CI a podmíněným liftem (§5.
 3. Současný systém má **15 definic v baseline knihovně** (A, B, C, G, I, I2, J, N, O, P, Q, Q1, Q2, R, S) a **6 per-move eventů** (B, C, J, R, S, T); B/C/J/R/S jsou sdílené, T je pouze per-move. Z 15 definic má **14 automatický detektor**; `I` (bait trap) je záměrně `manual_only` koncept a v runtime se nevydává. Per-move eventy nejsou patterny v cross-game smyslu: nemají jmenovatel ani kontrast.
 4. Měřené pokrytí na cache (259 dedup her, 2137 flagged tahů): **375 matched (17,5 %), 1762 unclassified (82,5 %)**. To není bug, to je kalibrovaná hranice znalosti. Nízké pokrytí je cenou za to, že si systém nevymýšlí mechanismus.
 5. Originalita je **v kombinaci kontraktů**, ne v algoritmech. Jednotlivé komponenty (frekvence, lift, MDL, conformance, motif discovery) mají prior art. Kombinace „explicitní unclassified + FP strop na dobrých tazích + dual single/cross-game kontrakt + deterministická evidence chain“ v publikovaných chess nástrojích doložena není (P~0,75; absence důkazu, ne důkaz absence).
-6. Efektivita: **vysoká explanační, nízká discovery výtěžnost, neprokázaná diskriminační validita**. `compressibility_validator` je od 2026-11-13 **coverage validator** (`coverage_score`, `support`), ne MDL; `confidence` je jen alias `strength` a nikde se nečte jako pravděpodobnost. Skutečná dvoučlenná MDL a kalibrace zůstávají P2.
+6. Efektivita: **vysoká explanační, nízká discovery výtěžnost, neprokázaná diskriminační validita**. `compressibility_validator` je od 2026-11-13 **coverage validator** (`coverage_score`, `support`), ne MDL; `confidence` je jen alias `strength` a nikde se nečte jako pravděpodobnost. Skutečná dvoučlenná MDL je od 2026-11-13 implementovaná v měřicí vrstvě (§11.1); kalibrace zůstává P2.
 
 ---
 
@@ -264,6 +265,8 @@ Měřeno: **PV je přítomno jen u 12,9 % flagged tahů**. Důsledek:
 
 Proxy (`free_capture_after`, `missed_capture`, `hanging_piece`) je **jen generátor kandidátů**. Mechanismu se rovná až po kontrastu a kalibraci. V dokumentaci musí být vždy označeno, co je proxy a co je potvrzený mechanismus.
 
+**Pravidlo po P2 kroku B:** proxy bez kladného `gain_bits` proti `good_moves_control` se nesmí stát patternem ani novým ID — ani když má lift > 1,3. Naměřeno: `hanging_piece` lift 1,33, ale MDL −2,86 bitů (§11.1).
+
 ---
 
 ## 6. Současný stav měření
@@ -439,13 +442,34 @@ Metodologie je **epistemicky nadstandardní, algoritmicky neoriginální**. To j
 
 `compression_ratio = total_moves / (10 + 2 * evidence_count)` roste s korpusem a saturuje. Původně tento poměr vstupoval do `confidence`, takže >= 0,5 dostal i slabý pattern.
 
-**Stav 2026-11-13:** varianta (a) implementována. Validátor je `coverage validator`, výstup je `coverage_score` a `support`; `strength` detektoru se nemění. Skutečná dvoučlenná MDL zůstává P2:
+**Stav 2026-11-13 (P1):** varianta (a) implementována. Validátor je `coverage validator`, výstup je `coverage_score` a `support`; `strength` detektoru se nemění.
+
+**Stav 2026-11-13 (P2, krok B):** skutečná dvoučlenná MDL implementována v `services/mdl.py` — jako **měřicí vrstva**, ne v runtime `PatternMatch`. Důvod je strukturální: cross-game detektory nemají per-move applicability a A/G počítají Poissonovy eventy (`k > n`), takže binomický model na hrách by byl misspecifikovaný. MDL tedy vstupuje do admission gate, nikdy do `confidence` ani do `DETECTOR_VERSION`.
 
 ```
-L_total = L(model) + L(data | model)
-L(model) = delka definice patternu (bity)
-L(data | model) = -sum log2 P(tah | model)
+L(k, n | p) = log2 C(n, k) + n * H(p)          # přesná binomická délka kódu
+L_null      = L(k1,n1 | p_pool) + L(k0,n0 | p_pool)
+L_model     = L(k1,n1 | p1) + L(k0,n0 | p0) + 0.5 * log2(N)   # BIC/MDL cena za parametr
+gain_bits   = L_null - L_model
 ```
+
+Kontraktní pravidla:
+
+- **`gain_bits` není lineární v N.** Combinatoriální člen roste ~`0.5*log2 n`, takže zdvojnásobení korpusu gain více než zdvojnásobí. Srovnávat napříč datasety lze jen `gain_per_unit = gain_bits / N`, a i to jen asymptoticky.
+- **Nulový event ve skupině = MLE na hranici** (`p = 0` nebo `1`). Split pak kóduje skupinu nulovými bity a gain roste s `n` bez jakéhokoli důkazu. Takový řádek je `non_estimable`, nikdy „silný důkaz“ — stejné pravidlo jako u Katze.
+- **Prahy 2 / 6 / 10 bitů jsou pevné** (analogie Kass–Raftery na škále `2 ln BF`), ne laděné na datech: `weak` / `moderate` / `strong`; pod 2 bity `single_rate`.
+
+Měřeno 2026-11-13 (`scripts/measure_pattern_mdl.py`, 263 dedup her, 679 critical tahů vs 4752 `best`; obě skupiny ze stejného univerza `moves`, jednotka = tah):
+
+| proxy | flagged | control | lift | `gain_bits` | `gain_per_unit` | verdikt |
+|---|---|---|---|---|---|---|
+| `free_capture_after` | 218/679 (32,1 %) | 836/4752 (17,6 %) | 1,82 | 45,48 | 0,0084 | strong |
+| `hanging_piece` | 67/679 (9,9 %) | 353/4752 (7,4 %) | 1,33 | −2,86 | −0,0005 | single_rate |
+| `missed_capture` | 7/679 (1,0 %) | 0/4752 | n/a | — | — | non_estimable |
+| `missed_mate` | 0/679 | 0/4752 | n/a | — | — | non_estimable |
+| ANY (union) | 222/679 (32,7 %) | 847/4752 (17,8 %) | 1,83 | 47,48 | 0,0087 | strong |
+
+Interpretace: **`free_capture_after` je jediná board-derived proxy, která zaplatí za svůj parametr** (45,5 bitů, lift 1,82). `hanging_piece` má sice lift 1,33, ale split nezaplatí (−2,86 bitů) — jako samostatný klasifikátor nenese nic. `missed_capture`/`missed_mate` jsou na best-only controlu **strukturálně nulové** (odehraný tah == engine best), takže FP strop pro ně měřit nelze; to je vlastnost univerza, ne výsledek. 67,3 % critical tahů nemá žádnou board-derived proxy — prostor pro P4, ne důvod rozvolnit gate.
 
 ### 11.2 Confidence je ordinální, ne kalibrovaná (P1 — OPRAVENO rozdělením dimenzí)
 
@@ -475,6 +499,7 @@ Měříme fitness (kolik tahů vysvětlíme), ne precision (kolik tahů model do
 |---|---|---|
 | **P1** ✅ | Odstranit falešný MDL; přejmenovat `confidence` → `strength` | hotovo 2026-11-13: `coverage_score`/`support` jsou mimo `strength`, `confidence` je alias; žádný report netvrdí „pravděpodobnost“ |
 | **P1** ✅ | Wilson CI + lift + N do každého `PatternMatch` | hotovo 2026-11-13: schema 1.3, `n_games`/`n_units`/`rate` + Wilson CI pro každý cross-game pattern; `lift` + Katz CI jen u A a G, ostatní s explicitním důvodem |
+| **P2** ✅ | Skutečná dvoučlenná MDL (měřicí vrstva) | hotovo 2026-11-13: `services/mdl.py` (`log2 C(n,k) + n*H(p)`, BIC cena za parametr); `scripts/measure_pattern_mdl.py`; hraniční MLE = `non_estimable`; 31 testů |
 | **P2** | Split-half + časová stabilita | `stab` a `drift` v reportu; pattern bez stability označen `unstable` |
 | **P2** | Precision modelu | `precision` a `fitness` v reportu vedle `unclassified` |
 | **P3** | Sekvenční vrstva (PrefixSpan, gap <= 4) | nový pattern jen při `N>=30`, `lift>=1.4`, 2 analýzy |
@@ -489,7 +514,7 @@ P1 je epistemická oprava, ne feature. Bez ní je každé další číslo nedův
 
 **Stav 2026-11-12:** T1 provenance blok implementován (`services/provenance.py`, `PatternMatch.provenance`, `--json-out` v measurement skriptu, 8 testů). T2 (skutečná komprese) a T3 (drift guard) jsou další v pořadí — viz `CROSS_REPO_TRANSFER_MAP.md` §5.
 
-**Stav 2026-11-13:** P1 uzavřeno. Univerza obsahově (§2.1), `phase_stats` = `effective_phase` + dva auditní řezy, `accuracy_method = internal_cp_linear`, confidence rozdělená na `strength`/`support`/`hypothesis_confidence`, falešný MDL přejmenován na `coverage_score`, schema 1.3 s Wilson CI a podmíněným liftem. Otevřené zůstávají jen P2 body (skutečná dvoučlenná MDL, split-half/drift, precision model).
+**Stav 2026-11-13:** P1 uzavřeno. Univerza obsahově (§2.1), `phase_stats` = `effective_phase` + dva auditní řezy, `accuracy_method = internal_cp_linear`, confidence rozdělená na `strength`/`support`/`hypothesis_confidence`, falešný MDL přejmenován na `coverage_score`, schema 1.3 s Wilson CI a podmíněným liftem. Z P2 hotový krok B (skutečná dvoučlenná MDL v měřicí vrstvě, §11.1); otevřené zůstávají split-half/drift a precision model.
 
 ---
 
@@ -517,6 +542,7 @@ P1 je epistemická oprava, ne feature. Bez ní je každé další číslo nedův
 - `src/lichess_analyzer_mcp/models/pattern.py` — `PatternDef`, `PatternLibrary.load_baseline`.
 - `src/lichess_analyzer_mcp/services/compressibility_validator.py` — coverage validator (`coverage_score`, `support`); `strength` nemění (P1).
 - `src/lichess_analyzer_mcp/services/statistics.py` — Wilson CI a Katz rate-ratio CI (schema 1.3).
+- `src/lichess_analyzer_mcp/services/mdl.py` — skutečná dvoučlenná MDL (§11.1); `scripts/measure_pattern_mdl.py` — měření proxy mechanismů.
 - `scripts/measure_pattern_coverage.py`, `scripts/aggregate_candidate_moves.py` — měření.
 
 ### Externí (ověřeno 2026-11-12)
