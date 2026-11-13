@@ -12,6 +12,10 @@ PHASE_METHOD_MATERIAL = "material"
 PHASES = ("opening", "middlegame", "endgame")
 FLAGGED_CLASSES = ("blunder", "mistake", "inaccuracy")
 
+# P1: `accuracy` je interní lineární skóre, ne kalibrovaná "Lichess accuracy".
+# Metoda je součástí payloadu, aby report nikdy netvrdil standardní metriku.
+ACCURACY_METHOD_INTERNAL = "internal_cp_linear"
+
 
 @dataclass
 class GameSummary:
@@ -150,6 +154,9 @@ class GameAnalysis:
     moves: list[MoveAnalysis] = field(default_factory=list)
     total_acpl: float = 0.0
     accuracy: float = 0.0
+    # P1: `accuracy` je alias `internal_accuracy_score`; metoda je explicitní.
+    accuracy_method: str = ACCURACY_METHOD_INTERNAL
+    internal_accuracy_score: float = 0.0
     blunders: list[MoveAnalysis] = field(default_factory=list)
     mistakes: list[MoveAnalysis] = field(default_factory=list)
     inaccuracies: list[MoveAnalysis] = field(default_factory=list)
@@ -180,6 +187,8 @@ class GameAnalysis:
             "moves": [m.to_dict() for m in self.moves],
             "total_acpl": self.total_acpl,
             "accuracy": self.accuracy,
+            "accuracy_method": self.accuracy_method,
+            "internal_accuracy_score": self.internal_accuracy_score,
             "blunders": [m.to_dict() for m in self.blunders],
             "mistakes": [m.to_dict() for m in self.mistakes],
             "inaccuracies": [m.to_dict() for m in self.inaccuracies],
@@ -217,7 +226,10 @@ class GameAnalysis:
                 ),
                 2800,
             )
-        self.accuracy = self._compute_accuracy()
+        self.internal_accuracy_score = self._compute_accuracy()
+        # `accuracy` zůstává jako kompatibilní alias (1.2 kontrakt); nový
+        # payload publikuje i metodu, aby skóre nešlo zaměnit za Lichess %.
+        self.accuracy = self.internal_accuracy_score
         # P1: phase_stats je autoritativní řez (effective_phase), takže souhrn
         # a detektory mluví o stejné fázi. Oba alternativní řezy se publikují
         # vedle, aby šel rozdíl kdykoli auditovat.
@@ -226,6 +238,12 @@ class GameAnalysis:
         self.chess_phase_stats = self._compute_chess_phase_stats()
 
     def _compute_accuracy(self) -> float:
+        """Interní lineární skóre: `mean(max(0, 100 - 0.15 * cp_loss))`.
+
+        Není to kalibrovaná pravděpodobnost ani Lichess accuracy; je to
+        deterministický souhrn cp_loss pro srovnání her mezi sebou. Metoda se
+        publikuje jako `accuracy_method = internal_cp_linear`.
+        """
         measured = [m for m in self.moves if m.analyzed]
         if not measured:
             return 0.0
@@ -251,6 +269,8 @@ class GameAnalysis:
             moves=[MoveAnalysis.from_dict(m) for m in d["moves"]],
             total_acpl=d.get("total_acpl", 0.0),
             accuracy=d.get("accuracy", 0.0),
+            accuracy_method=d.get("accuracy_method", ACCURACY_METHOD_INTERNAL),
+            internal_accuracy_score=d.get("internal_accuracy_score", d.get("accuracy", 0.0)),
             blunders=[MoveAnalysis.from_dict(m) for m in d.get("blunders", [])],
             mistakes=[MoveAnalysis.from_dict(m) for m in d.get("mistakes", [])],
             inaccuracies=[MoveAnalysis.from_dict(m) for m in d.get("inaccuracies", [])],

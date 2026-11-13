@@ -41,7 +41,11 @@
           "type": ["number", "null"],
           "minimum": 0,
           "maximum": 100,
-          "description": "Accuracy 0-100. Null when no move was measured."
+          "description": "Internal accuracy score 0-100 (see acc_method). Null when no move was measured."
+        },
+        "acc_method": {
+          "enum": ["internal_cp_linear"],
+          "description": "P1: how acc was computed. internal_cp_linear = mean(max(0, 100 - 0.15*cp_loss)); NOT Lichess accuracy."
         },
         "phases": {
           "type": "object",

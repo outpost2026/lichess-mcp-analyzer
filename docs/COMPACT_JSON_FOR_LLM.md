@@ -15,7 +15,8 @@ regression `FVhqtv1S`; measured 4400 chars) versus 13–26 kB for schema 1.2.
 | Key | Meaning |
 |---|---|
 | `game` | id, username (omitted for anonymous games), color (side you played), result, opening (ECO + name), tc, date, depth |
-| `summary.acpl` / `summary.acc` | centipawn loss = lower is better; accuracy 0–100 |
+| `summary.acpl` / `summary.acc` | centipawn loss = lower is better; `acc` is the **internal** score 0–100 (`internal_cp_linear`), not Lichess accuracy (P1) |
+| `summary.acc_method` | how `acc` was computed: `internal_cp_linear` = `mean(max(0, 100 - 0.15*cp_loss))`; omitted only for payloads that predate the field |
 | `summary.phases` | `[acpl, flagged_count]` for opening / middlegame / endgame, grouped by `effective_phase` — the same phase the detectors used (`phase_method`), not the raw ply segment (P1) |
 | `flags[]` | one entry per blunder/mistake/inaccuracy, ordered by ply |
 | `flags[].ply` | half-move number (1 = White's 1st move) |

@@ -112,10 +112,14 @@
       "properties": {
         "acpl": { "type": ["number", "null"], "minimum": 0 },
         "accuracy": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
+        "accuracy_method": { "type": "string" },
+        "internal_accuracy_score": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
         "moves_analyzed": { "type": "integer", "minimum": 0 },
         "moves_total": { "type": "integer", "minimum": 0 },
         "evaluation_errors": { "type": "integer", "minimum": 0 },
-        "phase_stats": { "type": "object" }
+        "phase_stats": { "type": "object" },
+        "segment_stats": { "type": "object" },
+        "chess_phase_stats": { "type": "object" }
       }
     },
     "flagged_moves": {

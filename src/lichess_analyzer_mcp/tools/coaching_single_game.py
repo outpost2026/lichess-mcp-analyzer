@@ -461,6 +461,8 @@ async def build_response(
     analysis_block = {
         "acpl": round(acpl_value, 1) if isinstance(acpl_value, (int, float)) else None,
         "accuracy": analysis.get("accuracy"),
+        "accuracy_method": analysis.get("accuracy_method"),
+        "internal_accuracy_score": analysis.get("internal_accuracy_score"),
         "moves_analyzed": sum(1 for m in moves if m.get("analyzed", True)),
         "moves_total": len(moves),
         "evaluation_errors": analysis.get("evaluation_errors", 0),

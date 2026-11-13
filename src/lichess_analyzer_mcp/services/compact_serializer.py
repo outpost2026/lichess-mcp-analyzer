@@ -348,6 +348,11 @@ def to_compact_v2(
         "acc": analysis.get("accuracy"),
         "phases": {phase: _phase(stats, phase) for phase in _PHASES},
     }
+    # P1: `acc` je interní skóre; metoda musí být viditelná, aby ho LLM
+    # nevydával za Lichess accuracy.
+    acc_method = analysis.get("accuracy_method")
+    if isinstance(acc_method, str) and acc_method:
+        summary["acc_method"] = acc_method
 
     patterns = []
     pattern_plies: dict[int, list[str]] = {}
@@ -446,6 +451,7 @@ _REQUIRED_FLAG = {"ply", "move", "class", "cp", "best", "rank", "pstatus"}
 _REQUIRED_PATTERN = {"id", "conf", "freq", "sev", "plie"}
 _REQUIRED_PATTERNS_META = {"scope", "cross_game_suppressed", "reason", "coverage"}
 _PHASE_METHODS = ("ply_segment", "material", "mixed")
+_ACCURACY_METHODS = ("internal_cp_linear",)
 
 
 def _fail(path: str, message: str) -> None:
@@ -498,11 +504,18 @@ def validate_compact(data: dict) -> None:
         _fail("$.game.username", "must be a non-empty string when present")
 
     summary = data["summary"]
-    _check_keys(summary, {"acpl", "acc", "phases"}, {"acpl", "acc", "phases"}, "$.summary")
+    _check_keys(
+        summary,
+        {"acpl", "acc", "phases"},
+        {"acpl", "acc", "phases", "acc_method"},
+        "$.summary",
+    )
     for key in ("acpl", "acc"):
         value = summary[key]
         if value is not None and not isinstance(value, (int, float)):
             _fail(f"$.summary.{key}", "must be number or null")
+    if "acc_method" in summary and summary["acc_method"] not in _ACCURACY_METHODS:
+        _fail("$.summary.acc_method", f"must be one of {_ACCURACY_METHODS}")
     phases = summary["phases"]
     _check_keys(phases, set(_PHASES), set(_PHASES), "$.summary.phases")
     for phase in _PHASES:

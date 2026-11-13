@@ -59,6 +59,12 @@ def test_aggregates_ignore_unanalyzed_moves():
     game.auto_annotate()
     # 10 cp only from the measured move, not (10 + 0) / 2
     assert game.accuracy == round(100 - 10.0 * 0.15, 1)
+    # P1: the internal score is the same number and its method is declared.
+    assert game.internal_accuracy_score == game.accuracy
+    assert game.accuracy_method == "internal_cp_linear"
+    payload = game.to_dict()
+    assert payload["accuracy_method"] == "internal_cp_linear"
+    assert payload["internal_accuracy_score"] == game.accuracy
 
 
 def test_detect_single_game_reports_capture_blunder():

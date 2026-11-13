@@ -62,6 +62,8 @@ FULL = {
     "analysis": {
         "acpl": 18.2,
         "accuracy": 97.3,
+        "accuracy_method": "internal_cp_linear",
+        "internal_accuracy_score": 97.3,
         "moves_analyzed": 34,
         "moves_total": 34,
         "evaluation_errors": 0,
@@ -195,11 +197,21 @@ def test_metadata_and_summary():
     }
     assert out["summary"]["acpl"] == 18.2
     assert out["summary"]["acc"] == 97.3
+    assert out["summary"]["acc_method"] == "internal_cp_linear"
     assert out["summary"]["phases"] == {
         "opening": [8.3, 0],
         "middlegame": [24.5, 3],
         "endgame": [18.6, 1],
     }
+
+
+def test_acc_method_omitted_when_producer_does_not_declare_it():
+    full = json.loads(json.dumps(FULL))
+    full["analysis"].pop("accuracy_method")
+    out = to_compact_v2(full, game_meta=GAME_META, moves=MOVES)
+    # Older 1.2 payload: the serializer must not invent a method name.
+    assert "acc_method" not in out["summary"]
+    validate_compact(out)
 
 
 def test_anonymous_game_has_no_username():
