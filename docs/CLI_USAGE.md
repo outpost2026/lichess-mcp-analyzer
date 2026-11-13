@@ -34,14 +34,14 @@ Ověření, že server i tools jsou dostupné:
 ## 1. Jednotný CLI: `scripts/coach.py`
 
 Jeden vstupní bod pro všechny reálné workflow. **Výchozí výstup je compact
-JSON 2.0** (schema `schemas/single_game_v2_compact.json`); schema 1.1 je
+JSON 2.1** (schema `schemas/single_game_v2_compact.json`); detailed 1.2 je
 opt-in přes `--format detailed`.
 
 ```powershell
-# jedna hra -> compact 2.0 (výchozí)
+# jedna hra -> compact 2.1 (výchozí)
 .\.venv\Scripts\python.exe -X utf8 scripts\coach.py --game-id FVhqtv1S --username systeq --no-llm --out data\reports\FVhqtv1S.json
 
-# explicitně schema 1.1 (debugging / cross-game)
+# explicitně detailed 1.2 (debugging / cross-game)
 .\.venv\Scripts\python.exe -X utf8 scripts\coach.py --game-id lxO3gwd3 --format detailed --out detailed.json
 
 # oba tvary v jednom payloadu
@@ -62,7 +62,7 @@ opt-in přes `--format detailed`.
 | `--game-id ID` | Lichess ID (8 znaků) |
 | `--pgn-file PATH` | alternativa k `--game-id`; lokální PGN |
 | `--username NAME` | Lichess nick; určí barvu automaticky |
-| `--color white\|black\|both` | `both` analyzuje obě strany (vrací pole) |
+| `--color white\|black\|both` | `both` = dvě samostatná volání (white + black), výstup je pole. **Známé omezení:** v kombinaci s `--username` se barva přepíše detekcí z username, takže obě iterace mohou skončit stejnou barvou (oprava = Tier 1.2 v `AUDIT_INTEGRATION_2026-11-13.md`). Pro dva různé pohledy dnes použij `--color` bez `--username`. |
 | `--batch N` | posledních N her z `--username`; jen s `--format compact` |
 | `--depth N` | výchozí 14 |
 | `--mode fast\|deep` | `fast` = 60 s deadline, `deep` = 120 s |
@@ -87,7 +87,7 @@ aggregate: {"games": 3, "mean_acpl": 191.4, "flags": {"blunder": 2, "mistake": 6
 
 ### Starší varianta: `scripts/coach_single.py` (deprecated)
 
-Standardní single-game pipeline (kontrakt v1.1), jen z příkazové řádky. Stále
+Standardní single-game pipeline (detailed kontrakt 1.2), jen z příkazové řádky. Stále
 funguje, ale nové příkazy piš přes `coach.py`.
 
 ```powershell
@@ -221,9 +221,9 @@ Poznámky k jednotlivým toolům:
 - `lichess_import_pgn` s dlouhým PGN: použij `ConvertTo-Json -Compress` jako
   v příkladu výše, ať zůstane platný JSON.
 
-## 3. Kompaktní JSON 2.0 (ETL bez LLM)
+## 3. Kompaktní JSON 2.1 (ETL bez LLM)
 
-Compact 2.0 je **výchozí** výstup `coach.py`. Sekce výše pokrývá všechny
+Compact 2.1 je **výchozí** výstup `coach.py`. Sekce výše pokrývá všechny
 případy; zde jen minimální příklady a rozdíly.
 
 ```powershell
@@ -245,7 +245,7 @@ Výstup se validuje proti `schemas/single_game_v2_compact.json`. Detaily,
 null/omission politika a prompt pro LLM: `docs/COMPACT_JSON_FOR_LLM.md`.
 
 MCP tool `lichess_coaching_single_game` umí totéž přes `output_format`:
-`compact` (výchozí, 2.0), `detailed` (kontrakt 1.1), `both`;
+`compact` (výchozí, 2.1), `detailed` (kontrakt 1.2), `both`;
 `full` je deprecated alias pro `detailed`.
 
 ## 4. Determinismus a cache

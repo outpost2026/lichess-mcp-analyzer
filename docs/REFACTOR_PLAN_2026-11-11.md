@@ -1,5 +1,11 @@
 # Audit handoffu v1.0 a plán iterativního refaktoru
 
+> **Stav 2026-11-13:** dokument je **historický pro plánování**. Fáze 0 je hotová a její
+> nálezy zůstávají platné jako evidence. Roadmapu single-game větve už neřídí tento plán,
+> ale `AUDIT_INTEGRATION_2026-11-13.md` (D6–D11, Tier 1–3). Cross-game discovery track
+> řídí `PATTERN_DISCOVERY_METHODOLOGY.md` §12. Tento dokument se **nepřepisuje**; slouží
+> jako záznam, proč byla Fáze 0 udělána a co z ní platí.
+
 - **Datum:** 2026-11-11
 - **Auditovaný repozitář:** `outpost2026/lichess-mcp-analyzer`
 - **Auditovaný HEAD:** `d6892c2` (kód identický s `7ce7f61`; dva navazující commity jsou pouze dokumentační)

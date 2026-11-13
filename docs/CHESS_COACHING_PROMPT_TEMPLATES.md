@@ -1,5 +1,12 @@
 # LLM Prompt Templates for Chess Coaching Reports
 
+> **Stav 2026-11-13:** toto je **design reference, ne runtime kontrakt**. Skutečný prompt
+> skládá `src/lichess_analyzer_mcp/services/prompt_builder.py` (`PROMPT_TEMPLATES`), který
+> se od tohoto dokumentu může lišit. Změna textu promptu (např. `insufficient_evidence`,
+> clock contract) je Tier 2.3 v `AUDIT_INTEGRATION_2026-11-13.md`; do té doby platí, že
+> runtime prompt **vyžaduje** klasifikaci tactical/positional a odhad time trouble, i když
+> na to data nemusí stačit.
+
 **Datum:** 2026-07-29
 **Účel:** 5 reusable prompt template pro generování coaching reportů z lichess-analyzer-mcp pipeline
 **Metodologický základ:** Heisman (Novice Nook), Silman (imbalances), AICoachess, DecodeChess, Caissa (GM Prasanna), ChessMentor AI

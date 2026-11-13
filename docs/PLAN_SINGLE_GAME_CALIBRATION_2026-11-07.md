@@ -1,9 +1,24 @@
 # Plan kalibrace a optimalizace single-game pipeline
 
-**Verze:** 1.0 (DRAFT) | **Datum:** 2026-11-07 | **Status:** ke schválení autorem
+> **Stav 2026-11-13:** dokument je **implementovaný a jeho kontrakt je zmražený**.
+> Detailed 1.2 a compact 2.1 jsou závazné a nemění se; nové požadavky jdou aditivně
+> (viz `AUDIT_INTEGRATION_2026-11-13.md`, D7/D9). Poznámky ke dvěma známým
+> nejasnostem tohoto dokumentu jsou v sekci „Poznámky k příkladům“ níže.
+> Roadmapu single-game větve už neřídí tento plán, ale `AUDIT_INTEGRATION_2026-11-13.md` §6.
+
+**Verze:** 1.0 (DRAFT) | **Datum:** 2026-11-07 | **Status:** implementováno, kontrakt 1.2 zmražen
 **Rozsah:** `lichess_coaching_single_game` a služby, které přímo volá
 **Baseline:** HEAD `9738250` (2026-10-09), měření n=3 ze dne 2026-11-07
 **Mimo rozsah:** cross-game a batch pipeline, KB writer, tréninkové plány, změny `max_time_dual`
+
+---
+
+## Poznámky k příkladům v tomto dokumentu (2026-11-13)
+
+Dvě místa v příkladech jsou historicky správná, ale dnešní čtenář je může vyložit špatně:
+
+1. **`moves_total` v příkladu (§5) znamená počet rozhodnutí analyzovaného hráče**, ne počet půltahů partie. Pole dnes počítá `len(moves)`, a `moves` obsahuje jen tahy vybrané barvy. Aditivní rozdělení (`player_moves_total`, `game_plies_total`, `opponent_moves_total`) je Tier 2.2 v `AUDIT_INTEGRATION_2026-11-13.md`; do té doby se `moves_total` nesmí číst jako délka partie.
+2. **`eval_before` / `eval_after` jsou z pohledu hráče, který táhl** (mover POV), v celé pipeline. `eval_after` není POV soupeře. Definitivní názvy `eval_before_mover_cp` / `eval_after_mover_cp` a White POV pro timeline řeší D9 a Tier 2.1.
 
 ---
 

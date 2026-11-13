@@ -1,15 +1,16 @@
 ---
 title: Metodologie pattern discovery a detection
 date: 2026-11-13
-verze: 1.5
+verze: 1.6
 status: ZÁVAZNÝ METODOLOGICKÝ ARTEFAKT
 účel: Popsat, jak vznikají a jak se ověřují kandidátní chess patterny; porovnat metodologii s pattern discovery v jiných doménách; vyhodnotit originalitu a efektivitu.
-návaznost: CANDIDATE_PATTERNS_2026-11-12.md, REFACTOR_PLAN_2026-11-11.md, MIKOLOV_KOMPRESE_V_PATTERN_ARCHITEKTURE.md, COMPACT_JSON_FOR_LLM.md, DEEP_DIVE_SINGLE_GAME_PATTERNS_2026-08-02.md
+návaznost: CANDIDATE_PATTERNS_2026-11-12.md, AUDIT_INTEGRATION_2026-11-13.md, REFACTOR_PLAN_2026-11-11.md, PLAN_SINGLE_GAME_CALIBRATION_2026-11-07.md, MIKOLOV_KOMPRESE_V_PATTERN_ARCHITEKTURE.md, COMPACT_JSON_FOR_LLM.md, DEEP_DIVE_SINGLE_GAME_PATTERNS_2026-08-02.md
 změny_1_1: Univerza přejmenována na obsahové názvy (§2.1) a sjednocena s měřicím appendixem; přidána identita datasetu (§2.1.1).
 změny_1_2: P1 — tři dimenze confidence (§2.4), coverage validator místo falešného MDL (§11.1), `strength` jako ordinální pole (§11.2); roadmap P1 rows aktualizovány.
 změny_1_3: P1 uzavřeno — schema 1.3 s Wilson CI a podmíněným liftem (§5.2), pravidlo „lift se nevymýšlí“.
 změny_1_4: P2 krok B — skutečná dvoučlenná MDL (`services/mdl.py`, §11.1) jako měřicí vrstva; naměřené gainy proxy mechanismů; `non_estimable` pro hraniční MLE.
 změny_1_5: P2 krok C — split-half stabilita a časový drift (§5.5, §11.5); Page-Hinkley zamítnut pro nekalibrovatelnost `delta`/`lambda`, nahrazen dvouvýběrovým z-testem na chronologických polovinách; schema 1.4, `PatternMatch.stability`; roadmap P2 split-half uzavřen.
+změny_1_6: Integrace auditu 2026-11-13 — hranice single-game (event, 1.2/2.1) vs cross-game (pattern, 1.4) v §1.1.1; důkazová úroveň opravena v §2.5; nová slabina §11.7 (jednoperspektivní single-game); paralelní track §12.2 s odkazem na `AUDIT_INTEGRATION_2026-11-13.md`. Cross-game kontrakty se nemění.
 ---
 
 ## 0. TL;DR
@@ -21,6 +22,7 @@ změny_1_5: P2 krok C — split-half stabilita a časový drift (§5.5, §11.5);
 5. Originalita je **v kombinaci kontraktů**, ne v algoritmech. Jednotlivé komponenty (frekvence, lift, MDL, conformance, motif discovery) mají prior art. Kombinace „explicitní unclassified + FP strop na dobrých tazích + dual single/cross-game kontrakt + deterministická evidence chain“ v publikovaných chess nástrojích doložena není (P~0,75; absence důkazu, ne důkaz absence).
 6. Efektivita: **vysoká explanační, nízká discovery výtěžnost, neprokázaná diskriminační validita**. `compressibility_validator` je od 2026-11-13 **coverage validator** (`coverage_score`, `support`), ne MDL; `confidence` je jen alias `strength` a nikde se nečte jako pravděpodobnost. Skutečná dvoučlenná MDL je od 2026-11-13 implementovaná v měřicí vrstvě (§11.1); kalibrace zůstává P2.
 7. Stabilita je od 2026-11-13 **měřená, ne tvrzená**: split-half s deterministickým hashem a časový drift na chronologických polovinách (§5.5). `unstable` je příznak k prošetření, ne verdikt; když není co testovat, je `null`, nikdy `false`.
+8. Hranice produktu je od 2026-11-13 explicitní: **single-game vrstva vydává eventy jedné perspektivy** (detailed 1.2 / compact 2.1), **cross-game vrstva vydává patterny** (schema 1.4). Celopartiová timeline a dva pohledy jsou nový artefakt `game_full` 1.0, ne rozšíření 1.2/2.1 (§1.1.1, §11.7, §12.2).
 
 ---
 
@@ -35,6 +37,17 @@ změny_1_5: P2 krok C — split-half stabilita a časový drift (§5.5, §11.5);
 | **Lesson** | Pattern → příčina → trénink → měřený výsledek | „dril: napětí před grabem“ | počet tréninkových cyklů | týdny |
 
 Současný systém je na úrovni **event + pattern**; lesson vrstva (tréninkový loop) zatím chybí. To je klíčové pro produktové hodnocení v §10.
+
+#### 1.1.1 Dvě produktové schopnosti a jejich artefakty
+
+Audit 2026-11-13 ukázal, že „pattern“ a „celá partie“ nejsou totéž. Kanonické rozdělení:
+
+| Schopnost | Otázka | Vrstva | Artefakt | Perspektiva |
+|---|---|---|---|---|
+| **Player Behavior Analysis** | které chyby a mechanismy se u hráče opakují napříč hrami | pattern (E2–E3) | cross-game schema 1.4 | jedna barva hráče |
+| **Full Game Dynamics** | jak se v jedné partii vyvíjela interakce obou hráčů | event + timeline | `game_full` 1.0 (plánováno) | obě, oddělené |
+
+Single-game výstup dnes nese **eventy jedné perspektivy** (detailed 1.2 / compact 2.1). Cross-game výstup nese **patterny** (schema 1.4). `game_full` je nový aditivní artefakt, který obě schopnosti propojí, ale nesmí je slít: perspektivy zůstávají oddělené a do cohortu nikdy nevstupují obě (§11.7, D8 v `AUDIT_INTEGRATION_2026-11-13.md`).
 
 ### 1.2 Co pattern není
 
@@ -144,7 +157,7 @@ support           = games_with_pattern / total_games
 | **E4** | E3 + out-of-sample hráč / stylometrie | „jev diskriminuje hráče“ |
 | **E5** | E4 + intervenční test | „trénink jevu zlepšuje výsledek“ |
 
-Současný systém je na **E1-E2**. To stačí na coaching report, nestačí na produktové tvrzení „toto je váš hlavní problém“.
+Současný stav: **cross-game korpus je na E1–E3** (E2 kontrast se měří při admission, E3 split-half a drift jsou implementované od 2026-11-13), **single-game výstup zůstává na E1** — jedna hra nemá kontrast ani stabilitu, takže její eventy nesmí být prezentovány jako potvrzený pattern. E1–E3 stačí na coaching report; na produktové tvrzení „toto je váš hlavní problém“ nestačí. E4 (external validity) a E5 (intervence) zůstávají otevřené.
 
 ---
 
@@ -533,6 +546,26 @@ Interpretace, kterou report **nesmí** přeskočit:
 
 12,9 % PV znamená, že mechanistické závěry mají malý N. **Fix:** rozšířit depth policy nebo explicitně reportovat `pv_coverage` u každého patternu; neimplikovat mechanismus z chybějící linie.
 
+### 11.7 Single-game je jednoperspektivní (produktová mezera, dopad: vysoký)
+
+**Nález (audit 2026-11-13, potvrzeno v kódu):** `collect_single_game` volá `analyze_pgn` **jednou**; `_run_analyze_pgn` vyhodnocuje jen pozice, kde `board.turn == player_side`, a tah soupeře pouze přehraje na desce. `GameAnalysis.moves` proto obsahuje **jen rozhodnutí vybraného hráče**, a to včetně ACPL, fázových statistik, BFS a single-game eventů.
+
+**Důsledky, které nejsou kosmetické:**
+
+| Místo | Co dnes vzniká | Proč to vadí |
+|---|---|---|
+| `context_window` v BFS | iteruje `analysis.moves` | ±3 ply jsou dva **vlastní** tahy, ne bezprostřední odpověď soupeře |
+| `moves_total` | `len(moves)` = počet tahů hráče | název sugeruje celkovou délku partie |
+| LLM prompt | dostane jen jednu perspektivu, max 10 chyb/typ, FEN `[:60]`, `bfs_json[:2000]` | nemůže doložit „hrozba → reakce → exploitace“ |
+| Pattern C | předchozí rozhodnutí **téhož** hráče | interakce mezi barvami není modelovaná |
+| `interaction` events | neexistují | dynamika partie není měřená |
+
+**Proč to není bug:** kód dělá přesně to, co deklaruje (analýza jednoho hráče). Chybějící schopnost je **produktová mezera**, ne defekt — a proto nemá být označena jako P0 (viz `AUDIT_INTEGRATION_2026-11-13.md` §2).
+
+**Fix (plánováno, Tier 3):** merge vrstva `services/timeline.py` nad **existující dual cache**. Bílý běh už dnes vyhodnocuje bílé tahy a černý běh černé, takže každý ply je vyhodnocen právě jednou; chybí jen spojení do jednoho artefaktu `game_full` 1.0 s `timeline`, `perspectives.white`, `perspectives.black` a `interaction`. Detaily a acceptance: `AUDIT_INTEGRATION_2026-11-13.md` §6 (T3.0–T3.4).
+
+**Co se nesmí stát:** oba pohledy nesmí vstoupit do jednoho `detect_all` cohortu — `n_units` by se zdvojnásobil a stejná hra by se počítala dvakrát (D8).
+
 ---
 
 ## 12. Roadmap s acceptance criteria
@@ -549,6 +582,7 @@ Interpretace, kterou report **nesmí** přeskočit:
 | **P5** | Lesson compiler + tréninkový loop | pattern → drill → měřený outcome; A/B design |
 | **P6** | External validity (stylometrie) | few-shot identifikace hráče nad baseline |
 | **P7** | Pattern vector store + drift dashboard | `v_p` per hráč, stabilní schema, competitive scan |
+| **P8** | `game_full` 1.0 — timeline + dvě perspektivy | merge dvou `GameAnalysis` bez nového engine volání; každý ply jednou; White POV eval; `interaction` jen kandidátní (D4); viz §12.2 |
 
 ### 12.1 Pořadí je závazné
 
@@ -557,6 +591,15 @@ P1 je epistemická oprava, ne feature. Bez ní je každé další číslo nedův
 **Stav 2026-11-12:** T1 provenance blok implementován (`services/provenance.py`, `PatternMatch.provenance`, `--json-out` v measurement skriptu, 8 testů). T2 (skutečná komprese) a T3 (drift guard) jsou další v pořadí — viz `CROSS_REPO_TRANSFER_MAP.md` §5.
 
 **Stav 2026-11-13:** P1 uzavřeno. Univerza obsahově (§2.1), `phase_stats` = `effective_phase` + dva auditní řezy, `accuracy_method = internal_cp_linear`, confidence rozdělená na `strength`/`support`/`hypothesis_confidence`, falešný MDL přejmenován na `coverage_score`, schema 1.3 s Wilson CI a podmíněným liftem. Z P2 hotové kroky B (skutečná dvoučlenná MDL, §11.1) a C (split-half + drift, §5.5, §11.5, schema 1.4); otevřený zůstává precision model a external validity.
+
+### 12.2 Paralelní track: single-game kontrakt
+
+Tato roadmapa (P1–P8) je **cross-game discovery track**. Single-game větev má vlastní pořadí prací a vlastní rozhodovací artefakt:
+
+- **Kanon:** `docs/AUDIT_INTEGRATION_2026-11-13.md` — rozhodnutí D6–D11, Tier 1 (defekty), Tier 2 (sémantika a evidence), Tier 3 (timeline a perspektivy), testovací matice a pravidla proti driftu.
+- **Proč oddělené:** cross-game pattern a celopartiová timeline odpovídají na jiné otázky (§1.1.1) a mají jiný jmenovatel. Sloučení do jedné roadmapy by míchalo jednotku `game` s jednotkou `event`.
+- **Vazba:** P8 (`game_full`) je průsečík obou tracků. Do cross-game statistiky vstupuje jen jedna perspektiva na `game_id` (D8); timeline sama o sobě není pattern a nesmí generovat nová ID bez D4 gate.
+- **Co se nemění:** schéma 1.4, admission gate (`N >= 30`, `lift >= 1.4`, `>= 2` analýzy) ani `DETECTOR_VERSION` (mimo T1.4, kde J mění klasifikaci).
 
 ---
 
@@ -575,7 +618,9 @@ P1 je epistemická oprava, ne feature. Bez ní je každé další číslo nedův
 ### Interní
 
 - `docs/CANDIDATE_PATTERNS_2026-11-12.md` — taxonomie F1-F8/Z, FP strop, měřicí appendix univerz (§2.1), měření P0-7.
-- `docs/REFACTOR_PLAN_2026-11-11.md` — D1-D6, Phase 0 kritéria, §355 mechanismus.
+- `docs/AUDIT_INTEGRATION_2026-11-13.md` — kanonická integrace auditu 2026-11-13: D6–D11, Tier 1–3, testovací matice, pravidla proti driftu, §12.2.
+- `docs/PLAN_SINGLE_GAME_CALIBRATION_2026-11-07.md` — zmražený kontrakt detailed 1.2 (single-game).
+- `docs/REFACTOR_PLAN_2026-11-11.md` — D1-D6, Phase 0 kritéria, §355 mechanismus; pro single-game roadmapu **historický**, aktuální pořadí řídí `AUDIT_INTEGRATION_2026-11-13.md`.
 - `docs/MIKOLOV_KOMPRESE_V_PATTERN_ARCHITEKTURE.md` — kompresní rámec (v1.0; viz korekce §11.1).
 - `docs/COMPACT_JSON_FOR_LLM.md` — compact 2.1 kontrakt.
 - `docs/DEEP_DIVE_SINGLE_GAME_PATTERNS_2026-08-02.md` — single-game pattern surface.

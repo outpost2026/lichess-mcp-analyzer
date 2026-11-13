@@ -14,7 +14,7 @@ regression `FVhqtv1S`; measured 4400 chars) versus 13–26 kB for schema 1.2.
 
 | Key | Meaning |
 |---|---|
-| `game` | id, username (omitted for anonymous games), color (side you played), result, opening (ECO + name), tc, date, depth |
+| `game` | id, username (omitted for anonymous games), color (`white` or `black` only — the side analysed), result, opening (ECO + name), tc, date, depth |
 | `summary.acpl` / `summary.acc` | centipawn loss = lower is better; `acc` is the **internal** score 0–100 (`internal_cp_linear`), not Lichess accuracy (P1) |
 | `summary.acc_method` | how `acc` was computed: `internal_cp_linear` = `mean(max(0, 100 - 0.15*cp_loss))`; omitted only for payloads that predate the field |
 | `summary.phases` | `[acpl, flagged_count]` for opening / middlegame / endgame, grouped by `effective_phase` — the same phase the detectors used (`phase_method`), not the raw ply segment (P1) |
@@ -23,7 +23,7 @@ regression `FVhqtv1S`; measured 4400 chars) versus 13–26 kB for schema 1.2.
 | `flags[].move` / `best` | SAN played vs SAN the engine preferred |
 | `flags[].class` / `cp` / `rank` | severity, centipawn loss, played-move rank among engine candidates |
 | `flags[].motif` | tactical tag when present (e.g. `discovered_check_capture`, `check`, `capture`) |
-| `flags[].eval_before` / `eval_after` | eval swing in cp; present only for `cp > 200` or class blunder/mistake **and** consistent with `cp` (FIX-023) |
+| `flags[].eval_before` / `eval_after` | eval swing in cp, **mover POV** (see "Perspective and eval POV"); present only for `cp > 200` or class blunder/mistake **and** consistent with `cp` (FIX-023) |
 | `flags[].mate_in` | blunder only: forced mate in N moves from the best line (FIX-027); positive = for the player, negative = against |
 | `flags[].patterns` | pattern ids whose evidence includes this ply; omitted when none |
 | `flags[].pstatus` | `matched` or `unclassified` — every flag states whether a pattern covers it (P0-7) |
@@ -38,6 +38,27 @@ regression `FVhqtv1S`; measured 4400 chars) versus 13–26 kB for schema 1.2.
 | `fen_before` | `ply -> FEN`, only for `cp > 100` (reproducible drill positions) |
 | `report` | short deterministic summary, ≤900 chars, never truncated mid-structure |
 | `llm` | `{status, provider, reason}`; `failed` + `deterministic` means no LLM was used |
+
+### Perspective and eval POV
+
+Compact 2.1 is **single-perspective**: every `flags[]` entry, `summary.acpl`,
+`summary.phases`, `patterns[]` and `clusters` describe the moves of the colour
+in `game.color` (always `white` or `black`). Opponent moves are not part of the
+payload. A full-game view is a different artifact (`game_full` 1.0, planned —
+see `AUDIT_INTEGRATION_2026-11-13.md` §6), not an extension of compact 2.1.
+
+**Eval POV:** `eval_before` and `eval_after` are both from the **mover's**
+point of view — the player who made the flagged move. `eval_after` is *not* the
+opponent's POV; the sign is not flipped after the move. Therefore:
+
+- `cp ≈ eval_before - eval_after` (positive = loss for the mover);
+- a positive value always means "good for the mover", for both colours;
+- never compare `eval_before` of a White move with `eval_before` of a Black
+  move as if they shared a direction — they do not.
+
+Additive renames `eval_before_mover_cp` / `eval_after_mover_cp` and a White-POV
+timeline are Tier 2.1 / Tier 3 in `AUDIT_INTEGRATION_2026-11-13.md` (D9).
+Legacy keys stay as aliases for one release.
 
 ### Null and omission policy
 

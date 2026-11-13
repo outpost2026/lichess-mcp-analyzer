@@ -1,5 +1,10 @@
 # Stav vývoje a optimalizace — Feynmanovský report
 
+> **Historický snapshot (2026-11-13):** tento dokument popisuje stav k 2026-11-11 a **neaktualizuje se**.
+> Od té doby: compact je **2.1** (ne 2.0), detailed je **1.2** (ne 1.1), cross-game artefakt je **1.4**.
+> Aktuální kontrakty a roadmapa: `PATTERN_DISCOVERY_METHODOLOGY.md` (v1.6) a `AUDIT_INTEGRATION_2026-11-13.md`.
+> Čísla a závěry níže platí jen pro uvedený HEAD; nepoužívej je jako popis dnešního chování.
+
 - **Datum:** 2026-11-11
 - **HEAD:** `b9401da` (kód na úrovni `7ce7f61` + dokumentace)
 - **Navazující dokument:** `docs/REFACTOR_PLAN_2026-11-11.md` (detailní audit a plán)

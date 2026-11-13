@@ -1,6 +1,12 @@
 # Deep Dive: Single-Game Pattern Identification & Library Calibration
 
-**Verze:** 1.0 | **Datum:** 2026-08-02 | **Status:** analytická rešerše + feasibility verdikt
+> **Historický dokument (banner 2026-11-13):** rešerše z 2026-08-02, **ne popis dnešního chování**.
+> Klíčové upřesnění: `analyze_game` dělá dual cache, ale `lichess_coaching_single_game` je
+> **jednoperspektivní** — tvrzení „MCP umí analyzovat single game obě strany“ platí pro cache,
+> ne pro coaching výstup. Dnešní stav: `PATTERN_DISCOVERY_METHODOLOGY.md` §11.7 a
+> `AUDIT_INTEGRATION_2026-11-13.md` (D7, Tier 3).
+
+**Verze:** 1.0 | **Datum:** 2026-08-02 | **Status:** analytická rešerše + feasibility verdikt (historický)
 **Rozsah:** lichess-analyzer-mcp — mechanismus identifikace kandidátních patternů ze single game (obě strany, conf>0.7) + kalibrace knihovny z jednotlivých her
 **Trigger:** hra HmUBpeoJ (ply 24–25, deflekce Bxf7+! Kxf7 Rxa5)
 
