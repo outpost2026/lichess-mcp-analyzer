@@ -27,6 +27,7 @@ from lichess_analyzer_mcp.models.analysis import (
 )
 from lichess_analyzer_mcp.services import engine_client
 from lichess_analyzer_mcp.services import board_facts
+from lichess_analyzer_mcp.services.color_contract import normalize_color
 from lichess_analyzer_mcp.services.eval_consistency import (
     eval_delta,
     eval_invariant_holds,
@@ -206,6 +207,7 @@ def analyze_pgn(
     A cache hit returns early and is marked on the object as `_cache_hit`
     (not serialized, so it cannot leak into the cache file).
     """
+    player_color = normalize_color(player_color)
     if depth == 0:
         depth = DEPTH_DEFAULTS["standard"]["single_game"]
     policy = _policy_token(depth, mode)
@@ -479,6 +481,7 @@ def _run_analyze_pgn(
     deadline_s: float | None = None,
     mode: str = "legacy",
 ) -> GameAnalysis:
+    player_color = normalize_color(player_color)
     if depth == 0:
         depth = DEPTH_DEFAULTS["standard"]["single_game"]
 

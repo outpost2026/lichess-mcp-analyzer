@@ -15,7 +15,11 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from lichess_analyzer_mcp.services.game_analyzer import _per_blunder_patterns
-from lichess_analyzer_mcp.services.pattern_detector import _single_game_candidate, per_move_patterns
+from lichess_analyzer_mcp.services.pattern_detector import (
+    _single_game_candidate,
+    is_piece_block,
+    per_move_patterns,
+)
 from lichess_analyzer_mcp.models.game import MoveAnalysis
 
 FEN_CHECK = "6k1/8/8/4Q3/8/8/4q3/4K3 w - - 0 1"
@@ -62,6 +66,14 @@ def _single(move, prev=None) -> dict[str, float]:
     return {c["pattern_id"]: c["strength"] for c in _single_game_candidate(move, prev)}
 
 
+def test_is_piece_block_contract():
+    """D11: one predicate for J in both paths."""
+    assert is_piece_block("Be6", True)
+    assert not is_piece_block("Kg1", True)
+    assert not is_piece_block("Kxe2", True)
+    assert not is_piece_block("Be6", False)
+
+
 def test_per_move_candidates_expose_strength_not_confidence():
     """P1: per-move event nese `strength`; `confidence` zůstává jen v 1.2 payloadu."""
     candidates = per_move_patterns(_move(san="Qxe5", uci="e5e5", cp=400.0), None, False)
@@ -88,6 +100,13 @@ class TestBfsEqualsSingleGame:
         move = _move(san="Be6", uci="c4e6", cp=200.0, in_check=True)
         self._assert_equal(move, True)
         assert "J" in _bfs(move, True)
+
+    def test_j_pattern_king_retreat_is_not_a_block(self):
+        """D11: a king move under check is an escape, never a piece block."""
+        move = _move(san="Kg1", uci="e1g1", cp=200.0, in_check=True)
+        self._assert_equal(move, True)
+        assert "J" not in _bfs(move, True)
+        assert "J" not in _single(move)
 
     def test_r_pattern_endgame(self):
         move = _move(cp=350.0, phase="endgame", eval_before=500.0)

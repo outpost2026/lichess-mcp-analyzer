@@ -62,7 +62,7 @@ opt-in přes `--format detailed`.
 | `--game-id ID` | Lichess ID (8 znaků) |
 | `--pgn-file PATH` | alternativa k `--game-id`; lokální PGN |
 | `--username NAME` | Lichess nick; určí barvu automaticky |
-| `--color white\|black\|both` | `both` = dvě samostatná volání (white + black), výstup je pole. **Známé omezení:** v kombinaci s `--username` se barva přepíše detekcí z username, takže obě iterace mohou skončit stejnou barvou (oprava = Tier 1.2 v `AUDIT_INTEGRATION_2026-11-13.md`). Pro dva různé pohledy dnes použij `--color` bez `--username`. |
+| `--color white\|black\|both` | `both` = dvě samostatná volání (white + black), výstup je pole. V `both` režimu se `--username` nepředává do analýzy, aby detekce barvy nepřepsala požadovanou stranu (D6a); oba reporty jsou proto bez `username`. Pro report konkrétního hráče použij jednu barvu + `--username`. |
 | `--batch N` | posledních N her z `--username`; jen s `--format compact` |
 | `--depth N` | výchozí 14 |
 | `--mode fast\|deep` | `fast` = 60 s deadline, `deep` = 120 s |

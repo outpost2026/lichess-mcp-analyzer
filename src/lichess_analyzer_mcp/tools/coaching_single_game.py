@@ -11,6 +11,10 @@ from lichess_analyzer_mcp.config.depth import (
 from lichess_analyzer_mcp.services import engine_client
 from lichess_analyzer_mcp.services.audit import auditable
 from lichess_analyzer_mcp.services.budget import budget_for_mode
+from lichess_analyzer_mcp.services.color_contract import (
+    VALID_COLORS,
+    normalize_color,
+)
 from lichess_analyzer_mcp.services.coaching_base import (
     collect_single_game,
     mcp_sample_fallback,
@@ -292,6 +296,7 @@ async def build_response(
     Public so the CLI (`scripts/coach.py`) can reuse the exact same pipeline for
     PGN input, which never reaches the MCP tool's Lichess fetch.
     """
+    detected_color = normalize_color(detected_color)
     from lichess_analyzer_mcp.services.pv_recovery import recover_missing_pv
 
     # FIX-014: a blunder whose PV was lost to the analysis deadline is retried
@@ -569,7 +574,10 @@ async def lichess_coaching_single_game(
     perfect one (`cp_loss=null`, `analyzed=false`).
 
     Auto-detects player color from username via game metadata or PGN headers.
-    If username is provided, color parameter is ignored.
+    If username is provided and the player cannot be found, an explicit `color`
+    is used; with neither, the call fails with `COLOR_UNDETECTED`. `color`
+    accepts only `white` or `black` — `both` is a CLI mode, not a colour, and
+    is rejected with `INVALID_COLOR` (D6a).
 
     Falls back to MCP sampling (IDE's current LLM) when external API providers
     are unavailable.
@@ -577,7 +585,7 @@ async def lichess_coaching_single_game(
     Args:
         game_id: Lichess game ID (8 chars)
         username: Lichess username (auto-detects color — recommended)
-        color: Your color ('white' or 'black', fallback if no username)
+        color: 'white' or 'black'; fallback when no username or detection fails
         depth: Stockfish analysis depth (8-24, 0=auto)
         mode: Budget profile — 'fast' (60 s hard deadline) or 'deep' (120 s)
         output_format: 'compact' (schema 2.1, default), 'detailed' (contract
@@ -598,11 +606,14 @@ async def lichess_coaching_single_game(
 
     deadline_s = float(budget_cfg["total_s"])
 
+    requested_color = (color or "").strip().lower()
+    resolved_color = requested_color if requested_color in VALID_COLORS else ""
+
     try:
         output_format = _normalize_format(output_format)
         data = collect_single_game(
             game_id,
-            color or "white",
+            color,
             depth,
             username=username,
             deadline_s=deadline_s,
@@ -615,7 +626,7 @@ async def lichess_coaching_single_game(
         return await build_response(
             game_id=game_id,
             username=username,
-            detected_color=data.get("color", color or "white"),
+            detected_color=data["color"],
             depth=depth,
             mode=mode,
             deadline_s=deadline_s,
@@ -632,12 +643,12 @@ async def lichess_coaching_single_game(
             "schema_version": SCHEMA_VERSION,
             "game_id": game_id,
             "username": username,
-            "color": color or "white",
+            "color": resolved_color,
             "mode": mode,
             "depth": depth,
             "status": "error",
             "partial": False,
-            "errors": [{"code": "PIPELINE_ERROR", "message": str(e)}],
+            "errors": [{"code": getattr(e, "code", "PIPELINE_ERROR"), "message": str(e)}],
             "unanalyzed_plies": [],
             "timings": {
                 "io_s": 0.0,

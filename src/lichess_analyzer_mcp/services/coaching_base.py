@@ -9,6 +9,11 @@ Each collector:
 import os
 
 from lichess_analyzer_mcp.config.depth import DEPTH_DEFAULTS
+from lichess_analyzer_mcp.services.color_contract import (
+    ColorUndetectedError,
+    InvalidColorError,
+    normalize_color,
+)
 from lichess_analyzer_mcp.services.game_analyzer import analyze_pgn
 from lichess_analyzer_mcp.services.lichess_client import fetch_game_pgn
 from lichess_analyzer_mcp.services.logger import get_logger
@@ -16,16 +21,19 @@ from lichess_analyzer_mcp.services.logger import get_logger
 log = get_logger("coaching_base")
 
 
-def detect_player_color(game_id: str, username: str) -> str:
+def detect_player_color(game_id: str, username: str) -> str | None:
     """Detect player color from game metadata or PGN headers.
 
     Priority:
     1. Game metadata via Lichess API (fetch_game_by_id)
     2. PGN headers ([White]/[Black])
-    3. Default 'white'
+
+    Returns ``None`` when the player cannot be identified. The caller decides:
+    use an explicit colour if it was given, otherwise raise
+    ``ColorUndetectedError``. Never assume white (D6a).
     """
     if not username:
-        return "white"
+        return None
 
     # 1) API metadata (most reliable)
     try:
@@ -60,12 +68,12 @@ def detect_player_color(game_id: str, username: str) -> str:
     except Exception:
         pass
 
-    return "white"
+    return None
 
 
 def collect_single_game(
     game_id: str,
-    color: str = "white",
+    color: str = "",
     depth: int = 0,
     username: str = "",
     deadline_s: float | None = None,
@@ -77,9 +85,27 @@ def collect_single_game(
     if depth == 0:
         depth = DEPTH_DEFAULTS["standard"]["single_game"]
 
-    # Auto-detect color from username if provided
+    # Colour contract (D6/D6a): explicit colour wins when detection fails;
+    # no explicit colour and no detection is an error, never a silent white.
+    explicit = normalize_color(color, allow_empty=True)
     if username:
-        color = detect_player_color(game_id, username)
+        detected = detect_player_color(game_id, username)
+        if detected:
+            color = detected
+        elif explicit:
+            log.warning(
+                "colour not detected | game=%s user=%s fallback=%s",
+                game_id,
+                username,
+                explicit,
+            )
+            color = explicit
+        else:
+            raise ColorUndetectedError(game_id, username)
+    else:
+        if not explicit:
+            raise InvalidColorError(color)
+        color = explicit
 
     t_io = time.perf_counter()
     pgn = fetch_game_pgn(game_id)

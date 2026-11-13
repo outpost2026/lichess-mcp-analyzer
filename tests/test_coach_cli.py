@@ -84,6 +84,75 @@ def test_aggregate_compact_games():
     assert stats["patterns"] == {"B": 1, "T": 2}
 
 
+def test_both_mode_ignores_username_so_colours_stay_distinct(monkeypatch):
+    """D6a: `--color both --username X` must produce white and black, not X twice."""
+    import asyncio
+
+    calls = []
+
+    async def fake_tool(game_id, username="", color="", **kwargs):
+        calls.append({"username": username, "color": color})
+        return {"color": color}
+
+    import lichess_analyzer_mcp.tools.coaching_single_game as cs
+
+    monkeypatch.setattr(cs, "lichess_coaching_single_game", fake_tool)
+    result = asyncio.run(
+        coach._single_game(
+            "gid",
+            username="systeq",
+            color="both",
+            depth=14,
+            mode="fast",
+            fmt="compact",
+            use_llm=False,
+            no_cache=False,
+        )
+    )
+    assert [c["color"] for c in calls] == ["white", "black"]
+    assert all(c["username"] == "" for c in calls)
+    assert isinstance(result, list) and len(result) == 2
+
+
+def test_single_pgn_both_wins_over_username_detection(monkeypatch, tmp_path):
+    """D6a: a matching username must not collapse `both` to one colour."""
+    import asyncio
+
+    path = tmp_path / "game.pgn"
+    path.write_text(PGN, encoding="utf-8")
+
+    class _Stub:
+        moves = [object()]
+
+    monkeypatch.setattr(
+        "lichess_analyzer_mcp.services.game_analyzer.analyze_pgn",
+        lambda *a, **k: _Stub(),
+    )
+    seen = []
+
+    async def fake_response(**kwargs):
+        seen.append(kwargs["detected_color"])
+        return {"color": kwargs["detected_color"]}
+
+    import lichess_analyzer_mcp.tools.coaching_single_game as cs
+
+    monkeypatch.setattr(cs, "build_response", fake_response)
+    result = asyncio.run(
+        coach._single_pgn(
+            str(path),
+            username="systeq",
+            color="both",
+            depth=14,
+            mode="fast",
+            fmt="compact",
+            use_llm=False,
+            no_cache=False,
+        )
+    )
+    assert seen == ["white", "black"]
+    assert isinstance(result, list) and len(result) == 2
+
+
 def test_aggregate_ignores_unmeasured_acpl():
     payload = {**COMPACT_A, "summary": {"acpl": None}}
     stats = coach.aggregate([payload])

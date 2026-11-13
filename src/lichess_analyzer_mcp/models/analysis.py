@@ -2,7 +2,7 @@ from dataclasses import dataclass, field, asdict
 from typing import Optional
 
 
-DETECTOR_VERSION = "DBCL-20261111-dev"
+DETECTOR_VERSION = "DBCL-20261113-dev"
 
 
 @dataclass

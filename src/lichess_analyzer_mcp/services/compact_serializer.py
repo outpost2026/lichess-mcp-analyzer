@@ -59,6 +59,7 @@ from lichess_analyzer_mcp.models.pattern import (
     UNCLASSIFIED_REASONS,
 )
 from lichess_analyzer_mcp.services.eval_consistency import eval_invariant_holds
+from lichess_analyzer_mcp.services.color_contract import normalize_color
 
 SCHEMA_V = "2.1"
 MAX_REPORT_CHARS = 900
@@ -321,7 +322,7 @@ def to_compact_v2(
 
     game = {
         "id": full.get("game_id") or meta.get("id") or "",
-        "color": full.get("color") if full.get("color") in ("white", "black") else "white",
+        "color": normalize_color(full.get("color") or meta.get("color")),
         "result": meta.get("result") if meta.get("result") in _RESULTS else "*",
         "opening": _opening(meta),
         "depth": int(full.get("depth") or 0),

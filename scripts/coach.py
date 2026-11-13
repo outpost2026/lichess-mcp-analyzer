@@ -137,6 +137,10 @@ async def _single_game(
     )
 
     colors = ["white", "black"] if color == "both" else [color]
+    # D6a: `both` is two explicit-colour calls. Passing `username` would make
+    # the collector re-detect the colour and overwrite the requested side, so
+    # the two reports would describe the same player twice.
+    username_for_call = "" if color == "both" else username
     results = []
     for side in colors:
         if no_cache:
@@ -144,7 +148,7 @@ async def _single_game(
         results.append(
             await lichess_coaching_single_game(
                 game_id,
-                username=username,
+                username=username_for_call,
                 color=side,
                 depth=depth,
                 mode=mode,
@@ -172,8 +176,16 @@ async def _single_pgn(
 
     pgn = _read_pgn(path)
     game_id = _pgn_game_id(pgn) or os.path.splitext(os.path.basename(path))[0]
-    side = _pgn_color(pgn, username) or color
-    sides = ["white", "black"] if side == "both" else [side]
+    detected = _pgn_color(pgn, username)
+    # D6a: explicit `both` wins over username detection; otherwise a detected
+    # colour wins over the fallback flag.
+    if color == "both":
+        sides = ["white", "black"]
+    elif detected:
+        sides = [detected]
+    else:
+        sides = [color]
+    username_for_call = username if len(sides) == 1 else ""
     deadline_s = float(budget_for_mode(mode)["total_s"])
 
     results = []
@@ -193,7 +205,7 @@ async def _single_pgn(
         results.append(
             await build_response(
                 game_id=game_id,
-                username=username,
+                username=username_for_call,
                 detected_color=current,
                 depth=depth,
                 mode=mode,

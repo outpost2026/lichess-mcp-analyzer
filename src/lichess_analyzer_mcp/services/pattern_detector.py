@@ -48,6 +48,16 @@ LIFT_NO_CONTROL = (
 )
 
 
+def is_piece_block(move_san: str, was_in_check: bool) -> bool:
+    """J predicate shared by single-game and cross-game detection (D11).
+
+    A check block must be a non-capture by a **piece**. A king move is an
+    escape, never a block, so it must not trigger J in either path.
+    """
+    san = move_san or ""
+    return bool(was_in_check) and "x" not in san and not san.startswith("K")
+
+
 class PatternDetector:
     def __init__(self):
         self.library = PatternLibrary().load_baseline()
@@ -330,12 +340,10 @@ class PatternDetector:
                 if (
                     m.classification in ("blunder", "mistake")
                     and m.centipawn_loss >= THRESHOLD_BLOCK_CP
+                    and is_piece_block(m.move_san, m.was_in_check)
                 ):
-                    if m.was_in_check and "x" not in m.move_san:
-                        if "K" in m.move_san:
-                            continue
-                        block_count += 1
-                        affected.append(analysis.game.id)
+                    block_count += 1
+                    affected.append(analysis.game.id)
         if block_count >= 1:
             total_games = len(analyses)
             return PatternMatch(
@@ -710,8 +718,8 @@ def per_move_patterns(
             }
         )
 
-    # J — Impulsive check block: in check, non-capture, cp_loss >= THRESHOLD_BLOCK_CP
-    if in_check and "x" not in (move.move_san or "") and cp >= THRESHOLD_BLOCK_CP:
+    # J — Impulsive check block: in check, non-capture by a piece, cp_loss >= THRESHOLD_BLOCK_CP
+    if is_piece_block(move.move_san, in_check) and cp >= THRESHOLD_BLOCK_CP:
         out.append(
             {
                 "pattern_id": "J",

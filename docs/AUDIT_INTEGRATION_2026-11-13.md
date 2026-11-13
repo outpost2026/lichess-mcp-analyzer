@@ -126,15 +126,23 @@ Audit míchá tři kategorie do jedné prioritní tabulky. Kanonické rozdělen�
 
 Pořadí je závazné. Tier 1 nesmí být přeskočen, protože produkuje špatná data.
 
-### Tier 1 — defekty (bez změny schématu, 1 iterace)
+### Tier 1 — defekty (bez změny schématu, 1 iterace) — **HOTOVO 2026-11-13**
 
-| ID | Úkol | Soubory | Acceptance |
-|---|---|---|---|
-| T1.1 | Validace `color`; `both` odmítnout nebo obsloužit explicitně | `tools/coaching_single_game.py`, `services/game_analyzer.py`, `services/compact_serializer.py` | `color="both"` vrátí `INVALID_COLOR`, nebo dva validní pohledy; nikdy tichá konverze |
-| T1.2 | `--color both` + `--username` | `scripts/coach.py` | dva různé výstupy; test pro white, black i bez username |
-| T1.3 | `detect_player_color` explicitně selže | `services/coaching_base.py` | neznámý username = `COLOR_UNDETECTED`, ne `white` |
-| T1.4 | J: společný predikát | `services/pattern_detector.py` | královský ústup nespustí J v žádné cestě; bump `DETECTOR_VERSION` |
-| T1.5 | Testovací mezera | `tests/test_coach_cli.py`, `tests/test_pattern_*` | 5 nových testů; žádný nesmí být vyloučen z CI |
+| ID | Úkol | Soubory | Acceptance | Stav |
+|---|---|---|---|---|
+| T1.1 | Validace `color`; `both` odmítnout s `INVALID_COLOR` (D6a) | `services/color_contract.py`, `tools/coaching_single_game.py`, `services/game_analyzer.py`, `services/compact_serializer.py` | `color="both"` vrátí `INVALID_COLOR`; nikdy tichá konverze; compact neznámou barvu neopravuje na `white` | ✅ |
+| T1.2 | `--color both` + `--username` | `scripts/coach.py` | dva různé výstupy; test pro white, black i bez username | ✅ |
+| T1.3 | `detect_player_color` explicitně selže | `services/coaching_base.py` | neznámý username = `COLOR_UNDETECTED`, ne `white` | ✅ |
+| T1.4 | J: společný predikát | `services/pattern_detector.py` (`is_piece_block`) | královský ústup nespustí J v žádné cestě; bump `DETECTOR_VERSION` na `DBCL-20261113-dev` | ✅ |
+| T1.5 | Testovací mezera | `tests/test_color_contract.py`, `tests/test_coach_cli.py`, `tests/test_pattern_unification.py` | 17 nových testů; žádný není vyloučen z CI | ✅ |
+
+**Implementační poznámky (Tier 1):**
+
+- `services/color_contract.py` je jediné místo, kde je definováno `white | black`; `both` je odmítnuto s vysvětlením, že jde o CLI režim.
+- Explicitní barva je **fallback**, když detekce z username selže; pokud není ani jedna, volání selže s `COLOR_UNDETECTED` (žádné tiché `white`).
+- `compact_serializer` už neopravuje neznámou barvu na `white`; neplatná barva je chyba kontraktu.
+- `both` v CLI předává `username=""`, takže detekce nemůže přepsat požadovanou stranu. Cena: oba reporty jsou bez `username`; to je poctivější než dva reporty stejného hráče.
+- `DETECTOR_VERSION` = `DBCL-20261113-dev` (změna klasifikace J). Cache z předchozí verze se nesmí míchat s novou klasifikací.
 
 ### Tier 2 — sémantika a evidence (aditivní pole, 1–2 iterace)
 
@@ -229,13 +237,15 @@ Audit navrhuje 14 testů. Kanonická matice je níže; poslední tři audit nem�
 
 ---
 
-## 11. Otevřené otázky pro autora
+## 11. Rozhodnutí autora (2026-11-13)
 
-1. **`color="both"` v MCP:** odmítnout hned v T1.1 (doporučeno), nebo rovnou implementovat dva pohledy a T1.1 zrušit?
-2. **Název artefaktu:** `game_full` 1.0 (doporučeno) vs. `game_timeline` 1.0?
-3. **Clock data:** pouze PGN `%clk` (doporučeno pro determinismus), nebo i Lichess API clock pole?
+| ID | Otázka | Rozhodnutí | Dopad |
+|---|---|---|---|
+| **D6a** | `color="both"` v MCP | **Odmítnout s `INVALID_COLOR`.** `both` zůstává jen v CLI jako dvě volání s explicitní barvou. Dva pohledy v jednom volání přijdou až s `game_full`. | T1.1 je odmítnutí, ne dual implementace; testovací matice „Přímé MCP `color=both`“ = validní odmítnutí |
+| **D7a** | Název artefaktu | **`game_full` 1.0.** | T3.2 a všechny odkazy používají `game_full`; `game_timeline` se nepoužívá |
+| **D10a** | Zdroj clock dat | **Jen PGN `%clk`.** Bez `%clk` je výstup `clock_data_unavailable`, nikdy odhad. | T2.3 nečte Lichess API clock pole; determinismus zůstává |
 
-Odpovědi se zapíší jako D6a/D7a/D10a a promítnou do Tier 1–3.
+Tato rozhodnutí jsou závazná a nemění se bez nového ID (`D6b` atd.).
 
 ---
 
