@@ -1,16 +1,17 @@
 ---
 title: Metodologie pattern discovery a detection
-date: 2026-11-12
-verze: 1.0
+date: 2026-11-13
+verze: 1.1
 status: ZÁVAZNÝ METODOLOGICKÝ ARTEFAKT
 účel: Popsat, jak vznikají a jak se ověřují kandidátní chess patterny; porovnat metodologii s pattern discovery v jiných doménách; vyhodnotit originalitu a efektivitu.
 návaznost: CANDIDATE_PATTERNS_2026-11-12.md, REFACTOR_PLAN_2026-11-11.md, MIKOLOV_KOMPRESE_V_PATTERN_ARCHITEKTURE.md, COMPACT_JSON_FOR_LLM.md, DEEP_DIVE_SINGLE_GAME_PATTERNS_2026-08-02.md
+změny_1_1: Univerza přejmenována na obsahové názvy (§2.1) a sjednocena s měřicím appendixem; přidána identita datasetu (§2.1.1).
 ---
 
 ## 0. TL;DR
 
 1. Pattern není „zajímavý tah“. Pattern je **podmínka na pozici a rozhodnutí**, která má (a) měřený support, (b) měřený kontrast proti dobrým tahům, (c) stabilitu, (d) deterministickou detekci a (e) kalibrovanou sílu. Bez (b) se jedná o popis, ne o pattern.
-2. Discovery není hledání nových ID. Discovery je **falsifikační loop**: kandidát → měření na univerzech U0/U1/U2 → FP strop → taxonomie → implementační gate → monitoring. Většina kandidátů má skončit zamítnuta; to je úspěch procesu, ne selhání.
+2. Discovery není hledání nových ID. Discovery je **falsifikační loop**: kandidát → měření na pojmenovaných univerzech (§2.1) → FP strop → taxonomie → implementační gate → monitoring. Většina kandidátů má skončit zamítnuta; to je úspěch procesu, ne selhání.
 3. Současný systém má **15 definic v baseline knihovně** (A, B, C, G, I, I2, J, N, O, P, Q, Q1, Q2, R, S) a **6 per-move eventů** (B, C, J, R, S, T); B/C/J/R/S jsou sdílené, T je pouze per-move. Z 15 definic má **14 automatický detektor**; `I` (bait trap) je záměrně `manual_only` koncept a v runtime se nevydává. Per-move eventy nejsou patterny v cross-game smyslu: nemají jmenovatel ani kontrast.
 4. Měřené pokrytí na cache (259 dedup her, 2137 flagged tahů): **375 matched (17,5 %), 1762 unclassified (82,5 %)**. To není bug, to je kalibrovaná hranice znalosti. Nízké pokrytí je cenou za to, že si systém nevymýšlí mechanismus.
 5. Originalita je **v kombinaci kontraktů**, ne v algoritmech. Jednotlivé komponenty (frekvence, lift, MDL, conformance, motif discovery) mají prior art. Kombinace „explicitní unclassified + FP strop na dobrých tazích + dual single/cross-game kontrakt + deterministická evidence chain“ v publikovaných chess nástrojích doložena není (P~0,75; absence důkazu, ne důkaz absence).
@@ -53,26 +54,44 @@ Chess je pouze konkrétní instance: token = (typ tahu, kontext pozice), sekvenc
 
 ### 2.1 Univerza
 
-| Univerzum | Definice | K čemu |
-|---|---|---|
-| **U0** | všechny flagged tahy (blunder/mistake/inaccuracy) | maximální recall, orientační inventář |
-| **U1** | flagged tahy s dostupným kontextem (SAN, FEN, engine lines) | měření mechanismu |
-| **U2** | **dobré tahy** (best / excellent) ve stejném typu pozice | FP strop, kontrast |
+Univerza mají **obsahové názvy**, ne indexy. Indexové zkratky (`U0/U1/U2`) jsou historické aliasy a v nových artefaktech se nepoužívají — dva dokumenty je dříve definovaly odlišně, což vyrobilo nekonzistentní čísla.
 
-Bez U2 nelze odlišit „pattern“ od „běžná vlastnost pozice“. To je nejčastější chyba v pattern discovery obecně: systém najde vzorec, který je stejně častý u dobrých i špatných tahů.
+| Univerzum | Definice | Velikost (2026-11-12) | K čemu |
+|---|---|---|---|
+| **`cache_analyses_raw`** | každý soubor v `data/game_cache`, včetně duplicit hloubek | 282 analýz / 8 873 tahů | inventář a audit surových dat; **nikdy ne jmenovatel** |
+| **`flagged_factsheets_dedup`** | blunder fact sheets dedup dle `game_id + color + ply`, vyhrává hlubší analýza | 880 sheetů (z 943) | měření mechanismu (E1) |
+| **`all_moves_dedup`** | všechny tahy dedup dle `game_id + color`, na hru nejhlubší analýza | 8 109 tahů | **support** hráčových rate |
+| **`good_moves_control`** | `all_moves_dedup` omezené na `classification == "best"` | 4 721 tahů | **FP strop** (kontrolní sada) |
+
+Pravidla, která z toho plynou:
+
+- **Support** patternu se počítá vždy z `all_moves_dedup` (ne z počtu her, ne z `cache_analyses_raw`).
+- **FP strop** se počítá vždy z `good_moves_control`. „Všechny neflagged tahy“ je chybný jmenovatel: míchá `good` a `inaccuracy` a tím uměle snižuje FP.
+- `flagged_factsheets_dedup` je jediné univerzum pro čtení mechanismu; obsahuje jen flagged tahy, takže nemá kontrast a **nesmí** sloužit jako support jmenovatel.
+- Duplikáty hloubek nejsou data navíc. Dedup je `game_id + color + ply` pro tahy a `game_id + color` pro hru; bez něj 63 duplicitních sheetů zkreslí všechny poměry.
+
+### 2.1.1 Identita datasetu
+
+Každé měření musí publikovat `n_moves`, `n_games` a `dataset_sha256` (kanonický hash složení datasetu z `services/provenance.py`). Bez těchto tří hodnot není číslo reprodukovatelné: stejný lift na jiném datasetu je jiné tvrzení. Engine hloubka **není** součástí `dataset_sha256` — patří k analysis payloadu, ne k identitě datasetu.
+
+Referenční naměřené hodnoty a jejich definice jsou v `docs/CANDIDATE_PATTERNS_2026-11-12.md` §1–2 (měřicí appendix této metodologie).
 
 ### 2.2 Veličiny
 
-Pro kandidáta `k`, univerzum `U`, hráče `p`:
+Pro kandidáta `k`, hráče `p`:
 
 ```
-support(k, U)   = |{tahy v U, kde k plati}| / |U|
-lift(k, U1, U2) = support(k, U1) / support(k, U2)
-fp_ceiling(k)   = support(k, U2)          # jak casto by vystrelil na dobrem tahu
+support(k)      = |{tahy v all_moves_dedup, kde k plati}| / |all_moves_dedup|
+rate_flagged(k) = |{flagged tahy, kde k plati}| / |flagged tahy v all_moves_dedup|
+rate_good(k)    = |{best tahy, kde k plati}| / |good_moves_control|
+lift(k)         = rate_flagged(k) / rate_good(k)
+fp_ceiling(k)   = rate_good(k)            # jak casto by vystrelil na dobrem tahu
 N(k)            = pocet nezavislych pripadu (her, ne tahu)
 ```
 
-`lift` je primární diskriminátor. `fp_ceiling` je primární guard. `N` je primární guard proti malému vzorku.
+`lift` je primární diskriminátor. `fp_ceiling` je primární guard. `N` je primární guard proti malému vzorku. `support` je hráčova rate a používá se pro prioritizaci lekce; pro diskriminaci je irelevantní, protože nemá kontrast.
+
+Bez `good_moves_control` nelze odlišit „pattern“ od „běžná vlastnost pozice“. To je nejčastější chyba v pattern discovery obecně: systém najde vzorec, který je stejně častý u dobrých i špatných tahů.
 
 ### 2.3 Implementační gate (nové patterny)
 
@@ -81,7 +100,7 @@ N(k)            = pocet nezavislych pripadu (her, ne tahu)
 | Nezávislé případy | `N >= 30` | GT-070 / P54 |
 | Kontrast | `lift >= 1.4` | GT-070 / P54 |
 | Nezávislé analýzy | `>= 2` | GT-070 / P54 |
-| FP strop na U2 | musí být změřen a uveden | D4 |
+| FP strop na `good_moves_control` | musí být změřen a uveden | D4 |
 | Taxonomie mechanismu | F1-F8/Z | `CANDIDATE_PATTERNS_2026-11-12.md` §4 |
 | Deterministická detekce | bez LLM v runtime | REFACTOR_PLAN |
 
@@ -112,7 +131,7 @@ sample_score      = min(frequency / total_games * 2, 1)
 |---|---|---|
 | **E0** | event bez kontextu | „tah X měl cp_loss Y“ |
 | **E1** | event + position facts (SAN, FEN, board_facts) | „tah X byl capture v napětí“ |
-| **E2** | E1 + kontrast U1 vs U2 | „jev je častější u špatných tahů, lift Z“ |
+| **E2** | E1 + kontrast `rate_flagged` vs `rate_good` | „jev je častější u špatných tahů, lift Z“ |
 | **E3** | E2 + split-half / časová stabilita | „jev je stabilní, ne artefakt okna“ |
 | **E4** | E3 + out-of-sample hráč / stylometrie | „jev diskriminuje hráče“ |
 | **E5** | E4 + intervenční test | „trénink jevu zlepšuje výsledek“ |
@@ -130,8 +149,8 @@ Discovery je osmi-krokový deterministický proces. Každý krok má vstup, výs
 | 1 | **Inventory** | cache her, engine lines | seznam kritických momentů | dedup `game_id + color + ply` |
 | 2 | **Proxy extrakce** | FEN, SAN, board_facts | free_capture_after, missed_capture, hanging_piece | deterministické predikáty |
 | 3 | **Kandidát** | shluky proxy + digest | hypotéza mechanismu (F1-F8) | musí být falsifikovatelná |
-| 4 | **Měření U1/U2** | kandidát + univerza | support, lift, fp_ceiling, N | `lift >= 1.4`, `N >= 30` |
-| 5 | **FP kalibrace** | U2 | FP strop | pokud `lift < 1.4` → ZAMÍTNOUT |
+| 4 | **Měření kontrastu** | kandidát + `all_moves_dedup` + `good_moves_control` | support, lift, fp_ceiling, N | `lift >= 1.4`, `N >= 30` |
+| 5 | **FP kalibrace** | `good_moves_control` | FP strop | pokud `lift < 1.4` → ZAMÍTNOUT |
 | 6 | **Taxonomie** | mechanismus | zařazení F1-F8/Z | žádný nový mechanismus bez definice |
 | 7 | **Implementace** | spec + testy | detektor + schema | determinismus, unit testy, žádný LLM |
 | 8 | **Monitoring** | produkce | drift, coverage, FP | pokles liftu → rekalibrace |
@@ -140,13 +159,13 @@ Discovery je osmi-krokový deterministický proces. Každý krok má vstup, výs
 
 Příklad z reálných dat (`CANDIDATE_PATTERNS_2026-11-12.md` §5):
 
-| Kandidát | Support na blunder | Support na best | Lift | Verdikt |
+| Kandidát | rate_flagged | rate_good | Lift | Verdikt |
 |---|---|---|---|---|
 | K1 `loose_piece` | 7,7 % | 7,4 % | 1,04 | **zamítnuto** |
 | K3 `unaddressed_check` | dobrý lift | - | - | kandidát, malý N |
 | K5 `wrong_recapture` | nejčistší mechanika | - | - | kandidát |
 
-K1 je učebnice discovery disciplíny: intuitivně „volná figura = příčina“ je empiricky prázdná. Bez U2 by se K1 stal patternem a škodil by každému hráči, který má volnou figuru bez následku.
+K1 je učebnice discovery disciplíny: intuitivně „volná figura = příčina“ je empiricky prázdná. Bez `good_moves_control` by se K1 stal patternem a škodil by každému hráči, který má volnou figuru bez následku.
 
 ### 3.2 Proč většina kandidátů musí selhat
 
@@ -202,10 +221,11 @@ Pravidla:
 
 | Metrika | Správný jmenovatel | Chybný jmenovatel |
 |---|---|---|
-| Support patternu | všechna rozhodnutí v univerzu | počet her |
-| FP strop | **dobré tahy** ve stejném typu pozice | všechny tahy |
+| Support patternu | `all_moves_dedup` (všechna rozhodnutí) | počet her; `cache_analyses_raw` |
+| FP strop | `good_moves_control` (`best` only) | všechny tahy; „všechny neflagged“ |
 | Konverze na výsledek | hry s patternem vs bez | všechny hry |
 | Stabilita | split-half / časové okno | celý korpus |
+| Identita čísla | `n_moves` + `n_games` + `dataset_sha256` | jen počet her |
 
 ### 5.2 Interval spolehlivosti
 
@@ -227,7 +247,7 @@ Proxy (`free_capture_after`, `missed_capture`, `hanging_piece`) je **jen generá
 
 ## 6. Současný stav měření
 
-Cache: 259 dedup her, 2137 flagged tahů.
+Dataset: 259 dedup her / 2137 flagged tahů (`all_moves_dedup` flagged subset). Čísla v této sekci jsou z jiného datasetu než měřicí appendix `CANDIDATE_PATTERNS_2026-11-12.md` (259 vs 282 analyzovaných souborů) — proto musí každý report nést `dataset_sha256` (§2.1.1).
 
 | Metrika | Hodnota | Interpretace |
 |---|---|---|
@@ -367,7 +387,7 @@ Metodologie je **epistemicky nadstandardní, algoritmicky neoriginální**. To j
 |---|---|---|
 | **Explanace** | vysoká | 375 matched eventů s kontextem; každý auditovatelný |
 | **Discovery výtěžnost** | nízká | 17,5 % matched; 82,5 % unclassified |
-| **Precision** | dobrá u matched | blunder matched 56,4 %; žádný pattern bez U2 |
+| **Precision** | dobrá u matched | blunder matched 56,4 %; žádný pattern bez `good_moves_control` |
 | **Generalizace** | neprokázaná | žádný held-out test, žádná stylometrie |
 | **Stabilita** | neprokázaná | žádný split-half / drift test |
 | **Actionability** | střední | pattern → mitigation text, chybí tréninkový loop |
@@ -464,7 +484,7 @@ P1 je epistemická oprava, ne feature. Bez ní je každé další číslo nedův
 
 ### Interní
 
-- `docs/CANDIDATE_PATTERNS_2026-11-12.md` — taxonomie F1-F8/Z, FP strop, U0/U1/U2, měření P0-7.
+- `docs/CANDIDATE_PATTERNS_2026-11-12.md` — taxonomie F1-F8/Z, FP strop, měřicí appendix univerz (§2.1), měření P0-7.
 - `docs/REFACTOR_PLAN_2026-11-11.md` — D1-D6, Phase 0 kritéria, §355 mechanismus.
 - `docs/MIKOLOV_KOMPRESE_V_PATTERN_ARCHITEKTURE.md` — kompresní rámec (v1.0; viz korekce §11.1).
 - `docs/COMPACT_JSON_FOR_LLM.md` — compact 2.1 kontrakt.

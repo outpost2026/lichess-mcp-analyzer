@@ -17,21 +17,24 @@ Sekce skriptu: A inventář · B profily quiet skupin · C proxy mechanismů
 (FEN, bez engine) · D sémantický digest kritických momentů · E FP strop
 + mapa fází.
 
-Univerza (aby se čísla nemíchala):
+Univerza (aby se čísla nemíchala). Názvy jsou **obsahové**; indexové zkratky jsou jen historické aliasy z prvního měření a v nových artefaktech se nepoužívají:
 
-| Univerzum | Definice | Velikost |
-|---|---|---|
-| U0 | všech 282 analýz v cache (s duplicitami hloubek) | 8 873 tahů |
-| U1 | fact sheets dedup dle `game_id+barva+ply` (hlubší vyhrává) | 880 sheetů (z 943) |
-| U2 | tahy dedup dle hry+barva (nejhlubší analýza na hru) | 8 109 tahů |
+| Univerzum | Alias | Definice | Velikost |
+|---|---|---|---|
+| `cache_analyses_raw` | U0 | všech 282 analýz v cache (s duplicitami hloubek) | 8 873 tahů |
+| `flagged_factsheets_dedup` | U1 | fact sheets dedup dle `game_id+barva+ply` (hlubší vyhrává) | 880 sheetů (z 943) |
+| `all_moves_dedup` | U2 | tahy dedup dle hry+barva (nejhlubší analýza na hru) | 8 109 tahů |
+| `good_moves_control` | — | `all_moves_dedup` omezené na `classification == "best"` | 4 721 tahů |
+
+`good_moves_control` je jediný platný jmenovatel FP stropu; `all_moves_dedup` je jmenovatel supportu. Každé číslo v tomto dokumentu musí být doprovázeno `n_moves`, `n_games` a `dataset_sha256` (`services/provenance.py`).
 
 ## 2. Naměřená data
 
-### 2.1 Inventář (U0, U1)
+### 2.1 Inventář (`cache_analyses_raw`, `flagged_factsheets_dedup`)
 
 - 282 analýz: 204× d12, 58× d14, 16× d14n150000, 3× d18, 1× d8.
 - Klasifikace tahů: best 5 194, inaccuracy 1 568, good 1 369, mistake 497,
-  blunder 245 → **742 kritických momentů** (blunder+mistake) v U0.
+  blunder 245 → **742 kritických momentů** (blunder+mistake) v `cache_analyses_raw`.
 - Fact sheets: 943 → po dedupu **880** (63 duplicit). Covered 311 / quiet 569
   = **64,7 % sheetů bez `pattern_matches`**.
 
@@ -41,11 +44,11 @@ Univerza (aby se čísla nemíchala):
 | mistake | 460 | 150 | 310 | 67,4 % |
 | inaccuracy | 198 | 36 | 162 | 81,8 % |
 
-Pozn.: v U0 má každý blunder (245/245) i každý mistake (497/497) sheet;
+Pozn.: v `cache_analyses_raw` má každý blunder (245/245) i každý mistake (497/497) sheet;
 inaccuracy sheet má jen 201/1 568 (legacy formát). Unikátních kritických
-pozic v U1 je **682** (digest jich zobrazuje 40).
+pozic ve `flagged_factsheets_dedup` je **682** (digest jich zobrazuje 40).
 
-### 2.2 Profily: čím se tichý blunder liší (U1)
+### 2.2 Profily: čím se tichý blunder liší (`flagged_factsheets_dedup`)
 
 | Rys | quiet blunder (n=97) | covered blunder (n=125) |
 |---|---|---|
@@ -61,7 +64,7 @@ pozic v U1 je **682** (digest jich zobrazuje 40).
 Tichý blunder je tedy **strukturálně netaktický tah hráče, který není pod
 tlakem šachu, mimo engine top-3, a často těsně nad prahem 300 cp**.
 
-### 2.3 FP strop proxy (U2 — jak často by vystřelily na dobrých tazích)
+### 2.3 FP strop proxy (`good_moves_control` — jak často by vystřelily na dobrých tazích)
 
 | Tahy | n | hang % | free % |
 |---|---|---|---|
@@ -78,7 +81,11 @@ tlakem šachu, mimo engine top-3, a často těsně nad prahem 300 cp**.
 - Základna „engine best je capture" (L1) u flagged sheetů: blunder 23,6 %,
   mistake 22,9 %, inaccuracy 22,7 % — **plochá, ~23 %**.
 
-Podmnožiny podle tvaru tahu (U2):
+**FP strop se čte pouze z řádku `best`.** Ostatní řádky jsou kontext pro
+kontrast, ne FP: `good`/`inaccuracy`/`mistake`/`blunder` nejsou kontrolní
+sada a jejich použití jako jmenovatele by FP uměle snížilo.
+
+Podmnožiny podle tvaru tahu (`all_moves_dedup`):
 
 | skupina | tvar | n | hang % | free % |
 |---|---|---|---|---|
@@ -94,7 +101,7 @@ Klíčové: **šach, po kterém zůstává volný tah soupeře, je na best tazí
 (1,9 %) a na flagged trojnásobný (5,8 %)** — ale malé n. Sebrání mají vysokou
 základnu všude (36,6 % na best) — proto „capture + free" je slabý kandidát.
 
-### 2.4 Kde v partii jsou kritické momenty (U2, mapování fází)
+### 2.4 Kde v partii jsou kritické momenty (`all_moves_dedup`, mapování fází)
 
 | fáze (segment) | tahů | podíl | blunder | mistake | crit rate |
 |---|---|---|---|---|---|
@@ -158,7 +165,7 @@ pattern, musí se vyřešit FIX-023 provenience.
 8. **F8 — kluz záměru** (zamýšlený tah jiným kusem na stejné pole).
 9. **Z — důkazní mezera** (bez engine linek, anomálie znaménka).
 
-Pokrytí proxy v U1 (součty se překrývají, tah může mít více):
+Pokrytí proxy ve `flagged_factsheets_dedup` (součty se překrývají, tah může mít více):
 
 | skupina | free_capture_after | missed_capture | hanging_piece | žádný proxy |
 |---|---|---|---|---|
@@ -174,14 +181,14 @@ zbytku, který D4 říká ponechat jako `unclassified`, ne vymýšlet pattern na
 ### K1 `loose_piece` (F1) — ZAMÍTNUT měřením FP stropu
 - Spec: po odehraném tahu je naše figura na cílovém poli napadena soupeřem
   a nebráněna.
-- Důkaz: hang na blunder 7,7 % vs na best 7,4 % (U2) → lift 1,04.
+- Důkaz: hang na blunder 7,7 % vs na best 7,4 % (`good_moves_control`) → lift 1,04.
 - Verdikt: jako trigger/klasifikátor **nepoužitelný**. Zůstává jen možný
   kvalifikátor už flagged tahů, a to až v kombinaci s K1′/K2.
 
 ### K1′ `quiet_move_free_capture` (F1′ odvozený z F4/free) — kandidát
 - Spec: flagged tah + SAN bez sebrání (quiet, případně i šach) +
   `free_capture_after` na pozici po tahu.
-- Důkaz: quiet blunder 32/97 (33,0 %) vs základna best-quiet 11,5 % (U2)
+- Důkaz: quiet blunder 32/97 (33,0 %) vs základna best-quiet 11,5 % (`good_moves_control`)
   → lift 2,87.
 - FP testy (plánované): (a) negativní sada = best/good quiet tahy, kde
   `free_capture_after` fire (369/3 206) — musí existovat podmínka, která je
@@ -228,7 +235,7 @@ zbytku, který D4 říká ponechat jako `unclassified`, ne vymýšlet pattern na
 ### K5 `wrong_recapture` (F5) — kandidát, nejčistší mechanika
 - Spec: flagged + odehraný capture + L1 capture + **stejný cílový pole**
   (`uci[-2:]` shoda) + jiný tahající kus.
-- Důkaz: 24 pozic v U1 (bulk měření); v top-40: [9] Bg6 vs Qg6,
+- Důkaz: 24 pozic ve `flagged_factsheets_dedup` (bulk měření); v top-40: [9] Bg6 vs Qg6,
   [11] Rxe5 vs dxe5.
 - FP testy: (a) manuální kontrola 10/24, že rozdíl je v materiálu
   (jiný výsledek výměně), ne jen v pořadí preferencí; (b) fixture, kde je
@@ -276,7 +283,7 @@ zjistit, jak se tag počítá (nedařilo se zde dohledat jeho tvůrce — viz
    původní podmínka měřila „napadeno NÁMI". FP strop to odhalil: 41,1 % na
    best tazích (nemožné). Po opravě 7,4 %. Bez měření by detektor prošel.
 2. **Dedup bez barvy** — klíč `game_id+ply` slučoval obě barvy stejné hry
-   (`bRBSphxo_white` + `_black` existují); tahové univerzum U2 vzrostlo
+   (`bRBSphxo_white` + `_black` existují); `all_moves_dedup` vzrostlo
    z 6 477 na **8 109** po opravě na `(game_id, barva, ply)` / `(gid, barva)`.
 3. **`best_move_san` jen u 282/943 sheetů** — proxy `missed_capture` byl
    nefunkční (1 výstřel). Fallback na L1 z `engine_lines` (897/943;
@@ -297,7 +304,7 @@ pattern; zdejší taxonomie F1-F8/Z je jeho measurement appendix.
 1. **D4**: ROZHODNUTO 2026-11-12 (P0-7) — quiet blunder dostává explicitní
    `unclassified` event s důvodem, žádný nový pattern. Měření pokrytí viz §9.
 2. **FP testy K1′, K2, K3, K4, K5** podle plánů v §5 (fixture z cache +
-   negativní sady z U2) — až pak implementace patternů.
+   negativní sady z `good_moves_control`) — až pak implementace patternů.
 3. Prošetřit **znaménkovou anomálii** (rank 2 vs cp_loss; L2 eval −75) —
    souvisí s FIX-023 provenience.
 4. **Pokrytí engine liniemi**: 22/682 kritických sheetů bez linek —
