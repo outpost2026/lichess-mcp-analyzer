@@ -1,12 +1,13 @@
 ---
 title: Metodologie pattern discovery a detection
 date: 2026-11-13
-verze: 1.2
+verze: 1.3
 status: ZÁVAZNÝ METODOLOGICKÝ ARTEFAKT
 účel: Popsat, jak vznikají a jak se ověřují kandidátní chess patterny; porovnat metodologii s pattern discovery v jiných doménách; vyhodnotit originalitu a efektivitu.
 návaznost: CANDIDATE_PATTERNS_2026-11-12.md, REFACTOR_PLAN_2026-11-11.md, MIKOLOV_KOMPRESE_V_PATTERN_ARCHITEKTURE.md, COMPACT_JSON_FOR_LLM.md, DEEP_DIVE_SINGLE_GAME_PATTERNS_2026-08-02.md
 změny_1_1: Univerza přejmenována na obsahové názvy (§2.1) a sjednocena s měřicím appendixem; přidána identita datasetu (§2.1.1).
 změny_1_2: P1 — tři dimenze confidence (§2.4), coverage validator místo falešného MDL (§11.1), `strength` jako ordinální pole (§11.2); roadmap P1 rows aktualizovány.
+změny_1_3: P1 uzavřeno — schema 1.3 s Wilson CI a podmíněným liftem (§5.2), pravidlo „lift se nevymýšlí“.
 ---
 
 ## 0. TL;DR
@@ -231,9 +232,25 @@ Pravidla:
 | Stabilita | split-half / časové okno | celý korpus |
 | Identita čísla | `n_moves` + `n_games` + `dataset_sha256` | jen počet her |
 
-### 5.2 Interval spolehlivosti
+### 5.2 Interval spolehlivosti (implementováno, schema 1.3)
 
-Každý podíl musí mít Wilsonův interval (deterministicky, bez simulace). Bez CI nelze odlišit „lift 1,4 na N=30“ od „lift 1,4 na N=3000“. V reportu stačí `rate [CI95]`, `lift [CI95]`, `N`.
+Každý podíl má Wilsonův interval, každý lift má Katzův log interval. Bez CI nelze odlišit „lift 1,4 na N=30“ od „lift 1,4 na N=3000“. V reportu stačí `rate [CI95]`, `lift [CI95]`, `N`.
+
+Implementace (`services/statistics.py`, deterministická, bez simulace a bez scipy):
+
+```
+rate  = n_games / n_units                    # jednotka = hra, ne event
+CI    = Wilson(n_games, n_units, z=1.96)     # vždy uvnitř [0, 1]
+lift  = (k1/n1) / (k2/n2)                    # jen když existuje kontrolní skupina
+CI    = exp(ln(lift) ± 1.96 * sqrt(1/k1 + 1/k2))   # Katz, Poissonova variance
+```
+
+Kontraktní pravidla:
+
+- **`n_games`** = počet unikátních her s patternem, **`n_units`** = počet analyzovaných her. `frequency` zůstává detektor-specifická (eventy u B/J/N, hry u C/P/R/S) a **nikdy se nesmí použít jako N.
+- **`lift` se nevymýšlí.** Runtime kontrolní skupinu mají jen `A` (anonymous vs named) a `G` (white vs black). Ostatní patterny nesou `lift = null` a `lift_unavailable_reason`; jejich lift se měří při admission gate (§2.3), ne při každém běhu.
+- Nulový počet eventů v kontrastní skupině = lift není estimovatelný (žádná konečná log-variace), proto `null`, ne nekonečno.
+- Validátor (`kb/schemas.py`) odmítne artefakt, kde `n_games > n_units`, kde point estimate leží mimo vlastní CI, nebo kde chybí `lift_unavailable_reason` u `lift = null`.
 
 ### 5.3 PV sparsity
 
@@ -457,7 +474,7 @@ Měříme fitness (kolik tahů vysvětlíme), ne precision (kolik tahů model do
 | ID | Akce | Acceptance |
 |---|---|---|
 | **P1** ✅ | Odstranit falešný MDL; přejmenovat `confidence` → `strength` | hotovo 2026-11-13: `coverage_score`/`support` jsou mimo `strength`, `confidence` je alias; žádný report netvrdí „pravděpodobnost“ |
-| **P1** | Wilson CI + lift + N do každého `PatternMatch` | schema v1.3; všechny matched eventy mají CI (otevřeno) |
+| **P1** ✅ | Wilson CI + lift + N do každého `PatternMatch` | hotovo 2026-11-13: schema 1.3, `n_games`/`n_units`/`rate` + Wilson CI pro každý cross-game pattern; `lift` + Katz CI jen u A a G, ostatní s explicitním důvodem |
 | **P2** | Split-half + časová stabilita | `stab` a `drift` v reportu; pattern bez stability označen `unstable` |
 | **P2** | Precision modelu | `precision` a `fitness` v reportu vedle `unclassified` |
 | **P3** | Sekvenční vrstva (PrefixSpan, gap <= 4) | nový pattern jen při `N>=30`, `lift>=1.4`, 2 analýzy |
@@ -471,6 +488,8 @@ Měříme fitness (kolik tahů vysvětlíme), ne precision (kolik tahů model do
 P1 je epistemická oprava, ne feature. Bez ní je každé další číslo nedůvěryhodné. P3 (sekvence) může bez P1 vyrobit více falešných patternů, ne lepší coaching.
 
 **Stav 2026-11-12:** T1 provenance blok implementován (`services/provenance.py`, `PatternMatch.provenance`, `--json-out` v measurement skriptu, 8 testů). T2 (skutečná komprese) a T3 (drift guard) jsou další v pořadí — viz `CROSS_REPO_TRANSFER_MAP.md` §5.
+
+**Stav 2026-11-13:** P1 uzavřeno. Univerza obsahově (§2.1), `phase_stats` = `effective_phase` + dva auditní řezy, `accuracy_method = internal_cp_linear`, confidence rozdělená na `strength`/`support`/`hypothesis_confidence`, falešný MDL přejmenován na `coverage_score`, schema 1.3 s Wilson CI a podmíněným liftem. Otevřené zůstávají jen P2 body (skutečná dvoučlenná MDL, split-half/drift, precision model).
 
 ---
 
@@ -497,6 +516,7 @@ P1 je epistemická oprava, ne feature. Bez ní je každé další číslo nedův
 - `src/lichess_analyzer_mcp/services/pattern_detector.py` — `per_move_patterns`, `scan_single_game`, cross-game detektory.
 - `src/lichess_analyzer_mcp/models/pattern.py` — `PatternDef`, `PatternLibrary.load_baseline`.
 - `src/lichess_analyzer_mcp/services/compressibility_validator.py` — coverage validator (`coverage_score`, `support`); `strength` nemění (P1).
+- `src/lichess_analyzer_mcp/services/statistics.py` — Wilson CI a Katz rate-ratio CI (schema 1.3).
 - `scripts/measure_pattern_coverage.py`, `scripts/aggregate_candidate_moves.py` — měření.
 
 ### Externí (ověřeno 2026-11-12)

@@ -45,7 +45,10 @@ async def lichess_match_patterns(
 
     Analyzes recent games and matches them against the pattern library
     imported from chess_pattern_v5.json. Returns detected patterns with
-    confidence scores, evidence, mitigation advice, and compression validation.
+    ordinal strength (0-100, not a probability), measured rate with a Wilson
+    95 % CI, N (games affected / games analysed), and lift with a Katz 95 % CI
+    only where a real contrast group exists. Evidence, mitigation advice and
+    coverage validation are included.
     Uses cache-first — pre-analyze games via lichess_analyze_game first.
 
     For anonymous games, pass comma-separated game_ids instead of username.
@@ -171,6 +174,7 @@ async def lichess_match_patterns(
                 if m.pattern_id in detector.library.patterns
                 else "",
             }
+            entry.update(m.stats_dict())
             if m.coverage_score is not None:
                 entry["coverage_score"] = m.coverage_score
             if m.hypothesis:
@@ -184,6 +188,7 @@ async def lichess_match_patterns(
         result_list.sort(key=lambda x: (x["severity"] == "critical", x["confidence"]), reverse=True)
 
         artifact = {
+            "schema_version": "1.3",
             "username": username,
             "games_analyzed": len(analyses),
             "patterns_detected": result_list,

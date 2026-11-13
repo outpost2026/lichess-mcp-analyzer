@@ -25,6 +25,7 @@ from lichess_analyzer_mcp.models.pattern import (
 from lichess_analyzer_mcp.models.game import GameAnalysis, effective_phase
 from lichess_analyzer_mcp.services import board_facts
 from lichess_analyzer_mcp.services.provenance import build_provenance
+from lichess_analyzer_mcp.services.statistics import rate_ratio_with_ci, rate_with_ci
 
 THRESHOLD_TUNNEL_CONSECUTIVE = 2
 THRESHOLD_GRAB_CP = 100
@@ -37,6 +38,13 @@ THRESHOLD_DESPERATE_CP = 300
 THRESHOLD_ACTIVE_DEFENSE_EVAL = -150
 THRESHOLD_S_CAPTURE_AVERSION_CP = 500
 THRESHOLD_GIFT_EVAL_JUMP = 70
+
+# P1 / schema 1.3: patterns without a runtime control group must say so instead
+# of publishing a fabricated lift. Admission-time lift is measured offline
+# (PATTERN_DISCOVERY_METHODOLOGY 2.3) and is not available per detection run.
+LIFT_NO_CONTROL = (
+    "runtime detector has no control group; lift is measured at admission time (methodology 2.3)"
+)
 
 
 class PatternDetector:
@@ -60,7 +68,39 @@ class PatternDetector:
         provenance = build_provenance(analyses, self.library)
         for match in matches:
             match.provenance = provenance
+            self._attach_statistics(match, analyses)
         return matches
+
+    @staticmethod
+    def _attach_statistics(match: PatternMatch, analyses: list[GameAnalysis]) -> None:
+        """Fill N, rate and Wilson CI from the measured game set (schema 1.3).
+
+        Unit is the game, not the event: `n_games` / `n_units` is the only
+        denominator that is defined for every cross-game pattern. `frequency`
+        stays detector-specific (events for B/J/N, games for C/P/R/S) and must
+        never be read as N.
+        """
+        match.n_games = len(set(match.game_ids))
+        match.n_units = len(analyses)
+        stats = rate_with_ci(match.n_games, match.n_units)
+        match.rate = stats["rate"]
+        match.rate_ci_low = stats["ci_low"]
+        match.rate_ci_high = stats["ci_high"]
+        match.support = match.rate or 0.0
+        if match.lift is None:
+            match.lift_unavailable_reason = LIFT_NO_CONTROL
+
+    @staticmethod
+    def _set_lift(match: PatternMatch, k1: int, n1: int, k2: int, n2: int, basis: str) -> None:
+        """Attach a rate ratio with a Katz log-method CI (only real contrasts)."""
+        ratio = rate_ratio_with_ci(k1, n1, k2, n2)
+        if ratio is None:
+            match.lift_unavailable_reason = "contrast group has zero events; lift is not estimable"
+            return
+        match.lift = ratio["lift"]
+        match.lift_ci_low = ratio["ci_low"]
+        match.lift_ci_high = ratio["ci_high"]
+        match.lift_basis = basis
 
     def _detect_a(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch | None:
         anonymous_games = [a for a in analyses if "anonymous" in a.game.opponent_name.lower()]
@@ -70,7 +110,7 @@ class PatternDetector:
         anon_blunder_rate = sum(len(g.blunders) for g in anonymous_games) / len(anonymous_games)
         named_blunder_rate = sum(len(g.blunders) for g in named_games) / len(named_games)
         if named_blunder_rate > 0 and anon_blunder_rate / named_blunder_rate > 1.3:
-            return PatternMatch(
+            match = PatternMatch(
                 pattern_id="A",
                 pattern_name="Anonymous effect",
                 strength=min(anon_blunder_rate / named_blunder_rate / 2, 0.95),
@@ -87,6 +127,15 @@ class PatternDetector:
                 severity="high",
                 hypothesis="Hypothesis: unknown opponent rating lowers perceived threat threshold, leading to higher blunder rate.",
             )
+            self._set_lift(
+                match,
+                sum(len(g.blunders) for g in anonymous_games),
+                len(anonymous_games),
+                sum(len(g.blunders) for g in named_games),
+                len(named_games),
+                "anonymous_vs_named",
+            )
+            return match
         return None
 
     def _detect_b(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch | None:
@@ -178,15 +227,14 @@ class PatternDetector:
             )
             dominant = "White" if white_blunder_rate > black_blunder_rate else "Black"
             if ratio > 1.4:
-                affected_ids = [
-                    g.game.id
-                    for g in (
-                        white_analyses
-                        if white_blunder_rate > black_blunder_rate
-                        else black_analyses
-                    )
-                ]
-                return PatternMatch(
+                dominant_games = (
+                    white_analyses if white_blunder_rate > black_blunder_rate else black_analyses
+                )
+                other_games = (
+                    black_analyses if white_blunder_rate > black_blunder_rate else white_analyses
+                )
+                affected_ids = [g.game.id for g in dominant_games]
+                match = PatternMatch(
                     pattern_id="G",
                     pattern_name="Color as modulator",
                     strength=min(ratio / 3, 0.95),
@@ -204,6 +252,15 @@ class PatternDetector:
                     severity="high",
                     hypothesis=f"Hypothesis: player's error rate shifts with color — {dominant} side has {ratio:.1f}x more blunders.",
                 )
+                self._set_lift(
+                    match,
+                    sum(len(g.blunders) for g in dominant_games),
+                    len(dominant_games),
+                    sum(len(g.blunders) for g in other_games),
+                    len(other_games),
+                    "white_vs_black",
+                )
+                return match
         return None
 
     def _detect_i2(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch | None:

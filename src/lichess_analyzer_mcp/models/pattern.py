@@ -75,11 +75,44 @@ class PatternMatch:
     coverage_score: Optional[float] = None
     compression_ratio: Optional[float] = None
     provenance: Optional[dict] = None
+    # ── P1 / schema 1.3: uncertainty layer ──────────────────────────────────
+    # `n_games` = games in which the pattern occurred (canonical N),
+    # `n_units` = games analysed (denominator). `frequency` stays
+    # detector-specific and must not be used as N.
+    n_games: int = 0
+    n_units: int = 0
+    rate: Optional[float] = None
+    rate_ci_low: Optional[float] = None
+    rate_ci_high: Optional[float] = None
+    # `lift` exists only where the detector has a real contrast group at
+    # runtime (A: anonymous vs named, G: white vs black). Elsewhere it is
+    # measured at admission time (methodology 2.3) and stays None with a reason.
+    lift: Optional[float] = None
+    lift_ci_low: Optional[float] = None
+    lift_ci_high: Optional[float] = None
+    lift_basis: Optional[str] = None
+    lift_unavailable_reason: Optional[str] = None
 
     @property
     def confidence(self) -> float:
         """Deprecated alias for `strength` (starší skripty); nikdy pravděpodobnost."""
         return self.strength
+
+    def stats_dict(self) -> dict:
+        """Schema 1.3 uncertainty block (JSON-ready, no None noise in keys)."""
+        out: dict = {
+            "n_games": self.n_games,
+            "n_units": self.n_units,
+            "rate": self.rate,
+            "rate_ci": {"low": self.rate_ci_low, "high": self.rate_ci_high},
+            "lift": self.lift,
+            "lift_ci": {"low": self.lift_ci_low, "high": self.lift_ci_high},
+        }
+        if self.lift_basis:
+            out["lift_basis"] = self.lift_basis
+        elif self.lift_unavailable_reason:
+            out["lift_unavailable_reason"] = self.lift_unavailable_reason
+        return out
 
 
 @dataclass

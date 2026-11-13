@@ -130,6 +130,7 @@ def collect_patterns_for_games(analyses: list, username: str) -> list[dict]:
             "evidence": m.evidence,
             "affected_games": list(m.game_ids),
         }
+        entry.update(m.stats_dict())
         if m.coverage_score is not None:
             entry["coverage_score"] = m.coverage_score
         if m.hypothesis_confidence is not None:
