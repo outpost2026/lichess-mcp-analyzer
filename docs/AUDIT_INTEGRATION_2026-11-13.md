@@ -79,6 +79,7 @@ Audit míchá tři kategorie do jedné prioritní tabulky. Kanonické rozdělen�
 | `max_time_dual: 1800` je mrtvá konfigurace | `config/depth.py`; nikdo ji nečte | dual analýza běží bez stropu | Tier 3.0 — hotovo (klíč smazán, strop nemá měřené opodstatnění) |
 | `unanalyzed_plies` eviduje jen plies hráče | `_run_analyze_pgn` | „partial“ kontrakt pro timeline nejde naplnit | Tier 3.4 — hotovo v `game_full` (union obou stran); single-game payload zůstává jednoperspektivní |
 | `T` má hardcoded `50`, ostatní prahy jsou `THRESHOLD_*` | `pattern_detector.per_move_patterns` | nekonzistence s konvencí | Tier 2 — hotovo (`THRESHOLD_TACTICAL_SHAPED_CP`) |
+| `cp_loss` není rekonstruovatelný z publikovaných polí | `engine_client.evaluate_move` vs `coaching_single_game` | čtenář dopočítá jinou ztrátu, než je publikovaná (iAIWvqPo ply 62: 948 / 161 / 697, naive 787) | Tier 3.5 — hotovo (D12, `best_eval_mover_cp`) |
 | žádný test `--color both` | `tests/test_coach_cli.py` | režim není pokrytý | Tier 1 — hotovo |
 
 ---
@@ -120,6 +121,12 @@ Audit míchá tři kategorie do jedné prioritní tabulky. Kanonické rozdělen�
 - **Pravidlo:** J = blokování **figurou** pod šachem; královský ústup J nikdy nespustí. Predikát je společný pro single-game i cross-game. T se přejmenuje na `tactical_shaped_move_error`, nebo se povýší na skutečné motivy (fork/pin/skewer) — to je ale nový detektor a podléhá D4.
 - **Důvod:** dva predikáty téhož ID = dva různé výstupy pro stejný tah. T dnes měří formu tahu, ne mechanismus.
 - **Důsledek:** J oprava mění klasifikaci → bump `DETECTOR_VERSION` + fixture. T přejmenování je aditivní (label), dokud nevznikne skutečný detektor.
+
+### D12 — `cp_loss` má publikovaný anchor `best_eval_mover_cp`
+
+- **Pravidlo:** detailed `flagged_moves[]` publikuje `best_eval_mover_cp` (eval nejlepšího tahu z POV hráče, který táhl). Platí `cp_loss = max(0, best_eval_mover_cp - eval_after_mover_cp)`. Když anchor změřen nebyl (legacy cache, cloud eval), je `null` — nikdy se nedopočítává.
+- **Důvod:** `cp_loss` se měří proti nejlepšímu tahu, zatímco `eval_before` je jiný root search. Bez anchoru nelze publikované číslo rekonstruovat a trojice vypadá jako kontradikce (iAIWvqPo ply 62: `eval_before=948`, `eval_after=161`, `cp_loss=697`, naive 787; ply 60: 22 vs 61).
+- **Důsledek:** aditivní pole, detailed 1.2 beze změny verze (stejný precedent jako T2 pole `player_moves_total`). Compact 2.1 anchor nenese (size budget) — jeho `cp` zůstává autoritativní a vztah k eval pair je jen aproximace ±50 cp. Porušení vztahu loguje `ANOMALY_CP_LOSS_NOT_RECONSTRUCTIBLE`; `eval_invariant_holds` zůstává jako druhá, slabší kontrola.
 
 ---
 
@@ -190,7 +197,7 @@ Pořadí je závazné. Tier 1 nesmí být přeskočen, protože produkuje špatn
 | Kontrakt | Stav |
 |---|---|
 | Cross-game artefakt schema 1.4 (`n_games`, `rate`, Wilson CI, `lift`, `stability`) | beze změny |
-| Compact 2.1 a detailed 1.2 | beze změny; pouze aditivní pole v Tier 2 |
+| Compact 2.1 a detailed 1.2 | beze změny; pouze aditivní pole (Tier 2, D12) |
 | `game_full` 1.0 | nový artefakt, ne rozšíření 2.1/1.2; verze 1.0 je neměnná |
 | D4 (žádné nové pattern ID bez taxonomie a FP kalibrace) | beze změny |
 | D5 (aditivní kontrakty) | beze změny; `game_full` je nový artefakt |
@@ -247,6 +254,7 @@ Audit navrhuje 14 testů. Kanonická matice je níže; poslední tři audit nem�
 | **Remíza bez barvy** | `COLOR_UNDETECTED`, nikdy `white` | T2.5 |
 | **Prompt bez evidence** | obsahuje `insufficient_evidence` a `clock_data_unavailable` | T2.3 |
 | **T label** | `tactical_shaped_move_error`, žádný motiv v názvu | T2.4 |
+| **`cp_loss` rekonstrukce** | `cp_loss = max(0, best_eval_mover_cp - eval_after_mover_cp)`; legacy cache a cloud eval = `null` | D12 — hotovo (`test_cp_loss_provenance.py`) |
 
 ---
 
@@ -269,6 +277,7 @@ Audit navrhuje 14 testů. Kanonická matice je níže; poslední tři audit nem�
 | **D6a** | `color="both"` v MCP | **Odmítnout s `INVALID_COLOR`.** `both` zůstává jen v CLI jako dvě volání s explicitní barvou. Dva pohledy v jednom volání přijdou až s `game_full`. | T1.1 je odmítnutí, ne dual implementace; testovací matice „Přímé MCP `color=both`“ = validní odmítnutí |
 | **D7a** | Název artefaktu | **`game_full` 1.0.** | T3.2 a všechny odkazy používají `game_full`; `game_timeline` se nepoužívá |
 | **D10a** | Zdroj clock dat | **Jen PGN `%clk`.** Bez `%clk` je výstup `clock_data_unavailable`, nikdy odhad. | T2.3 nečte Lichess API clock pole; determinismus zůstává |
+| **D12a** | Provenance `cp_loss` | **Publikovat anchor `best_eval_mover_cp`** (možnost A). Definice `cp_loss` se nemění. | detailed 1.2 dostane aditivní pole; compact 2.1 beze změny |
 
 Tato rozhodnutí jsou závazná a nemění se bez nového ID (`D6b` atd.).
 

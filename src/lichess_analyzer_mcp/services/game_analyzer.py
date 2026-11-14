@@ -29,6 +29,7 @@ from lichess_analyzer_mcp.services import engine_client
 from lichess_analyzer_mcp.services import board_facts
 from lichess_analyzer_mcp.services.color_contract import normalize_color
 from lichess_analyzer_mcp.services.eval_consistency import (
+    cp_loss_reconstructs,
     eval_delta,
     eval_invariant_holds,
 )
@@ -677,6 +678,7 @@ def _run_analyze_pgn(
             )
             eval_before_val = eval_result.get("eval_before", 0) if eval_result else 0
             eval_after_val = eval_result.get("eval_after", 0) if eval_result else 0
+            best_eval_val = eval_result.get("best_eval") if eval_result else None
             # FIX-023: a large divergence would make the compact eval pair
             # contradict cp_loss ("eval rose while the move lost 237 cp").
             if not eval_invariant_holds(eval_before_val, eval_after_val, cp_loss):
@@ -689,12 +691,27 @@ def _run_analyze_pgn(
                     eval_after_val,
                     eval_delta(eval_before_val, eval_after_val),
                 )
+            # D12: cp_loss is measured from the best move, so `best_eval` is
+            # its anchor. If the triple does not reconstruct, the published
+            # numbers are wrong even when the pair above "looks" consistent.
+            if best_eval_val is not None and not cp_loss_reconstructs(
+                best_eval_val, eval_after_val, cp_loss
+            ):
+                _logger.warning(
+                    "ANOMALY_CP_LOSS_NOT_RECONSTRUCTIBLE ply=%s cp_loss=%.1f "
+                    "best_eval=%s eval_after=%s",
+                    ply,
+                    cp_loss,
+                    best_eval_val,
+                    eval_after_val,
+                )
             move_analysis = MoveAnalysis(
                 ply=ply,
                 move_uci=move.uci(),
                 move_san=board.san(move),
                 eval_before=eval_before_val,
                 eval_after=eval_after_val,
+                best_eval=best_eval_val,
                 win_prob_before=_win_prob_from_cp(eval_before_val),
                 win_prob_after=_win_prob_from_cp(eval_after_val),
                 centipawn_loss=cp_loss,

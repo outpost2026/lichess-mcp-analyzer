@@ -18,7 +18,7 @@
 Dvě místa v příkladech jsou historicky správná, ale dnešní čtenář je může vyložit špatně:
 
 1. **`moves_total` v příkladu (§5) znamená počet rozhodnutí analyzovaného hráče**, ne počet půltahů partie. Pole dnes počítá `len(moves)`, a `moves` obsahuje jen tahy vybrané barvy. Od 2026-11-14 payload publikuje i `player_moves_total`, `game_plies_total` a `opponent_moves_total` (T2.2 hotovo); `moves_total` zůstává jen jako deprecated alias pro plies hráče a nesmí se číst jako délka partie.
-2. **`eval_before` / `eval_after` jsou z pohledu hráče, který táhl** (mover POV), v celé pipeline. `eval_after` není POV soupeře. Od 2026-11-14 payload publikuje kanonické `eval_before_mover_cp` / `eval_after_mover_cp`; staré klíče zůstávají jeden release jako aliasy (D9/T2.1 hotovo). White POV pro timeline řeší Tier 3.
+2. **`eval_before` / `eval_after` jsou z pohledu hráče, který táhl** (mover POV), v celé pipeline. `eval_after` není POV soupeře. Od 2026-11-14 payload publikuje kanonické `eval_before_mover_cp` / `eval_after_mover_cp`; staré klíče zůstávají jeden release jako aliasy (D9/T2.1 hotovo). White POV pro timeline řeší Tier 3. Od 2026-11-14 (D12) publikuje detailed payload i `best_eval_mover_cp`, protože `cp_loss = max(0, best_eval_mover_cp - eval_after_mover_cp)`; `eval_before_mover_cp` je jiný root search a jako základ ztráty se použít nedá.
 
 ---
 

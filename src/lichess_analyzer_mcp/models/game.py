@@ -63,6 +63,10 @@ class MoveAnalysis:
     motif_type: Optional[str]
     phase: str
     fen: str = ""
+    # D12: eval of the engine's best move from the mover's POV. `centipawn_loss`
+    # is `max(0, best_eval - eval_after)`, so without this anchor the published
+    # loss cannot be reconstructed from the eval pair (different searches).
+    best_eval: Optional[float] = None
     was_in_check: bool = False
     gives_check: bool = False
     # P0.2: an analytical result is either measured or explicitly absent.

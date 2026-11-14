@@ -37,6 +37,9 @@ def cloud_evaluate_move(fen: str, move_uci: str, depth: int = 14) -> Optional[di
             return {
                 "eval_before": data.get("eval_before", 0),
                 "eval_after": data.get("eval_after", 0),
+                # D12: the remote API does not publish the best-move eval, so
+                # the loss has no reconstructible anchor here.
+                "best_eval": None,
                 "centipawn_loss": data["centipawn_loss"],
                 "best_move_uci": data.get("best_move", ""),
                 "source": "chess-api.com",
@@ -49,6 +52,7 @@ def cloud_evaluate_move(fen: str, move_uci: str, depth: int = 14) -> Optional[di
             return {
                 "eval_before": cp_before,
                 "eval_after": cp_after,
+                "best_eval": None,
                 "centipawn_loss": loss,
                 "best_move_uci": best,
                 "source": "chess-api.com",

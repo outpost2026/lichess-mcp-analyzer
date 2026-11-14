@@ -111,6 +111,10 @@ def _flagged_moves(analysis: dict) -> list[dict]:
                 # keys stay as aliases for one release.
                 "eval_before_mover_cp": m.get("eval_before"),
                 "eval_after_mover_cp": m.get("eval_after"),
+                # D12: the anchor cp_loss is measured from
+                # (cp_loss = max(0, best_eval_mover_cp - eval_after_mover_cp)).
+                # null = not measured (legacy cache or remote cloud eval).
+                "best_eval_mover_cp": m.get("best_eval"),
                 "eval_before": m.get("eval_before"),
                 "eval_after": m.get("eval_after"),
                 "win_prob_before": m.get("win_prob_before"),

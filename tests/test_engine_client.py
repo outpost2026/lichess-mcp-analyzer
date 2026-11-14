@@ -21,6 +21,7 @@ from lichess_analyzer_mcp.services.engine_client import (
     clear_hash,
     close_engine,
 )
+from lichess_analyzer_mcp.services.eval_consistency import cp_loss_reconstructs
 
 
 @pytest.fixture(autouse=True)
@@ -148,6 +149,31 @@ class TestEvaluateMove:
         assert isinstance(result, dict)
         assert "eval_before" in result
         assert "eval_after" in result
+
+    @patch("lichess_analyzer_mcp.services.engine_client.get_engine")
+    def test_publishes_best_eval_anchor(self, mock_get_engine):
+        """D12: cp_loss is measured from the best move, so the anchor is published."""
+        mock_engine = MagicMock()
+        mock_get_engine.return_value = mock_engine
+
+        def fake_analyse(board, limit):
+            result = MagicMock()
+            fake_score = MagicMock()
+            fake_score.relative.score.return_value = 38
+            fake_score.relative.mate.return_value = None
+            result.__getitem__.side_effect = lambda key: {
+                "score": fake_score,
+                "pv": [chess.Move.from_uci("e2e4")],
+            }.get(key)
+            return result
+
+        mock_engine.analyse.side_effect = fake_analyse
+
+        result = evaluate_move(self.fen, "e2e4", depth=8)
+        assert "best_eval" in result
+        assert cp_loss_reconstructs(
+            result["best_eval"], result["eval_after"], result["centipawn_loss"]
+        )
 
 
 class TestCloseEngine:

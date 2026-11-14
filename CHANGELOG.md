@@ -3,7 +3,42 @@
 Všechny změny formátu a pipeline. Verze odpovídají kontraktu compact JSON /
 single-game pipeline, ne balíčku `0.1.0` (ten zůstává beze změny).
 
-## [2.3] — 2026-11-12
+## [2.4] - 2026-11-14
+
+Integrace auditu 2026-11-13 (Tier 1–3) + D12. Rozhodnutí a acceptance:
+`docs/AUDIT_INTEGRATION_2026-11-13.md`. Cross-game schema 1.4, compact 2.1
+a admission gate beze změny; všechny změny v detailed payloadu jsou aditivní.
+
+### Added
+
+- **D12 `best_eval_mover_cp`** v detailed `flagged_moves[]`. `cp_loss` se měří
+  proti nejlepšímu tahu, ne proti `eval_before`: platí
+  `cp_loss = max(0, best_eval_mover_cp - eval_after_mover_cp)`. `null` =
+  neměřeno (legacy cache, cloud eval). Porušení loguje
+  `ANOMALY_CP_LOSS_NOT_RECONSTRUCTIBLE`.
+- **D9/T2.1** `eval_before_mover_cp` / `eval_after_mover_cp` (legacy
+  `eval_before` / `eval_after` zůstávají jako aliasy).
+- **T2.2** `player_moves_total`, `game_plies_total`, `opponent_moves_total`;
+  `moves_total` je deprecated alias pro plies hráče.
+- **T3** `game_full` 1.0: `services/timeline.py`, `schemas/game_full_v1.0.json`,
+  CLI `--format game-full`.
+- **T3.0** `mode` (`fast`/`deep`) v `lichess_analyze_game`, sdílená policy
+  s coachingem.
+- **T1** `services/color_contract.py`: `INVALID_COLOR`, `COLOR_UNDETECTED`.
+
+### Changed
+
+- **T2.4** T → `tactical_shaped_move_error` (jen label, pattern ID beze
+  změny); `THRESHOLD_TACTICAL_SHAPED_CP`.
+- **T1.4** `DETECTOR_VERSION = DBCL-20261113-dev`; J má jeden predikát
+  (blokování figurou, královský ústup J nespustí).
+- **T2.3** prompt: `insufficient_evidence`, `clock_data_unavailable`.
+
+### Removed
+
+- `max_time_dual` z `config/depth.py` (mrtvá konfigurace, nikdo ji nečetl).
+
+## [2.3] - 2026-11-12
 
 P0-7 (unclassified flagged moves) + P0-8 (compact schema 2.1). Bez nových
 pattern ID a bez nových MCP toolů. D4: tichý blunder = explicitní

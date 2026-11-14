@@ -32,6 +32,27 @@ def eval_invariant_holds(
     return abs(delta - float(cp_loss)) <= tolerance
 
 
+def cp_loss_reconstructs(
+    best_eval,
+    eval_after,
+    cp_loss,
+    tolerance: float = 1.0,
+) -> bool:
+    """D12: True when `cp_loss` follows from the published best/actual pair.
+
+    `cp_loss` is measured against the best move (`best_player - actual_player`),
+    not against `eval_before`; two separate searches need not agree. Publishing
+    `best_eval` makes the number reconstructible, and this predicate is the
+    check that the published triple really is consistent.
+
+    Unmeasurable inputs return False - the relation cannot be verified.
+    """
+    if not all(isinstance(v, (int, float)) for v in (best_eval, eval_after, cp_loss)):
+        return False
+    expected = max(0.0, float(best_eval) - float(eval_after))
+    return abs(expected - float(cp_loss)) <= tolerance
+
+
 def eval_delta(eval_before, eval_after) -> float | None:
     if not all(isinstance(v, (int, float)) for v in (eval_before, eval_after)):
         return None

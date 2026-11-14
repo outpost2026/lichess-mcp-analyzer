@@ -150,6 +150,7 @@
           "eval_after": { "type": ["number", "null"] },
           "eval_before_mover_cp": { "type": ["number", "null"] },
           "eval_after_mover_cp": { "type": ["number", "null"] },
+          "best_eval_mover_cp": { "type": ["number", "null"] },
           "win_prob_before": { "type": ["number", "null"] },
           "win_prob_after": { "type": ["number", "null"] },
           "phase": { "type": "string" },

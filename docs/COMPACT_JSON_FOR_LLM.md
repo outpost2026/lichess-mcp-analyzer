@@ -53,7 +53,13 @@ the **mover's** point of view — the player who made the flagged move.
 `eval_after_mover_cp` is *not* the opponent's POV; the sign is not flipped
 after the move. Therefore:
 
-- `cp ≈ eval_before_mover_cp - eval_after_mover_cp` (positive = loss for the mover);
+- `cp` is **not** `eval_before_mover_cp - eval_after_mover_cp` in general.
+  `cp` is measured from the engine's best move
+  (`cp = max(0, best_eval_mover_cp - eval_after_mover_cp)`, D12) and the two
+  evals come from separate searches, so the subtraction is only an
+  approximation (within the FIX-023 window it holds to ±50 cp). The exact
+  anchor `best_eval_mover_cp` is published in the **detailed** payload; compact
+  2.1 does not carry it (size budget).
 - a positive value always means "good for the mover", for both colours;
 - never compare `eval_before_mover_cp` of a White move with one of a Black
   move as if they shared a direction — they do not.
@@ -73,7 +79,9 @@ aliases for one release (D9). A White-POV timeline is a different artifact
 - `eval_before` / `eval_after` absent — the flag is outside the FIX-015 window
   (`cp <= 200` and not blunder/mistake), the eval was not measured, or the pair
   contradicts `cp` (FIX-023). **Never** reconstruct a swing from `eval_before -
-  eval_after` when those keys are absent.
+  eval_after` when those keys are absent, and never present that subtraction as
+  the measured `cp` even when they are present (D12: `cp` is anchored to the
+  best move, not to `eval_before`).
 - `mate_in` absent — the best line is not a forced mate, or the flag is not a
   blunder. When present, `eval_cp` is `null` for that engine line; say
   "mat v N", never "hodnocení 0".

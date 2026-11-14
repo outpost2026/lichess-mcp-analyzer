@@ -737,12 +737,20 @@ def per_move_patterns(
         and (move.eval_before or 0) > THRESHOLD_ENDGAME_EVAL
         and cp >= THRESHOLD_ENDGAME_CP
     ):
+        detail = f"endgame eval_before={move.eval_before or 0:.0f}, cp_loss={cp:.0f}"
+        if move.best_eval is not None:
+            # D12: without the anchor the reader computes eval_before - cp_loss
+            # and gets a number that was never measured.
+            detail = (
+                f"endgame eval_before={move.eval_before or 0:.0f}, "
+                f"best_eval={move.best_eval:.0f}, cp_loss={cp:.0f}"
+            )
         out.append(
             {
                 "pattern_id": "R",
                 "pattern_name": "Endgame relaxation",
                 "strength": min(cp / 1000, 0.85),
-                "detail": f"endgame eval_before={move.eval_before or 0:.0f}, cp_loss={cp:.0f}",
+                "detail": detail,
             }
         )
 

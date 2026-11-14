@@ -302,6 +302,7 @@ def evaluate_move(
         return {
             "eval_before": None,
             "eval_after": None,
+            "best_eval": None,
             "centipawn_loss": None,
             "best_move_uci": None,
             "error": f"Move {move_uci} not legal in position {fen}",
@@ -359,6 +360,7 @@ def evaluate_move(
             return {
                 "eval_before": None,
                 "eval_after": None,
+                "best_eval": None,
                 "centipawn_loss": None,
                 "best_move_uci": None,
                 "error": res["error"],
@@ -375,6 +377,10 @@ def evaluate_move(
     return {
         "eval_before": eval_before,
         "eval_after": actual_player,
+        # D12: the anchor `cp_loss` is measured from. Without it the published
+        # eval pair and cp_loss look contradictory (they come from different
+        # searches) and the loss cannot be reconstructed.
+        "best_eval": best_player,
         "centipawn_loss": cp_loss,
         "best_move_uci": best_move.uci() if best_move else None,
     }
@@ -384,7 +390,8 @@ def evaluate_move_with_confidence(fen: str, move_uci: str, depth: int = 0, runs:
     """D3: Run evaluate_move multiple times, return median cp_loss.
 
     Returns:
-        dict with keys: eval_before, eval_after, centipawn_loss, best_move_uci,
+        dict with keys: eval_before, eval_after, best_eval, centipawn_loss,
+                        best_move_uci,
                         centipawn_loss_median, centipawn_loss_min, centipawn_loss_max,
                         confidence_spread, anomaly
     """
@@ -403,6 +410,7 @@ def evaluate_move_with_confidence(fen: str, move_uci: str, depth: int = 0, runs:
         return {
             "eval_before": first.get("eval_before"),
             "eval_after": first.get("eval_after"),
+            "best_eval": first.get("best_eval"),
             "centipawn_loss": None,
             "centipawn_loss_median": None,
             "centipawn_loss_min": None,
@@ -435,6 +443,9 @@ def evaluate_move_with_confidence(fen: str, move_uci: str, depth: int = 0, runs:
     return {
         "eval_before": results[0]["eval_before"],
         "eval_after": results[0]["eval_after"],
+        # D12: the published loss is a median across runs, so no single run's
+        # best-move eval is its anchor - publish null instead of a wrong one.
+        "best_eval": None,
         "centipawn_loss": cp_loss_median,
         "centipawn_loss_median": cp_loss_median,
         "centipawn_loss_min": cp_loss_min,
