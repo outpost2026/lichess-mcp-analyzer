@@ -107,6 +107,10 @@ def _flagged_moves(analysis: dict) -> list[dict]:
                 "uci": m.get("move_uci"),
                 "classification": m.get("classification"),
                 "cp_loss": m.get("centipawn_loss"),
+                # D9: every eval field names its point of view. The legacy
+                # keys stay as aliases for one release.
+                "eval_before_mover_cp": m.get("eval_before"),
+                "eval_after_mover_cp": m.get("eval_after"),
                 "eval_before": m.get("eval_before"),
                 "eval_after": m.get("eval_after"),
                 "win_prob_before": m.get("win_prob_before"),
@@ -125,6 +129,29 @@ def _flagged_moves(analysis: dict) -> list[dict]:
             }
         )
     return out
+
+
+def _move_counts(analysis: dict) -> dict:
+    """T2.2: player plies, whole-game plies, opponent plies - never guessed.
+
+    `analysis["moves"]` holds only the analyzed player's plies, so the old
+    `moves_total` was silently half of the game. `game_plies_total` comes from
+    the PGN walk; a legacy cache without it publishes null instead of a
+    reconstructed number.
+    """
+    moves = analysis.get("moves") or []
+    player_total = len(moves)
+    try:
+        game_total = int(analysis.get("game_plies_total") or 0)
+    except (TypeError, ValueError):
+        game_total = 0
+    return {
+        "player_moves_total": player_total,
+        "game_plies_total": game_total if game_total > 0 else None,
+        "opponent_moves_total": (max(0, game_total - player_total) if game_total > 0 else None),
+        # Deprecated alias, kept for one release (T2.2).
+        "moves_total": player_total,
+    }
 
 
 def _annotate_coverage(flagged: list[dict], coverage: dict[int, dict]) -> None:
@@ -469,7 +496,7 @@ async def build_response(
         "accuracy_method": analysis.get("accuracy_method"),
         "internal_accuracy_score": analysis.get("internal_accuracy_score"),
         "moves_analyzed": sum(1 for m in moves if m.get("analyzed", True)),
-        "moves_total": len(moves),
+        **_move_counts(analysis),
         "evaluation_errors": analysis.get("evaluation_errors", 0),
         "phase_stats": phase_stats,
         "segment_stats": analysis_obj.segment_stats,
@@ -669,6 +696,9 @@ async def lichess_coaching_single_game(
                 "acpl": None,
                 "accuracy": None,
                 "moves_analyzed": 0,
+                "player_moves_total": 0,
+                "game_plies_total": None,
+                "opponent_moves_total": None,
                 "moves_total": 0,
                 "evaluation_errors": 0,
                 "phase_stats": {},

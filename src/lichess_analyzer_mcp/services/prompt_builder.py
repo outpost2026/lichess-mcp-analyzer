@@ -25,8 +25,9 @@ PRAVIDLA:
 2. Pokud tool nevrátí affected_games pro pattern — neuváděj konkrétní game_id.
 3. Pokud nemáš data — NEVYMÝŠLEJ. Nahraď obecným popisem.
 4. [DATA] a [IM] oddělené sekce.
-5. KAŽDÝ blunder/mistake MUSÍ být klasifikován jako taktický nebo poziční — použij FEN, motif, check, engine lines.
+5. KAŽDÝ blunder/mistake MUSÍ být klasifikován jako taktický, poziční, nebo `insufficient_evidence` — použij FEN, motif, check, engine lines. Když data nedávají důkaz, použij `insufficient_evidence`; nehádej.
 6. Chybu uvedenou v Nezařazené označ jako nezařazenou a cituj její reason; nevymýšlej mechanismus.
+7. Time trouble jen z parsovaných clock dat (`%clk`). Pokud clock data nejsou, napiš `clock_data_unavailable`; time control je kontext, ne důkaz.
 
 STRUKTURA:
 [DATA] Základní info: výsledek, barva, zahájení, celková ACPL, accuracy %
@@ -43,8 +44,8 @@ STRUKTURA:
 
 [IM] Heisman-style error analýza:
   - Která chyba byla nejkritičtější (dle cp_loss × win_prob_delta)
-  - Taktická nebo poziční? (ODŮVODNI z FEN/motif/check/engine lines)
-  - Time trouble? (odhadni z time control + pozice v partii)
+  - Taktická, poziční, nebo `insufficient_evidence`? (ODŮVODNI z FEN/motif/check/engine lines)
+  - Time trouble? Pouze z parsovaných clock dat (`%clk`); bez nich `clock_data_unavailable`
 [IM] Tři věci co hráč udělal dobře
 [IM] Jedna věc na zlepšení do příště
 [IM] Tréninková doporučení (specifická pro nalezené chyby)""",

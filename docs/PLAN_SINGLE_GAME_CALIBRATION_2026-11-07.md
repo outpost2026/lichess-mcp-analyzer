@@ -17,8 +17,8 @@
 
 Dvě místa v příkladech jsou historicky správná, ale dnešní čtenář je může vyložit špatně:
 
-1. **`moves_total` v příkladu (§5) znamená počet rozhodnutí analyzovaného hráče**, ne počet půltahů partie. Pole dnes počítá `len(moves)`, a `moves` obsahuje jen tahy vybrané barvy. Aditivní rozdělení (`player_moves_total`, `game_plies_total`, `opponent_moves_total`) je Tier 2.2 v `AUDIT_INTEGRATION_2026-11-13.md`; do té doby se `moves_total` nesmí číst jako délka partie.
-2. **`eval_before` / `eval_after` jsou z pohledu hráče, který táhl** (mover POV), v celé pipeline. `eval_after` není POV soupeře. Definitivní názvy `eval_before_mover_cp` / `eval_after_mover_cp` a White POV pro timeline řeší D9 a Tier 2.1.
+1. **`moves_total` v příkladu (§5) znamená počet rozhodnutí analyzovaného hráče**, ne počet půltahů partie. Pole dnes počítá `len(moves)`, a `moves` obsahuje jen tahy vybrané barvy. Od 2026-11-14 payload publikuje i `player_moves_total`, `game_plies_total` a `opponent_moves_total` (T2.2 hotovo); `moves_total` zůstává jen jako deprecated alias pro plies hráče a nesmí se číst jako délka partie.
+2. **`eval_before` / `eval_after` jsou z pohledu hráče, který táhl** (mover POV), v celé pipeline. `eval_after` není POV soupeře. Od 2026-11-14 payload publikuje kanonické `eval_before_mover_cp` / `eval_after_mover_cp`; staré klíče zůstávají jeden release jako aliasy (D9/T2.1 hotovo). White POV pro timeline řeší Tier 3.
 
 ---
 

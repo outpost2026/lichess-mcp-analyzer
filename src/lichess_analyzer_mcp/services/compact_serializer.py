@@ -150,6 +150,9 @@ def _flag(
             and eval_after is not None
             and eval_invariant_holds(eval_before, eval_after, cp)
         ):
+            out["eval_before_mover_cp"] = eval_before
+            out["eval_after_mover_cp"] = eval_after
+            # Deprecated aliases, kept for one release (D9/T2.1).
             out["eval_before"] = eval_before
             out["eval_after"] = eval_after
     # FIX-016: a genuinely absent motif is omitted; present motifs stay strings.
@@ -536,7 +539,17 @@ def validate_compact(data: dict) -> None:
         _check_keys(
             flag,
             _REQUIRED_FLAG,
-            _REQUIRED_FLAG | {"motif", "eval_before", "eval_after", "patterns", "mate_in", "why"},
+            _REQUIRED_FLAG
+            | {
+                "motif",
+                "eval_before",
+                "eval_after",
+                "eval_before_mover_cp",
+                "eval_after_mover_cp",
+                "patterns",
+                "mate_in",
+                "why",
+            },
             path,
         )
         if not isinstance(flag["ply"], int) or flag["ply"] < 1:
@@ -551,7 +564,12 @@ def validate_compact(data: dict) -> None:
             _fail(f"{path}.rank", "must be an integer >= 1 or null")
         if "motif" in flag and not isinstance(flag["motif"], str):
             _fail(f"{path}.motif", "must be a string")
-        for key in ("eval_before", "eval_after"):
+        for key in (
+            "eval_before",
+            "eval_after",
+            "eval_before_mover_cp",
+            "eval_after_mover_cp",
+        ):
             if key in flag and not isinstance(flag[key], (int, float)):
                 _fail(f"{path}.{key}", "must be a number")
         if "mate_in" in flag:

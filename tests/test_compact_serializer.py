@@ -106,7 +106,7 @@ FULL = {
     "patterns": [
         {
             "pattern_id": "T",
-            "pattern_name": "Tactical oversight",
+            "pattern_name": "tactical_shaped_move_error",
             "confidence": 0.16,
             "frequency": 1,
             "severity": "medium",
@@ -327,6 +327,29 @@ def test_eval_fields_follow_fix015_window():
     assert by_ply[75]["eval_after"] == 525
     assert by_ply[91]["eval_before"] == 727  # cp > 200, inaccuracy still counts
     assert "eval_before" not in by_ply[34]  # inaccuracy at 84 cp
+
+
+def test_eval_fields_carry_mover_pov_names():
+    """D9/T2.1: canonical keys name the POV; legacy keys stay one release."""
+    full = json.loads(json.dumps(FULL))
+    full["flagged_moves"].append(
+        {
+            **FLAG_TEMPLATE,
+            "ply": 75,
+            "san": "Re8+",
+            "classification": "blunder",
+            "cp_loss": 9473.0,
+            "eval_before": 9997,
+            "eval_after": 525,
+            "engine_lines": [],
+            "played_rank": None,
+        }
+    )
+    out = to_compact_v2(full, game_meta=GAME_META)
+    flag = next(f for f in out["flags"] if f["ply"] == 75)
+    assert flag["eval_before_mover_cp"] == flag["eval_before"] == 9997
+    assert flag["eval_after_mover_cp"] == flag["eval_after"] == 525
+    validate_compact(out)
 
 
 def test_mate_in_in_blunder_flag():

@@ -1,11 +1,10 @@
 # LLM Prompt Templates for Chess Coaching Reports
 
-> **Stav 2026-11-13:** toto je **design reference, ne runtime kontrakt**. Skutečný prompt
+> **Stav 2026-11-14:** toto je **design reference, ne runtime kontrakt**. Skutečný prompt
 > skládá `src/lichess_analyzer_mcp/services/prompt_builder.py` (`PROMPT_TEMPLATES`), který
-> se od tohoto dokumentu může lišit. Změna textu promptu (např. `insufficient_evidence`,
-> clock contract) je Tier 2.3 v `AUDIT_INTEGRATION_2026-11-13.md`; do té doby platí, že
-> runtime prompt **vyžaduje** klasifikaci tactical/positional a odhad time trouble, i když
-> na to data nemusí stačit.
+> se od tohoto dokumentu může lišit. Runtime prompt už `insufficient_evidence` a clock
+> contract obsahuje (T2.3 hotovo); tento dokument je záměrně nechává jen v poznámce, aby
+> nevznikl druhý zdroj pravdy. Kanonický text je v `prompt_builder.py`.
 
 **Datum:** 2026-07-29
 **Účel:** 5 reusable prompt template pro generování coaching reportů z lichess-analyzer-mcp pipeline
@@ -70,8 +69,10 @@ STRUKTURA:
 
 [IM] Heisman-style error analýza:
   - Která chyba byla nejkritičtější (největší cp_loss, nejhorší načasování)
-  - Šlo o taktickou chybu (patterns, přehlédnutí) nebo poziční (plán, struktura)?
-  - Byl hráč v time trouble? (časová značka pokud dostupná)
+  - Šlo o taktickou chybu (patterns, přehlédnutí), poziční (plán, struktura),
+    nebo `insufficient_evidence` (data nedávají důkaz)?
+  - Byl hráč v time trouble? Pouze z parsovaných clock dat (`%clk`);
+    bez nich `clock_data_unavailable`, nikdy odhad.
 [IM] Tři věci co hráč udělal dobře
 [IM] Jedna věc na zlepšení do příště (Heisman: minimalizuj největší chybu první)
 [IM] Tréninková doporučení: konkrétní puzzle téma, studijní materiál, otázka k zamyšlení

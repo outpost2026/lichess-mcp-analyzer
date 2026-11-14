@@ -167,6 +167,9 @@ class GameAnalysis:
     chess_phase_stats: dict = field(default_factory=dict)
     blunder_fact_sheets: list[BlunderFactSheet] = field(default_factory=list)
     evaluation_errors: int = 0
+    # T2.2: total plies in the game (both sides), so a payload can say
+    # "player 20 of 40 plies" without guessing. 0 = legacy cache without it.
+    game_plies_total: int = 0
     # P0.1/P0.2: observable contract fields.
     unanalyzed_plies: list[int] = field(default_factory=list)
     errors: list[dict] = field(default_factory=list)
@@ -197,6 +200,7 @@ class GameAnalysis:
             "chess_phase_stats": self.chess_phase_stats,
             "blunder_fact_sheets": [bfs.to_dict() for bfs in self.blunder_fact_sheets],
             "evaluation_errors": self.evaluation_errors,
+            "game_plies_total": self.game_plies_total,
             "unanalyzed_plies": self.unanalyzed_plies,
             "errors": self.errors,
             "timings": self.timings,
@@ -281,6 +285,7 @@ class GameAnalysis:
                 BlunderFactSheet.from_dict(bfs) for bfs in d.get("blunder_fact_sheets", [])
             ],
             evaluation_errors=d.get("evaluation_errors", 0),
+            game_plies_total=d.get("game_plies_total", 0),
             unanalyzed_plies=d.get("unanalyzed_plies", []),
             errors=d.get("errors", []),
             timings=d.get("timings", {}),

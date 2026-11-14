@@ -74,6 +74,17 @@ def test_is_piece_block_contract():
     assert not is_piece_block("Be6", False)
 
 
+def test_t_label_does_not_claim_a_motif():
+    """D11: T is a move *shape*, so the label must not say 'oversight'."""
+    candidates = per_move_patterns(
+        _move(san="Bxe5", uci="d4e5", cp=120.0, motif=True, motif_type="capture"),
+        None,
+        False,
+    )
+    t = next(c for c in candidates if c["pattern_id"] == "T")
+    assert t["pattern_name"] == "tactical_shaped_move_error"
+
+
 def test_per_move_candidates_expose_strength_not_confidence():
     """P1: per-move event nese `strength`; `confidence` zůstává jen v 1.2 payloadu."""
     candidates = per_move_patterns(_move(san="Qxe5", uci="e5e5", cp=400.0), None, False)

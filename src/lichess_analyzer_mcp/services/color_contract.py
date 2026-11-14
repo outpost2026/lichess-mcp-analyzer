@@ -31,11 +31,13 @@ class ColorUndetectedError(ValueError):
 
     code = "COLOR_UNDETECTED"
 
-    def __init__(self, game_id: str, username: str) -> None:
-        super().__init__(
-            f"could not detect colour of {username!r} in game {game_id!r}; "
-            "pass color='white' or color='black' explicitly"
-        )
+    def __init__(self, game_id: str = "", username: str = "", *, reason: str = "") -> None:
+        if not reason:
+            reason = (
+                f"could not detect colour of {username!r} in game {game_id!r}; "
+                "pass color='white' or color='black' explicitly"
+            )
+        super().__init__(reason)
         self.game_id = game_id
         self.username = username
 

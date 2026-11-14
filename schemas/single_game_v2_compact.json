@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://lichess-analyzer-mcp/schemas/single_game_v2_compact.json",
   "title": "single_game_v2_compact",
-  "description": "Compact single-game output for LLM self-coaching, schema 2.1. Derived from contract v1.2; instrumentation and derivable fields are omitted. Null means 'not measured' - it is never replaced by a guessed number. Null policy per field: summary.acpl / summary.phases[*][0] are null when the phase had no measured move; flags[].rank is null when the engine did not measure the played-move rank; flags[].motif is omitted when the move has no tactical motif (a present motif is always a string); eval_before/eval_after are omitted outside the FIX-015 window (cp > 200 or class blunder/mistake) or when the evaluation was not measured. Unavailable PV for a blunder/mistake is published in pv_unavailable instead of being silently omitted. P0-7: every flagged move is either covered by a pattern (pstatus=matched, patterns present) or states why no pattern covers it (pstatus=unclassified, why present). The reason is a measured shape of the move, not a claimed mechanism.",
+  "description": "Compact single-game output for LLM self-coaching, schema 2.1. Derived from contract v1.2; instrumentation and derivable fields are omitted. Null means 'not measured' - it is never replaced by a guessed number. Null policy per field: summary.acpl / summary.phases[*][0] are null when the phase had no measured move; flags[].rank is null when the engine did not measure the played-move rank; flags[].motif is omitted when the move has no tactical motif (a present motif is always a string); eval_before/eval_after are omitted outside the FIX-015 window (cp > 200 or class blunder/mistake) or when the evaluation was not measured. Unavailable PV for a blunder/mistake is published in pv_unavailable instead of being silently omitted. P0-7: every flagged move is either covered by a pattern (pstatus=matched, patterns present) or states why no pattern covers it (pstatus=unclassified, why present). The reason is a measured shape of the move, not a claimed mechanism. D9: flags[].eval_before_mover_cp / eval_after_mover_cp are the canonical POV-named keys; flags[].eval_before / eval_after remain as deprecated aliases for one release.",
   "type": "object",
   "required": ["v", "game", "summary", "phase_method", "flags", "patterns", "patterns_meta"],
   "additionalProperties": false,
@@ -102,11 +102,19 @@
           },
           "eval_before": {
             "type": "number",
-            "description": "Engine eval (cp, side-to-move POV) before the move. Present only for cp > 200 or class blunder/mistake."
+            "description": "DEPRECATED alias of eval_before_mover_cp (kept one release, D9). Engine eval (cp, mover POV) before the move. Present only for cp > 200 or class blunder/mistake."
           },
           "eval_after": {
             "type": "number",
-            "description": "Engine eval (cp, side-to-move POV) after the move. Present only for cp > 200 or class blunder/mistake."
+            "description": "DEPRECATED alias of eval_after_mover_cp (kept one release, D9). Engine eval (cp, mover POV) after the move. Present only for cp > 200 or class blunder/mistake."
+          },
+          "eval_before_mover_cp": {
+            "type": "number",
+            "description": "D9: engine eval in centipawns from the point of view of the player who made the flagged move, before the move. Same value as eval_before."
+          },
+          "eval_after_mover_cp": {
+            "type": "number",
+            "description": "D9: engine eval in centipawns from the point of view of the player who made the flagged move, after the move. The sign is not flipped; eval_after is not the opponent's POV."
           },
           "patterns": {
             "type": "array",

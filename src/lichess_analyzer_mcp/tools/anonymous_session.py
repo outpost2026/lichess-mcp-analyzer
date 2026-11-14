@@ -8,6 +8,7 @@ from lichess_analyzer_mcp.app import app
 from lichess_analyzer_mcp.services.audit import auditable
 from lichess_analyzer_mcp.config.depth import DEPTH_DEFAULTS
 from lichess_analyzer_mcp.services.lichess_client import fetch_game_pgn
+from lichess_analyzer_mcp.services.color_contract import ColorUndetectedError
 from lichess_analyzer_mcp.services.game_analyzer import analyze_pgn
 
 
@@ -70,7 +71,15 @@ def _parse_game_entries(source: str, is_file: bool = False) -> list[tuple[str, s
 
 
 def _resolve_color(pgn: str, label: str | None) -> str:
-    """Determine player color from label + PGN result header."""
+    """Determine player color from label + PGN result header.
+
+    T2.5: a draw (or an unknown result) cannot identify which side is "us".
+    Returning `white` there silently analysed the wrong player, so it raises
+    `ColorUndetectedError` and the batch reports a per-game error instead.
+
+    `label=None` keeps the historical "assume the player won" rule for
+    decisive games only; a draw still fails because no side can be inferred.
+    """
     if label is None:
         label = "win"
     if label in ("white", "black"):
@@ -78,11 +87,19 @@ def _resolve_color(pgn: str, label: str | None) -> str:
     if label in ("win", "loss"):
         game = chess.pgn.read_game(io.StringIO(pgn))
         result = game.headers.get("Result", "*") if game else "*"
-        if label == "win":
-            return "white" if result == "1-0" else ("black" if result == "0-1" else "white")
-        if label == "loss":
-            return "black" if result == "1-0" else ("white" if result == "0-1" else "white")
-    return "white"
+        if result == "1-0":
+            return "white" if label == "win" else "black"
+        if result == "0-1":
+            return "black" if label == "win" else "white"
+        raise ColorUndetectedError(
+            reason=(
+                f"cannot infer colour from label={label!r} and result={result!r} "
+                "(draw/unknown); pass 'white' or 'black' explicitly"
+            )
+        )
+    raise ColorUndetectedError(
+        reason=f"unknown label {label!r}; pass 'white', 'black', 'win' or 'loss'"
+    )
 
 
 @app.tool("lichess_analyze_anonymous_session")
@@ -106,7 +123,8 @@ async def lichess_analyze_anonymous_session(
         - Games with errors are reported individually, not blocking the batch
         - Optional label after URL:  white | black | win | loss
           Determines which side is "us" for ACPL/result stats.
-          If omitted, assumes "white" and flags player_color="unknown".
+          If omitted, a decisive game assumes the player won; a draw is a
+          per-game error (`COLOR_UNDETECTED`) because no side can be inferred.
     """
     if depth == 0:
         depth = DEPTH_DEFAULTS["batch"]["anonymous"]

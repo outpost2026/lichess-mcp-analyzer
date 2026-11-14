@@ -39,6 +39,7 @@ THRESHOLD_DESPERATE_CP = 300
 THRESHOLD_ACTIVE_DEFENSE_EVAL = -150
 THRESHOLD_S_CAPTURE_AVERSION_CP = 500
 THRESHOLD_GIFT_EVAL_JUMP = 70
+THRESHOLD_TACTICAL_SHAPED_CP = 50
 
 # P1 / schema 1.3: patterns without a runtime control group must say so instead
 # of publishing a fabricated lift. Admission-time lift is measured offline
@@ -773,12 +774,14 @@ def per_move_patterns(
             }
         )
 
-    # T — Tactical oversight: motif present with real loss
-    if move.is_tactical_motif and cp >= 50:
+    # T — tactical-shaped move error: the move has the *form* of a tactic
+    # (capture/check/pawn push with real loss) but no proven motif. D11: the
+    # label must not claim a motif; a real fork/pin detector is a new ID (D4).
+    if move.is_tactical_motif and cp >= THRESHOLD_TACTICAL_SHAPED_CP:
         out.append(
             {
                 "pattern_id": "T",
-                "pattern_name": "Tactical oversight",
+                "pattern_name": "tactical_shaped_move_error",
                 "strength": min(cp / 400, 0.8),
                 "detail": f"motif={move.motif_type or 'tactical'} cp_loss={cp:.0f}",
             }

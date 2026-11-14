@@ -881,6 +881,7 @@ def _run_analyze_pgn(
         after.sort(key=lambda x: x.ply)
         bfs.context_window = ContextWindow(moves_before=before, moves_after=after)
     elapsed = time.perf_counter() - t_start
+    analysis.game_plies_total = ply
     analysis.timings = {
         "engine_s": round(engine_time_s, 3),
         "parse_s": round(max(0.0, elapsed - engine_time_s), 3),

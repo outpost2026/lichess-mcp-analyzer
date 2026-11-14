@@ -74,11 +74,11 @@ Audit míchá tři kategorie do jedné prioritní tabulky. Kanonické rozdělen�
 
 | Nález | Kde | Dopad | Zařazení |
 |---|---|---|---|
-| `_resolve_color` u remíz vrací `white` | `anonymous_session.py` | anonymní session může analyzovat špatnou barvu | Tier 2 |
+| `_resolve_color` u remíz vrací `white` | `anonymous_session.py` | anonymní session může analyzovat špatnou barvu | Tier 2 — hotovo (T2.5) |
 | `max_time_dual: 1800` je mrtvá konfigurace | `config/depth.py`; nikdo ji nečte | dual analýza běží bez stropu | Tier 3.0 |
 | `unanalyzed_plies` eviduje jen plies hráče | `_run_analyze_pgn` | „partial“ kontrakt pro timeline nejde naplnit | Tier 3 |
-| `T` má hardcoded `50`, ostatní prahy jsou `THRESHOLD_*` | `pattern_detector.per_move_patterns` | nekonzistence s konvencí | Tier 2 |
-| žádný test `--color both` | `tests/test_coach_cli.py` | režim není pokrytý | Tier 1 |
+| `T` má hardcoded `50`, ostatní prahy jsou `THRESHOLD_*` | `pattern_detector.per_move_patterns` | nekonzistence s konvencí | Tier 2 — hotovo (`THRESHOLD_TACTICAL_SHAPED_CP`) |
+| žádný test `--color both` | `tests/test_coach_cli.py` | režim není pokrytý | Tier 1 — hotovo |
 
 ---
 
@@ -144,15 +144,23 @@ Pořadí je závazné. Tier 1 nesmí být přeskočen, protože produkuje špatn
 - `both` v CLI předává `username=""`, takže detekce nemůže přepsat požadovanou stranu. Cena: oba reporty jsou bez `username`; to je poctivější než dva reporty stejného hráče.
 - `DETECTOR_VERSION` = `DBCL-20261113-dev` (změna klasifikace J). Cache z předchozí verze se nesmí míchat s novou klasifikací.
 
-### Tier 2 — sémantika a evidence (aditivní pole, 1–2 iterace)
+### Tier 2 — sémantika a evidence (aditivní pole, 1–2 iterace) — **HOTOVO 2026-11-14**
 
-| ID | Úkol | Acceptance |
-|---|---|---|
-| T2.1 | Eval POV názvy (D9) | nové klíče v detailed i compact; staré aliasy; dokumentace definuje POV |
-| T2.2 | `moves_total` rozdělit | `player_moves_total`, `game_plies_total`, `opponent_moves_total`; staré klíče jeden release |
-| T2.3 | Prompt: `insufficient_evidence`, clock contract (D10) | prompt nepovinně klasifikuje; bez clock dat `clock_data_unavailable` |
-| T2.4 | T label (D11) | `tactical_shaped_move_error`, nebo rozhodnutí o novém detektoru |
-| T2.5 | `_resolve_color` u remíz | remíza bez explicitní barvy = chyba, ne `white` |
+| ID | Úkol | Acceptance | Stav |
+|---|---|---|---|
+| T2.1 | Eval POV názvy (D9) | `eval_before_mover_cp` / `eval_after_mover_cp` v detailed i compact; staré aliasy jeden release; dokumentace definuje POV | ✅ |
+| T2.2 | `moves_total` rozdělit | `player_moves_total`, `game_plies_total`, `opponent_moves_total`; starý klíč jeden release; legacy cache bez `game_plies_total` publikuje `null`, ne odhad | ✅ |
+| T2.3 | Prompt: `insufficient_evidence`, clock contract (D10) | prompt připouští třetí klasifikaci; bez `%clk` je `clock_data_unavailable`, žádný odhad z time control | ✅ |
+| T2.4 | T label (D11) | `pattern_name = tactical_shaped_move_error`; ID `T` zůstává; žádný nárokovaný motiv | ✅ |
+| T2.5 | `_resolve_color` u remíz | remíza/neznámý výsledek bez explicitní barvy = `COLOR_UNDETECTED`, ne `white` | ✅ |
+
+**Implementační poznámky (Tier 2):**
+
+- `eval_before_mover_cp` / `eval_after_mover_cp` jsou kanonické v detailed `flagged_moves[]` i compact `flags[]`; `eval_before` / `eval_after` nesou stejné hodnoty jako deprecated aliasy (D9).
+- `game_plies_total` se počítá při průchodu PGN (`_run_analyze_pgn`), takže starý `moves_total` už nikdy nemůže vypadat jako délka partie. Cache z doby před tímto polem publikuje `null`; číslo se nedopočítává.
+- Prompt template 1 připouští `insufficient_evidence` a time trouble jen z `%clk`. `time_control` zůstává kontext, ne důkaz (D10).
+- T nese lidsky nečitelný, ale stabilní label `tactical_shaped_move_error`; důvod je v `detail` (`motif=...`). Skutečné motivy (fork/pin/skewer) by byly nový detektor pod D4.
+- `_resolve_color` odmítne remízu i neznámý label; anonymní batch vypíše chybu k dané hře místo analýzy náhodné barvy.
 
 ### Tier 3 — timeline a perspektivy (2–3 iterace)
 
@@ -190,9 +198,9 @@ Pořadí je závazné. Tier 1 nesmí být přeskočen, protože produkuje špatn
 | `REFACTOR_PLAN_2026-11-11.md` | historický pro Fázi 1+; Fáze 0 hotová | roadmapu single-game větve řídí tento dokument |
 | `PLAN_SINGLE_GAME_CALIBRATION_2026-11-07.md` | implementováno, kontrakt 1.2 zmrazen | poznámky k `moves_total` a eval POV |
 | `COMPACT_JSON_FOR_LLM.md` | závazný pro compact 2.1 | doplněna definice POV a jednoperspektivnosti |
-| `CLI_USAGE.md` | závazný pro CLI | opraveny verze 2.1/1.2; známé omezení `both` + username |
+| `CLI_USAGE.md` | závazný pro CLI | opraveny verze 2.1/1.2; `both` + `username` vyřešeno v T1.2 (username se v `both` nepředává) |
 | `CANDIDATE_PATTERNS_2026-11-12.md` | závazný measurement appendix | §8.5 potvrzeno auditem, blokováno na T3.1 |
-| `CHESS_COACHING_PROMPT_TEMPLATES.md` | design reference | runtime prompt = `prompt_builder.py`; text se mění v T2.3 |
+| `CHESS_COACHING_PROMPT_TEMPLATES.md` | design reference | runtime prompt = `prompt_builder.py`; runtime text změněn v T2.3 (design doc jen odkazuje) |
 | `REPORT_STAV_2026-11-11.md` | historický snapshot | nemá se aktualizovat; jen banner |
 | `DEEP_DIVE_SINGLE_GAME_PATTERNS_2026-08-02.md` | historický | — |
 | `AUDIT_REPORT_lichess-analyzer-mcp_v1/v2.md` | historické audity | — |
@@ -222,6 +230,11 @@ Audit navrhuje 14 testů. Kanonická matice je níže; poslední tři audit nem�
 | **`n_units` se nezdvojnásobí** | dvě perspektivy = jedna jednotka | T3 |
 | **Merged timeline = zdrojové cache** | stejné eval hodnoty, deterministicky | T3.1 |
 | **`game_full` validace** | chybějící `mover_color` / nekonzistentní POV = error | T3.2 |
+| **Eval POV klíče** | `eval_before_mover_cp` = `eval_before`, oba mover POV | T2.1 |
+| **`game_plies_total`** | 40 plies, 20 tahů hráče → 20 opponent; legacy cache = `null` | T2.2 |
+| **Remíza bez barvy** | `COLOR_UNDETECTED`, nikdy `white` | T2.5 |
+| **Prompt bez evidence** | obsahuje `insufficient_evidence` a `clock_data_unavailable` | T2.3 |
+| **T label** | `tactical_shaped_move_error`, žádný motiv v názvu | T2.4 |
 
 ---
 

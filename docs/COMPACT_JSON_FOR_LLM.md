@@ -23,7 +23,8 @@ regression `FVhqtv1S`; measured 4400 chars) versus 13–26 kB for schema 1.2.
 | `flags[].move` / `best` | SAN played vs SAN the engine preferred |
 | `flags[].class` / `cp` / `rank` | severity, centipawn loss, played-move rank among engine candidates |
 | `flags[].motif` | tactical tag when present (e.g. `discovered_check_capture`, `check`, `capture`) |
-| `flags[].eval_before` / `eval_after` | eval swing in cp, **mover POV** (see "Perspective and eval POV"); present only for `cp > 200` or class blunder/mistake **and** consistent with `cp` (FIX-023) |
+| `flags[].eval_before_mover_cp` / `eval_after_mover_cp` | canonical eval swing in cp, **mover POV** (see "Perspective and eval POV"); present only for `cp > 200` or class blunder/mistake **and** consistent with `cp` (FIX-023) |
+| `flags[].eval_before` / `eval_after` | deprecated aliases of the two keys above, kept for one release (D9) |
 | `flags[].mate_in` | blunder only: forced mate in N moves from the best line (FIX-027); positive = for the player, negative = against |
 | `flags[].patterns` | pattern ids whose evidence includes this ply; omitted when none |
 | `flags[].pstatus` | `matched` or `unclassified` — every flag states whether a pattern covers it (P0-7) |
@@ -47,18 +48,19 @@ in `game.color` (always `white` or `black`). Opponent moves are not part of the
 payload. A full-game view is a different artifact (`game_full` 1.0, planned —
 see `AUDIT_INTEGRATION_2026-11-13.md` §6), not an extension of compact 2.1.
 
-**Eval POV:** `eval_before` and `eval_after` are both from the **mover's**
-point of view — the player who made the flagged move. `eval_after` is *not* the
-opponent's POV; the sign is not flipped after the move. Therefore:
+**Eval POV:** `eval_before_mover_cp` and `eval_after_mover_cp` are both from
+the **mover's** point of view — the player who made the flagged move.
+`eval_after_mover_cp` is *not* the opponent's POV; the sign is not flipped
+after the move. Therefore:
 
-- `cp ≈ eval_before - eval_after` (positive = loss for the mover);
+- `cp ≈ eval_before_mover_cp - eval_after_mover_cp` (positive = loss for the mover);
 - a positive value always means "good for the mover", for both colours;
-- never compare `eval_before` of a White move with `eval_before` of a Black
+- never compare `eval_before_mover_cp` of a White move with one of a Black
   move as if they shared a direction — they do not.
 
-Additive renames `eval_before_mover_cp` / `eval_after_mover_cp` and a White-POV
-timeline are Tier 2.1 / Tier 3 in `AUDIT_INTEGRATION_2026-11-13.md` (D9).
-Legacy keys stay as aliases for one release.
+The legacy keys `eval_before` / `eval_after` carry the same values and stay as
+aliases for one release (D9). A White-POV timeline is a different artifact
+(`game_full` 1.0, Tier 3 in `AUDIT_INTEGRATION_2026-11-13.md`).
 
 ### Null and omission policy
 
@@ -106,8 +108,8 @@ Legacy keys stay as aliases for one release.
 3. For every flag you discuss, read `pv[ply]` for the alternative and
    `fen_before[ply]` when you need the position. Do not reconstruct a FEN by
    hand. If the ply is in `pv_unavailable`, state the gap.
-4. Use `flags[].eval_before/eval_after` verbatim when present — you cannot
-   derive a swing that was not measured.
+4. Use `flags[].eval_before_mover_cp/eval_after_mover_cp` verbatim when
+   present — you cannot derive a swing that was not measured.
 5. Cross-reference `patterns[].plie` with `flags[].ply`; `flags[].patterns`
    already tells you which pattern a specific mistake feeds. For a flag with
    `pstatus == "unclassified"`, say that no calibrated pattern covers it and
@@ -143,8 +145,8 @@ Rules:
 1. One-sentence verdict.
 2. Weakest phase from summary.phases (highest ACPL) + one concrete drill.
 3. Top 2 flags by cp: what was played, what pv[ply] says was better, why.
-   Use eval_before/eval_after when present. If pv_unavailable has the ply, say
-   the engine line was unavailable.
+   Use eval_before_mover_cp/eval_after_mover_cp when present. If pv_unavailable
+   has the ply, say the engine line was unavailable.
 4. Pattern advice only for patterns with conf >= 0.5 (conf is ordinal
    `strength`, not a probability). Use flags[].patterns to link a specific
    mistake to its pattern.
@@ -162,7 +164,8 @@ Input (`Sl1s8KmU`, White, 0-1, rapid 600+0, depth 14). The example is a
 historical 2.0 payload and is intentionally limited to the core keys; a current
 2.1 payload additionally carries per-flag `pstatus`/`why`, top-level
 `phase_method` and mandatory `patterns_meta`, plus `username`,
-`eval_before/eval_after`, per-flag `patterns`, `pv_unavailable` and `clusters`.
+`eval_before_mover_cp/eval_after_mover_cp` (legacy `eval_before/eval_after`
+aliases), per-flag `patterns`, `pv_unavailable` and `clusters`.
 
 ```json
 {
@@ -207,7 +210,7 @@ historical 2.0 payload and is intentionally limited to the core keys; a current
     "11": "rnbqkb1r/pp1npppp/8/1B1pP3/3p4/2N5/PPP2PPP/R1BQK1NR w KQkq - 0 6",
     "75": "6k1/6bp/3pp1p1/1q1p4/5Q2/3N1P2/4K1PP/1r6 w - - 10 38"
   },
-  "report": "Hra 0-1 (B02 Alekhine Defense: Scandinavian Variation), ACPL 34.7, accuracy 94.8 %. 1 blunderů, 1 mistakes, 5 nepřesností. Nejslabší fáze: endgame (ACPL 36.9). Patterny: B (Automatic grab, conf 0.69), T (Tactical oversight, conf 0.8).",
+  "report": "Hra 0-1 (B02 Alekhine Defense: Scandinavian Variation), ACPL 34.7, accuracy 94.8 %. 1 blunderů, 1 mistakes, 5 nepřesností. Nejslabší fáze: endgame (ACPL 36.9). Patterny: B (Automatic grab, conf 0.69), T (tactical_shaped_move_error, conf 0.8).",
   "llm": { "status": "failed", "provider": "deterministic", "reason": "llm_disabled" }
 }
 ```
@@ -230,7 +233,7 @@ Qe3 Qe8 Qa7. The capture grabbed a pawn but left the king exposed.
 Ply 11 e6 (mistake, 182 cp) instead of Qxd4 — the pawn push gave up the centre.
 
 Patterns: B (Automatic grab, conf 0.69) — one capture-based blunder; T
-(Tactical oversight, conf 0.8) — two tactical misses (plies 69, 75). Both are
+(tactical_shaped_move_error, conf 0.8) — two tactical misses (plies 69, 75). Both are
 above 0.5, so they justify targeted capture/check discipline work.
 ```
 

@@ -91,3 +91,43 @@ def test_mcp_tool_reports_color_undetected(monkeypatch):
     )
     assert result["status"] == "error"
     assert result["errors"][0]["code"] == "COLOR_UNDETECTED"
+
+
+# ── T2.5: anonymous session must not invent a colour for a draw ──────────────
+
+_PGN_WIN = '[Result "1-0"]\n\n1. e4 e5 *'
+_PGN_LOSS = '[Result "0-1"]\n\n1. e4 e5 *'
+_PGN_DRAW = '[Result "1/2-1/2"]\n\n1. e4 e5 *'
+
+
+def test_anonymous_resolve_color_explicit_wins():
+    from lichess_analyzer_mcp.tools.anonymous_session import _resolve_color
+
+    assert _resolve_color(_PGN_DRAW, "white") == "white"
+    assert _resolve_color(_PGN_DRAW, "black") == "black"
+
+
+def test_anonymous_resolve_color_win_loss_decisive():
+    from lichess_analyzer_mcp.tools.anonymous_session import _resolve_color
+
+    assert _resolve_color(_PGN_WIN, "win") == "white"
+    assert _resolve_color(_PGN_WIN, "loss") == "black"
+    assert _resolve_color(_PGN_LOSS, "win") == "black"
+    assert _resolve_color(_PGN_LOSS, "loss") == "white"
+
+
+def test_anonymous_resolve_color_draw_is_an_error_not_white():
+    from lichess_analyzer_mcp.tools.anonymous_session import _resolve_color
+
+    with pytest.raises(ColorUndetectedError) as exc:
+        _resolve_color(_PGN_DRAW, "win")
+    assert exc.value.code == "COLOR_UNDETECTED"
+    with pytest.raises(ColorUndetectedError):
+        _resolve_color(_PGN_DRAW, None)
+
+
+def test_anonymous_resolve_color_rejects_unknown_label():
+    from lichess_analyzer_mcp.tools.anonymous_session import _resolve_color
+
+    with pytest.raises(ColorUndetectedError):
+        _resolve_color(_PGN_WIN, "draw")
