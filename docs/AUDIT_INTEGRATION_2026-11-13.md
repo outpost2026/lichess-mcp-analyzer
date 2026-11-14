@@ -1,10 +1,11 @@
 ---
 title: Integrace auditu 2026-11-13 — kanonická pravda pro single-game, perspektivy a timeline
-date: 2026-11-13
-verze: 1.0
+date: 2026-11-14
+verze: 1.1
 status: ZÁVAZNÝ ROZHODOVACÍ ARTEFAKT
 audit_head: 7e828b02
-navaznost: PATTERN_DISCOVERY_METHODOLOGY.md (v1.6), REFACTOR_PLAN_2026-11-11.md, PLAN_SINGLE_GAME_CALIBRATION_2026-11-07.md, COMPACT_JSON_FOR_LLM.md, CANDIDATE_PATTERNS_2026-11-12.md
+navaznost: PATTERN_DISCOVERY_METHODOLOGY.md (v1.7), GAME_FULL_1.0.md, REFACTOR_PLAN_2026-11-11.md, PLAN_SINGLE_GAME_CALIBRATION_2026-11-07.md, COMPACT_JSON_FOR_LLM.md, CANDIDATE_PATTERNS_2026-11-12.md
+změny_1_1: Tier 1-3 provedeny 2026-11-14; `game_full` 1.0 implementován a zdokumentován (`GAME_FULL_1.0.md`); T3.3 (interaction events) vědomě neimplementováno do measurement spec.
 účel: Zaznamenat, co z auditu 2026-11-13 platí, co bylo překlasifikováno a jak se tím mění plán. Nahrazuje dosavadní pořadí prací pro single-game větev; nemění cross-game kontrakty.
 ---
 
@@ -75,8 +76,8 @@ Audit míchá tři kategorie do jedné prioritní tabulky. Kanonické rozdělen�
 | Nález | Kde | Dopad | Zařazení |
 |---|---|---|---|
 | `_resolve_color` u remíz vrací `white` | `anonymous_session.py` | anonymní session může analyzovat špatnou barvu | Tier 2 — hotovo (T2.5) |
-| `max_time_dual: 1800` je mrtvá konfigurace | `config/depth.py`; nikdo ji nečte | dual analýza běží bez stropu | Tier 3.0 |
-| `unanalyzed_plies` eviduje jen plies hráče | `_run_analyze_pgn` | „partial“ kontrakt pro timeline nejde naplnit | Tier 3 |
+| `max_time_dual: 1800` je mrtvá konfigurace | `config/depth.py`; nikdo ji nečte | dual analýza běží bez stropu | Tier 3.0 — hotovo (klíč smazán, strop nemá měřené opodstatnění) |
+| `unanalyzed_plies` eviduje jen plies hráče | `_run_analyze_pgn` | „partial“ kontrakt pro timeline nejde naplnit | Tier 3.4 — hotovo v `game_full` (union obou stran); single-game payload zůstává jednoperspektivní |
 | `T` má hardcoded `50`, ostatní prahy jsou `THRESHOLD_*` | `pattern_detector.per_move_patterns` | nekonzistence s konvencí | Tier 2 — hotovo (`THRESHOLD_TACTICAL_SHAPED_CP`) |
 | žádný test `--color both` | `tests/test_coach_cli.py` | režim není pokrytý | Tier 1 — hotovo |
 
@@ -164,15 +165,23 @@ Pořadí je závazné. Tier 1 nesmí být přeskočen, protože produkuje špatn
 
 ### Tier 3 — timeline a perspektivy (2–3 iterace)
 
-| ID | Úkol | Acceptance |
-|---|---|---|
-| T3.0 | Sjednotit cache policy a run identity | `lichess_analyze_game` a coaching sdílí `mode`; `max_time_dual` buď zapojen, nebo odstraněn |
-| T3.1 | `services/timeline.py`: merge dvou `GameAnalysis` | každý ply jednou; White POV eval; deterministické proti cache |
-| T3.2 | `game_full` 1.0 + validace | schéma odmítne chybějící `mover_color` nebo nekonzistentní POV |
-| T3.3 | `interaction` events | pouze kandidátní měření s `unclassified` fallbackem; žádné nové ID bez D4 gate |
-| T3.4 | Partial game contract | chybějící plies obou stran; `status="partial"` |
+| ID | Úkol | Acceptance | Stav |
+|---|---|---|---|
+| T3.0 | Sjednotit cache policy a run identity | `lichess_analyze_game` a coaching sdílí `mode`; `max_time_dual` buď zapojen, nebo odstraněn | ✅ `mode` parametr + sdílený policy token; `max_time_dual` smazán |
+| T3.1 | `services/timeline.py`: merge dvou `GameAnalysis` | každý ply jednou; White POV eval; deterministické proti cache | ✅ |
+| T3.2 | `game_full` 1.0 + validace | schéma odmítne chybějící `mover_color` nebo nekonzistentní POV | ✅ schéma + `validate_game_full` |
+| T3.3 | `interaction` events | pouze kandidátní měření s `unclassified` fallbackem; žádné nové ID bez D4 gate | ⏸ čeká na measurement spec |
+| T3.4 | Partial game contract | chybějící plies obou stran; `status="partial"` | ✅ `missing_plies` + `unanalyzed_plies` + `missing_colours` |
 
 **Poznámka k ceně:** dual cache už dnes vyhodnocuje každý ply právě jednou (bílý běh bílé tahy, černý běh černé). Timeline je proto **merge vrstva**, ne nové engine volání. To je důvod, proč Tier 3 začíná merge a ne přepisem analyzátoru.
+
+**Implementační poznámky (Tier 3):**
+
+- `lichess_analyze_game` má nově `mode` (`fast`/`deep`, default `fast`) a používá stejný policy token jako coaching, takže oba nástroje čtou a zapisují stejné cache soubory. Staré `_d{depth}.json` záznamy zůstávají na disku, ale nový běh je nepoužije - jsou jiná engine policy.
+- `max_time_dual` byl smazán, protože ho nikdo nečetl. Dual běh nemá umělý wall-clock strop; limity jsou stage budget (`BUDGETS`) a node ceiling (`NODE_CAPS`).
+- `services/timeline.py` staví `game_full` 1.0 z jedné nebo dvou analýz. Chybějící pohled není chyba, ale `status="partial"` s pojmenovanou dírou; dva různé game id, dvě analýzy stejné barvy nebo ply mimo paritu jsou `TIMELINE_MISMATCH`.
+- `game_full` je CLI + souborový artefakt (`--format game-full`), ne MCP tool: kontraktní plocha zůstává malá. `--format full` zůstává deprecated alias pro `detailed`.
+- T3.3 se záměrně neimplementoval. "Interakce" nemá měřenou definici ani FP kalibraci; dodat ji bez toho by znamenalo nový pattern ID mimo D4 gate. Až bude spec, jde o nový detektor, ne o rozšíření timeline.
 
 ---
 
@@ -182,6 +191,7 @@ Pořadí je závazné. Tier 1 nesmí být přeskočen, protože produkuje špatn
 |---|---|
 | Cross-game artefakt schema 1.4 (`n_games`, `rate`, Wilson CI, `lift`, `stability`) | beze změny |
 | Compact 2.1 a detailed 1.2 | beze změny; pouze aditivní pole v Tier 2 |
+| `game_full` 1.0 | nový artefakt, ne rozšíření 2.1/1.2; verze 1.0 je neměnná |
 | D4 (žádné nové pattern ID bez taxonomie a FP kalibrace) | beze změny |
 | D5 (aditivní kontrakty) | beze změny; `game_full` je nový artefakt |
 | Admission gate `N >= 30`, `lift >= 1.4`, `>= 2` analýzy | beze změny |
@@ -198,8 +208,9 @@ Pořadí je závazné. Tier 1 nesmí být přeskočen, protože produkuje špatn
 | `REFACTOR_PLAN_2026-11-11.md` | historický pro Fázi 1+; Fáze 0 hotová | roadmapu single-game větve řídí tento dokument |
 | `PLAN_SINGLE_GAME_CALIBRATION_2026-11-07.md` | implementováno, kontrakt 1.2 zmrazen | poznámky k `moves_total` a eval POV |
 | `COMPACT_JSON_FOR_LLM.md` | závazný pro compact 2.1 | doplněna definice POV a jednoperspektivnosti |
-| `CLI_USAGE.md` | závazný pro CLI | opraveny verze 2.1/1.2; `both` + `username` vyřešeno v T1.2 (username se v `both` nepředává) |
-| `CANDIDATE_PATTERNS_2026-11-12.md` | závazný measurement appendix | §8.5 potvrzeno auditem, blokováno na T3.1 |
+| `CLI_USAGE.md` | závazný pro CLI | opraveny verze 2.1/1.2; `both` + `username` vyřešeno v T1.2 (username se v `both` nepředává); `--format game-full` (T3.2) |
+| `GAME_FULL_1.0.md` | závazný pro `game_full` 1.0 | White POV, `mover_color`, partial kontrakt, co artefakt nedělá (T3.3) |
+| `CANDIDATE_PATTERNS_2026-11-12.md` | závazný measurement appendix | §8.5 potvrzeno auditem; merge vrstva hotová (T3.1), plnění `context_window` je další krok |
 | `CHESS_COACHING_PROMPT_TEMPLATES.md` | design reference | runtime prompt = `prompt_builder.py`; runtime text změněn v T2.3 (design doc jen odkazuje) |
 | `REPORT_STAV_2026-11-11.md` | historický snapshot | nemá se aktualizovat; jen banner |
 | `DEEP_DIVE_SINGLE_GAME_PATTERNS_2026-08-02.md` | historický | — |
@@ -213,23 +224,24 @@ Audit navrhuje 14 testů. Kanonická matice je níže; poslední tři audit nem�
 
 | Test | Očekávaný výsledek | Tier |
 |---|---|---|
-| PGN s 20 půltahy | White 10 rozhodnutí, Black 10 rozhodnutí | T3 |
-| Union White + Black plies | přesně všech 20 půltahů | T3 |
-| Intersection White a Black plies | prázdná množina | T3 |
+| PGN s 20 půltahy | White 10 rozhodnutí, Black 10 rozhodnutí | T3.1 — hotovo |
+| Union White + Black plies | přesně všech 20 půltahů | T3.1 — hotovo |
+| Intersection White a Black plies | prázdná množina | T3.1 — hotovo |
 | `color=both`, username White | dva různé výstupy | T1 |
 | `color=both`, username Black | dva různé výstupy | T1 |
 | `color=both`, bez username | dva různé výstupy | T1 |
 | Neznámý username + explicit Black | Black zůstává Black, nebo jasná chyba | T1 |
 | Přímé MCP `color=both` | dva pohledy, nebo validní odmítnutí | T1 |
-| Cache dual analysis → coaching | stejná policy / run identity, bez přepočtu | T3.0 |
-| LLM joint report | obsahuje tahy obou barev a reakce | T3 |
+| Cache dual analysis → coaching | stejná policy / run identity, bez přepočtu | T3.0 — hotovo (`mode` + policy token) |
+| LLM joint report | obsahuje tahy obou barev a reakce | T3 — neimplementováno (LLM není v runtime) |
 | Pattern C | předchozí rozhodnutí téhož hráče, ne tah soupeře | T1 |
 | Pattern J | královský ústup se nezamění za blokování figurou | T1 |
 | Pattern S | král mohl sebrat šachující figuru a neudělal to | existuje |
-| Evaluační timeline | jednotně White POV | T3 |
-| **`n_units` se nezdvojnásobí** | dvě perspektivy = jedna jednotka | T3 |
-| **Merged timeline = zdrojové cache** | stejné eval hodnoty, deterministicky | T3.1 |
-| **`game_full` validace** | chybějící `mover_color` / nekonzistentní POV = error | T3.2 |
+| Evaluační timeline | jednotně White POV | T3.1/T3.2 — hotovo |
+| **`n_units` se nezdvojnásobí** | dvě perspektivy = jedna jednotka | T3.1 — merge neduplikuje |
+| **Merged timeline = zdrojové cache** | stejné eval hodnoty, deterministicky | T3.1 — hotovo |
+| **`game_full` validace** | chybějící `mover_color` / nekonzistentní POV = error | T3.2 — hotovo |
+| **Partial timeline** | chybějící barva/plies = `status="partial"` + pojmenovaná díra | T3.4 — hotovo |
 | **Eval POV klíče** | `eval_before_mover_cp` = `eval_before`, oba mover POV | T2.1 |
 | **`game_plies_total`** | 40 plies, 20 tahů hráče → 20 opponent; legacy cache = `null` | T2.2 |
 | **Remíza bez barvy** | `COLOR_UNDETECTED`, nikdy `white` | T2.5 |

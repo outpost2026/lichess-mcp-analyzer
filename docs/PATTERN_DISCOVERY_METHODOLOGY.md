@@ -1,7 +1,7 @@
 ---
 title: Metodologie pattern discovery a detection
-date: 2026-11-13
-verze: 1.6
+date: 2026-11-14
+verze: 1.7
 status: ZÁVAZNÝ METODOLOGICKÝ ARTEFAKT
 účel: Popsat, jak vznikají a jak se ověřují kandidátní chess patterny; porovnat metodologii s pattern discovery v jiných doménách; vyhodnotit originalitu a efektivitu.
 návaznost: CANDIDATE_PATTERNS_2026-11-12.md, AUDIT_INTEGRATION_2026-11-13.md, REFACTOR_PLAN_2026-11-11.md, PLAN_SINGLE_GAME_CALIBRATION_2026-11-07.md, MIKOLOV_KOMPRESE_V_PATTERN_ARCHITEKTURE.md, COMPACT_JSON_FOR_LLM.md, DEEP_DIVE_SINGLE_GAME_PATTERNS_2026-08-02.md
@@ -11,6 +11,7 @@ změny_1_3: P1 uzavřeno — schema 1.3 s Wilson CI a podmíněným liftem (§5.
 změny_1_4: P2 krok B — skutečná dvoučlenná MDL (`services/mdl.py`, §11.1) jako měřicí vrstva; naměřené gainy proxy mechanismů; `non_estimable` pro hraniční MLE.
 změny_1_5: P2 krok C — split-half stabilita a časový drift (§5.5, §11.5); Page-Hinkley zamítnut pro nekalibrovatelnost `delta`/`lambda`, nahrazen dvouvýběrovým z-testem na chronologických polovinách; schema 1.4, `PatternMatch.stability`; roadmap P2 split-half uzavřen.
 změny_1_6: Integrace auditu 2026-11-13 — hranice single-game (event, 1.2/2.1) vs cross-game (pattern, 1.4) v §1.1.1; důkazová úroveň opravena v §2.5; nová slabina §11.7 (jednoperspektivní single-game); paralelní track §12.2 s odkazem na `AUDIT_INTEGRATION_2026-11-13.md`. Cross-game kontrakty se nemění.
+změny_1_7: Tier 3 hotov — `game_full` 1.0 implementován (`services/timeline.py`, `GAME_FULL_1.0.md`); §11.7 fix označen jako hotový, `interaction` events zůstávají neimplementované (T3.3 čeká na measurement spec). Cross-game kontrakty se nemění.
 ---
 
 ## 0. TL;DR
@@ -45,7 +46,7 @@ Audit 2026-11-13 ukázal, že „pattern“ a „celá partie“ nejsou totéž.
 | Schopnost | Otázka | Vrstva | Artefakt | Perspektiva |
 |---|---|---|---|---|
 | **Player Behavior Analysis** | které chyby a mechanismy se u hráče opakují napříč hrami | pattern (E2–E3) | cross-game schema 1.4 | jedna barva hráče |
-| **Full Game Dynamics** | jak se v jedné partii vyvíjela interakce obou hráčů | event + timeline | `game_full` 1.0 (plánováno) | obě, oddělené |
+| **Full Game Dynamics** | jak se v jedné partii vyvíjela interakce obou hráčů | event + timeline | `game_full` 1.0 (implementováno 2026-11-14; `interaction` events ne) | obě, oddělené |
 
 Single-game výstup dnes nese **eventy jedné perspektivy** (detailed 1.2 / compact 2.1). Cross-game výstup nese **patterny** (schema 1.4). `game_full` je nový aditivní artefakt, který obě schopnosti propojí, ale nesmí je slít: perspektivy zůstávají oddělené a do cohortu nikdy nevstupují obě (§11.7, D8 v `AUDIT_INTEGRATION_2026-11-13.md`).
 
@@ -562,7 +563,7 @@ Interpretace, kterou report **nesmí** přeskočit:
 
 **Proč to není bug:** kód dělá přesně to, co deklaruje (analýza jednoho hráče). Chybějící schopnost je **produktová mezera**, ne defekt — a proto nemá být označena jako P0 (viz `AUDIT_INTEGRATION_2026-11-13.md` §2).
 
-**Fix (plánováno, Tier 3):** merge vrstva `services/timeline.py` nad **existující dual cache**. Bílý běh už dnes vyhodnocuje bílé tahy a černý běh černé, takže každý ply je vyhodnocen právě jednou; chybí jen spojení do jednoho artefaktu `game_full` 1.0 s `timeline`, `perspectives.white`, `perspectives.black` a `interaction`. Detaily a acceptance: `AUDIT_INTEGRATION_2026-11-13.md` §6 (T3.0–T3.4).
+**Fix (implementováno 2026-11-14, Tier 3):** merge vrstva `services/timeline.py` nad **existující dual cache**. Bílý běh už dnes vyhodnocuje bílé tahy a černý běh černé, takže každý ply je vyhodnocen právě jednou. Výsledkem je artefakt `game_full` 1.0: `plies[]` s `mover_color`, White POV eval a `source` pro obě barvy. Chybějící pohled nebo měření je `status="partial"` s pojmenovanou dírou, ne dopočtená hodnota. `interaction` events **nejsou** součástí 1.0 - nemají měřenou definici ani FP kalibraci (T3.3 čeká na spec, D4 gate). Kanonický tvar: `GAME_FULL_1.0.md`; rozhodnutí a acceptance: `AUDIT_INTEGRATION_2026-11-13.md` §6 (T3.0–T3.4).
 
 **Co se nesmí stát:** oba pohledy nesmí vstoupit do jednoho `detect_all` cohortu — `n_units` by se zdvojnásobil a stejná hra by se počítala dvakrát (D8).
 
@@ -582,7 +583,7 @@ Interpretace, kterou report **nesmí** přeskočit:
 | **P5** | Lesson compiler + tréninkový loop | pattern → drill → měřený outcome; A/B design |
 | **P6** | External validity (stylometrie) | few-shot identifikace hráče nad baseline |
 | **P7** | Pattern vector store + drift dashboard | `v_p` per hráč, stabilní schema, competitive scan |
-| **P8** | `game_full` 1.0 — timeline + dvě perspektivy | merge dvou `GameAnalysis` bez nového engine volání; každý ply jednou; White POV eval; `interaction` jen kandidátní (D4); viz §12.2 |
+| **P8** ✅ | `game_full` 1.0 — timeline + dvě perspektivy | hotovo 2026-11-14: merge dvou `GameAnalysis` bez nového engine volání; každý ply jednou; White POV eval; `status="partial"` pro chybějící data; `interaction` zůstává mimo 1.0 (T3.3, D4 gate); viz `GAME_FULL_1.0.md` |
 
 ### 12.1 Pořadí je závazné
 

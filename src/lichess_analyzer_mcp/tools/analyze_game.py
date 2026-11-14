@@ -1,4 +1,6 @@
-﻿from lichess_analyzer_mcp.app import app
+﻿import os
+
+from lichess_analyzer_mcp.app import app
 from lichess_analyzer_mcp.services.audit import auditable
 from lichess_analyzer_mcp.config.depth import DEPTH_DEFAULTS
 from lichess_analyzer_mcp.services.game_analyzer import analyze_pgn, _detect_game_profile
@@ -8,7 +10,12 @@ from lichess_analyzer_mcp.services.lichess_client import fetch_game_pgn
 @app.tool("lichess_analyze_game")
 @auditable
 async def lichess_analyze_game(
-    game_id: str = "", pgn: str = "", username: str = "", color: str = "white", depth: int = 0
+    game_id: str = "",
+    pgn: str = "",
+    username: str = "",
+    color: str = "white",
+    depth: int = 0,
+    mode: str = "fast",
 ):
     """Analyzes a chess game move by move using Stockfish.
 
@@ -21,6 +28,10 @@ async def lichess_analyze_game(
         username: Your username (to determine your color), or specify color
         color: Your color if username not provided ('white' or 'black')
         depth: Stockfish analysis depth (8-24, default 14 — 0=auto)
+        mode: Engine policy shared with the coaching tools ('fast' | 'deep').
+            T3.0: both surfaces use the same cache key, so a game analyzed by
+            one tool is a cache hit for the other. 'legacy' keeps the old
+            depth-only policy for batch callers.
     """
     try:
         if game_id and not pgn:
@@ -58,15 +69,33 @@ async def lichess_analyze_game(
                 elif username.lower() == white.lower():
                     color = "white"
         result = analyze_pgn(
-            pgn, player_color=color, depth=depth, game_id=game_id, strict_depth=True
+            pgn,
+            player_color=color,
+            depth=depth,
+            game_id=game_id,
+            strict_depth=True,
+            mode=mode,
         )
 
         # Dual cache: always analyze and cache the OPPOSITE perspective too
-        # so both {game_id}_white_d{depth}.json and {game_id}_black_d{depth}.json exist
+        # so both {game_id}_white_d{depth}{policy}.json and
+        # {game_id}_black_d{depth}{policy}.json exist. T3.0: the policy suffix
+        # is the same one the coaching tools use, so the two share entries.
+        from lichess_analyzer_mcp.services.game_analyzer import (
+            _cache_path,
+            _policy_token,
+        )
+
         other_color = "black" if color == "white" else "white"
         other_result = analyze_pgn(
-            pgn, player_color=other_color, depth=depth, game_id=game_id, strict_depth=True
+            pgn,
+            player_color=other_color,
+            depth=depth,
+            game_id=game_id,
+            strict_depth=True,
+            mode=mode,
         )
+        policy = _policy_token(depth, mode)
 
         # Auto-update user games index so per-game analysis is visible
         # in the global cache (Systeq_games.json + Systeq_index.json).
@@ -96,6 +125,7 @@ async def lichess_analyze_game(
                 "elo_estimate": result.game.elo_estimate,
             },
             "perspective": color,
+            "mode": mode,
             "dual_cache": {
                 "white": round(other_result.total_acpl, 1)
                 if other_color == "white"
@@ -105,8 +135,8 @@ async def lichess_analyze_game(
                 else round(result.total_acpl, 1),
                 f"{other_color}_acpl": round(other_result.total_acpl, 1),
                 "files": [
-                    f"{game_id}_white_d{depth}.json",
-                    f"{game_id}_black_d{depth}.json",
+                    os.path.basename(_cache_path(game_id, depth, "white", policy)),
+                    os.path.basename(_cache_path(game_id, depth, "black", policy)),
                 ],
             },
             "stats": {

@@ -1,0 +1,194 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "game_full_v1.0",
+  "title": "game_full 1.0 - merged full-game timeline",
+  "description": "Merge layer over the two single-perspective analyses (D7a). Every ply appears exactly once, eval fields are White POV, and the mover-POV value is published next to the White-POV value so the invariant is checkable. cp_loss is a loss magnitude and is never sign-flipped. A value that was not measured is null, never 0. Structural validation is mirrored by services/timeline.validate_game_full(), which also enforces ply parity, the POV sign invariant and the complete/partial consistency.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "v",
+    "pov",
+    "game",
+    "status",
+    "plies_total",
+    "missing_plies",
+    "unanalyzed_plies",
+    "coverage",
+    "source",
+    "plies"
+  ],
+  "properties": {
+    "schema": { "const": "game_full" },
+    "v": { "const": "1.0" },
+    "pov": { "const": "white" },
+    "game": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "white",
+        "black",
+        "result",
+        "opening",
+        "eco",
+        "time_control",
+        "date",
+        "url"
+      ],
+      "properties": {
+        "id": { "type": "string" },
+        "white": { "type": "string", "description": "White player name from the PGN headers." },
+        "black": { "type": "string", "description": "Black player name from the PGN headers." },
+        "result": { "type": "string" },
+        "opening": { "type": "string" },
+        "eco": { "type": "string" },
+        "time_control": { "type": "string" },
+        "date": { "type": "string" },
+        "url": { "type": "string" }
+      }
+    },
+    "status": {
+      "enum": ["complete", "partial"],
+      "description": "'complete' requires a known plies_total, every ply merged, no unmeasured ply and both colours present. Anything else is 'partial' and the gap is named."
+    },
+    "plies_total": {
+      "type": ["integer", "null"],
+      "minimum": 1,
+      "description": "Total plies from the PGN walk. null when no source analysis recorded it (legacy cache) - never a guessed length."
+    },
+    "missing_plies": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 1 },
+      "description": "Plies inside 1..plies_total that no analysis measured. Empty when plies_total is null, because the range is unknown."
+    },
+    "unanalyzed_plies": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 1 },
+      "description": "Plies present in a payload but explicitly unmeasured (engine error/budget). Their cp_loss and eval fields are null."
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "white_plies",
+        "black_plies",
+        "merged_plies",
+        "expected_plies",
+        "missing_colours"
+      ],
+      "properties": {
+        "white_plies": { "type": "integer", "minimum": 0 },
+        "black_plies": { "type": "integer", "minimum": 0 },
+        "merged_plies": { "type": "integer", "minimum": 1 },
+        "expected_plies": { "type": ["integer", "null"], "minimum": 1 },
+        "missing_colours": {
+          "type": "array",
+          "items": { "enum": ["white", "black"] },
+          "description": "Colours with no source analysis at all. Non-empty implies status=partial."
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["white", "black"],
+      "description": "Both perspectives are always present. available=false means that colour was not analysed at all; such an entry publishes no measurement (acpl=null, moves_measured=0).",
+      "properties": {
+        "white": { "$ref": "#/$defs/sourceEntry" },
+        "black": { "$ref": "#/$defs/sourceEntry" }
+      }
+    },
+    "plies": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/plyEntry" }
+    }
+  },
+  "$defs": {
+    "sourceEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["available", "mode", "acpl", "moves_measured"],
+      "properties": {
+        "available": { "type": "boolean" },
+        "mode": { "type": "string", "description": "Engine policy that produced this perspective (fast/deep/legacy)." },
+        "acpl": { "type": ["number", "null"], "minimum": 0, "description": "ACPL for this perspective; null when available=false." },
+        "moves_measured": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "plyEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ply",
+        "mover_color",
+        "san",
+        "uci",
+        "class",
+        "cp_loss",
+        "eval_before_mover_cp",
+        "eval_after_mover_cp",
+        "eval_before_white_cp",
+        "eval_after_white_cp",
+        "win_prob_white_before",
+        "win_prob_white_after",
+        "fen_before",
+        "best",
+        "rank",
+        "analyzed"
+      ],
+      "properties": {
+        "ply": { "type": "integer", "minimum": 1 },
+        "mover_color": {
+          "enum": ["white", "black"],
+          "description": "Must match ply parity: odd = white, even = black. Validated semantically."
+        },
+        "san": { "type": "string" },
+        "uci": { "type": "string" },
+        "class": {
+          "type": ["string", "null"],
+          "enum": ["blunder", "mistake", "inaccuracy", "good", "best", "unanalyzed", null],
+          "description": "null when the ply was not measured."
+        },
+        "cp_loss": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "description": "Loss magnitude for the mover, never sign-flipped. null exactly when analyzed=false."
+        },
+        "eval_before_mover_cp": {
+          "type": ["number", "null"],
+          "description": "Engine eval before the move, from the mover's POV. null when unmeasured."
+        },
+        "eval_after_mover_cp": {
+          "type": ["number", "null"],
+          "description": "Engine eval after the move, still from the mover's POV (not flipped). null when unmeasured."
+        },
+        "eval_before_white_cp": {
+          "type": ["number", "null"],
+          "description": "eval_before_mover_cp in White POV: identical for White, negated for Black."
+        },
+        "eval_after_white_cp": {
+          "type": ["number", "null"],
+          "description": "eval_after_mover_cp in White POV: identical for White, negated for Black."
+        },
+        "win_prob_white_before": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Win probability in White POV; flipped (1 - p) for Black moves."
+        },
+        "win_prob_white_after": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Win probability in White POV; flipped (1 - p) for Black moves."
+        },
+        "fen_before": { "type": "string" },
+        "best": { "type": "string", "description": "Engine's preferred SAN at this ply; empty when unmeasured." },
+        "rank": { "type": ["integer", "null"], "minimum": 1 },
+        "analyzed": { "type": "boolean" }
+      }
+    }
+  }
+}

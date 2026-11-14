@@ -47,6 +47,9 @@ opt-in přes `--format detailed`.
 # oba tvary v jednom payloadu
 .\.venv\Scripts\python.exe -X utf8 scripts\coach.py --game-id lxO3gwd3 --format both --out both.json
 
+# merged timeline obou barev, White POV (game_full 1.0)
+.\.venv\Scripts\python.exe -X utf8 scripts\coach.py --game-id lxO3gwd3 --format game-full --out data\runs\full.json
+
 # lokální PGN, plně offline
 .\.venv\Scripts\python.exe -X utf8 scripts\coach.py --pgn-file data\runs\game.pgn --color black --no-llm --out out.json
 
@@ -66,7 +69,7 @@ opt-in přes `--format detailed`.
 | `--batch N` | posledních N her z `--username`; jen s `--format compact` |
 | `--depth N` | výchozí 14 |
 | `--mode fast\|deep` | `fast` = 60 s deadline, `deep` = 120 s |
-| `--format compact\|detailed\|both\|full` | `compact` výchozí; `full` = deprecated alias pro `detailed` |
+| `--format compact\|detailed\|both\|game-full\|full` | `compact` výchozí; `game-full` = `game_full` 1.0, merged timeline obou barev ve White POV (bez LLM, `--color` se ignoruje); `full` = deprecated alias pro `detailed` |
 | `--no-llm` | žádný LLM provider; report je deterministický |
 | `--no-cache` | vynutí cold analýzu |
 | `--nodes-cap N` | přepíše `NODE_CAPS[depth]` jen v tomto procesu |

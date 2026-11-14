@@ -45,8 +45,8 @@ regression `FVhqtv1S`; measured 4400 chars) versus 13–26 kB for schema 1.2.
 Compact 2.1 is **single-perspective**: every `flags[]` entry, `summary.acpl`,
 `summary.phases`, `patterns[]` and `clusters` describe the moves of the colour
 in `game.color` (always `white` or `black`). Opponent moves are not part of the
-payload. A full-game view is a different artifact (`game_full` 1.0, planned —
-see `AUDIT_INTEGRATION_2026-11-13.md` §6), not an extension of compact 2.1.
+payload. A full-game view is a different artifact (`game_full` 1.0, implemented
+2026-11-14 — see `GAME_FULL_1.0.md`), not an extension of compact 2.1.
 
 **Eval POV:** `eval_before_mover_cp` and `eval_after_mover_cp` are both from
 the **mover's** point of view — the player who made the flagged move.

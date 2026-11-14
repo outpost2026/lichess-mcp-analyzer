@@ -26,7 +26,11 @@ DEPTH_DEFAULTS = {
         "max_single_game": 24,
         "max_batch": 18,
         "max_time_single": 900,
-        "max_time_dual": 1800,
+        # T3.0 (2026-11-14): `max_time_dual` was removed. It had no reader,
+        # so dual analysis never had an artificial wall-clock cap; the real
+        # limits are the stage budget (BUDGETS) and the node ceiling
+        # (NODE_CAPS). Do not reintroduce a time constant without a measured
+        # reason and a decision id.
     },
 }
 

@@ -42,7 +42,7 @@ EXIT_IO = 2
 EXIT_ENGINE = 3
 EXIT_NETWORK = 4
 
-_FORMATS = ("compact", "detailed", "both")
+_FORMATS = ("compact", "detailed", "both", "game-full")
 
 
 class _Parser(argparse.ArgumentParser):
@@ -221,6 +221,44 @@ async def _single_pgn(
     return results[0] if len(results) == 1 else results
 
 
+def _full_game(
+    game_id: str,
+    *,
+    pgn_path: str,
+    depth: int,
+    mode: str,
+    no_cache: bool,
+) -> dict:
+    """`game_full` 1.0: merge the white and black analyses into one timeline.
+
+    No LLM and no new engine work: the two single-perspective caches already
+    measured every ply once. The merge is deterministic and validated before
+    it is printed, so a broken POV invariant can never reach a consumer.
+    """
+    from lichess_analyzer_mcp.services.game_analyzer import analyze_pgn
+    from lichess_analyzer_mcp.services.lichess_client import fetch_game_pgn
+    from lichess_analyzer_mcp.services.timeline import merge_cached
+
+    pgn = fetch_game_pgn(game_id) if game_id else _read_pgn(pgn_path)
+    resolved_id = game_id or _pgn_game_id(pgn)
+
+    analyses = []
+    for side in ("white", "black"):
+        analysis = analyze_pgn(
+            pgn,
+            side,
+            depth,
+            resolved_id or None,
+            use_cache=not no_cache,
+            strict_depth=True,
+            mode=mode,
+        )
+        if not analysis.moves:
+            raise ValueError(f"analysis produced no moves for {side} (invalid PGN?)")
+        analyses.append(analysis)
+    return merge_cached(analyses)
+
+
 def _pattern_frequency(results: list[dict]) -> dict[str, int]:
     frequency: dict[str, int] = {}
     for result in results:
@@ -329,8 +367,9 @@ def main(argv: list[str] | None = None) -> int:
         "--format",
         dest="fmt",
         default="compact",
-        choices=["compact", "detailed", "both", "full"],
-        help="compact (default) | detailed (schema 1.1) | both | full (deprecated alias)",
+        choices=["compact", "detailed", "both", "full", "game-full"],
+        help="compact (default) | detailed (schema 1.2) | both | game-full "
+        "(merged White-POV timeline, game_full 1.0) | full (deprecated alias of detailed)",
     )
     parser.add_argument("--no-llm", action="store_true", help="Skip every LLM provider")
     parser.add_argument("--no-cache", action="store_true", help="Force a cold analysis")
@@ -363,7 +402,6 @@ def main(argv: list[str] | None = None) -> int:
     if args.fmt == "full":
         print("warning: --format full is deprecated; use --format detailed", file=sys.stderr)
         args.fmt = "detailed"
-
     _load_env()
 
     if args.nodes_cap:
@@ -372,7 +410,17 @@ def main(argv: list[str] | None = None) -> int:
         depth_cfg.NODE_CAPS[args.depth] = int(args.nodes_cap)
 
     try:
-        if args.batch:
+        if args.fmt == "game-full":
+            # D7a: a merged timeline needs both perspectives; --color and
+            # --no-llm do not apply (no LLM is involved).
+            payload = _full_game(
+                args.game_id,
+                pgn_path=args.pgn_file,
+                depth=args.depth,
+                mode=args.mode,
+                no_cache=args.no_cache,
+            )
+        elif args.batch:
             payload = asyncio.run(
                 _batch(
                     args.username,

@@ -312,9 +312,9 @@ pattern; zdejší taxonomie F1-F8/Z je jeho measurement appendix.
 5. Doplnit do okna `context_window` **tahy soupeře** (nyní jen tahy
    analyzovaného hráče) — jinak F1 nelze deterministicky potvrdit z okna.
    **Potvrzeno auditem 2026-11-13** (jednoperspektivní single-game, viz
-   `PATTERN_DISCOVERY_METHODOLOGY.md` §11.7). **Blokováno na T3.1**
-   (`services/timeline.py`, merge dvou `GameAnalysis`), protože bez timeline
-   nelze okno naplnit bez druhého engine běhu.
+   `PATTERN_DISCOVERY_METHODOLOGY.md` §11.7). **Merge vrstva hotová 2026-11-14**
+   (`services/timeline.py`, `game_full` 1.0) — okno lze naplnit z timeline bez
+   druhého engine běhu; plnění okna v detektoru je samostatný krok.
 6. Pravidelný běh digestu po každé dávce snapshotů (cadence): stejný příkaz,
    tabulky §2–§3 se přepočtou; změny v procentech = regrese/posun.
 7. `automatic_grab`/`metacognition` — dohledat tvůrce pole, než se navrhne

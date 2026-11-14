@@ -4,6 +4,12 @@
 **Zdroj:** depth_diff_report_NktJfZZy.md (empiricke mereni Stockfish 18, 6 threads, Hash 512)
 **Kontext:** CPU i7-12700K, 6 threads, Stockfish 18 bmi2
 
+> **Stav 2026-11-14:** historicky design dokument. Konfigurace v §4.3 uz
+> neplatí doslova: `max_time_dual` byl smazan (T3.0, nikdo ho nečetl) a
+> `config/depth.py` je jediný zdroj pravdy. Aktuální limity: stage budget
+> (`BUDGETS`) + node ceiling (`NODE_CAPS`), zadny umely wall-clock strop pro
+> dual beh.
+
 ---
 
 ## 1. Soucasny stav: depth je definovan na 6 mistech, kazde jinak
