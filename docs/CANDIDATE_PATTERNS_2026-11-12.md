@@ -258,6 +258,21 @@ zbytku, který D4 říká ponechat jako `unclassified`, ne vymýšlet pattern na
 - **Z** — nejdřív vyřešit znaménkovou anomálii a pokrytí engine liniemi
   (22/682 bez linek), jinak by pattern měl vstup bez důkazu.
 
+### Kandidáti z handoffu v1.3 (2026-11-15) — čekají na D4 gate
+
+Dva návrhy z handoffu byly zamítnuty **jako pattern** (D13/D14), ale zapsány
+sem, aby se mezera nezatratila: jde o kandidáty pro příští D4 gate, ne o
+hotové detektory. Do té doby je publikuje `why` enum v compact 2.1.
+
+| Kandidát | Data | Proč to není pattern teď | Co by musel D4 gate doložit |
+|---|---|---|---|
+| `quiet_blunder` (D13, dřív návrh `Q1`) | `Qe3` 9465 cp, `Qd3` 347, `Qg4` 152 — `quiet_positional` pokrývá i matové blundery | predikát `cp>200 + class in (mistake, blunder)` je přejmenování klasifikace, ne nová detekce; `Q1` je obsazené („Desperate Gambit Mode") | samostatný mechanismus + FP strop na dobrých tazích |
+| `check_escape` (D14, dřív návrh `Q2` / rozšíření J) | `Kf3` 9197, `Ke6` 234, `Kf1` 123 — královský ústup v šachu | J má kontrakt „king move is an escape, never a block" (`is_piece_block`, D11); `Q2` je obsazené („Win despite blunder") | predikát, který odliší špatný ústup od správného, a fixture, kde správný ústup NEfire |
+
+Do implementace platí: `why=quiet_blunder` a `why=check_escape` jsou
+**pojmenované mezery**, ne patterny. LLM je musí číst jako „žádný kalibrovaný
+pattern to nepokrývá", nikdy jako diagnózu.
+
 ## 6. Behaviorální / psychologické hypotézy (LLM offline — NE data, NE runtime)
 
 Každá hypotéza je testovatelná a zatím nepotvrzená; nic z toho se

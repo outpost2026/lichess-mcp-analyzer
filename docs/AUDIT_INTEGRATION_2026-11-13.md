@@ -283,6 +283,41 @@ Tato rozhodnutí jsou závazná a nemění se bez nového ID (`D6b` atd.).
 
 ---
 
+## 12. Integrace handoffu v1.2 → v1.3 (2026-11-15)
+
+Detail: `docs/HANDOFF_V1_3_INTEGRATION_2026-11-15.md`. Handoff analyzoval 11 her; datová část sedí, ale P0-1 a P0-2 porušují D4/D11 a P0-4/P0-5/P1-4 popisují compact 2.0, ne 2.1.
+
+| ID | Rozhodnutí | Dopad |
+|---|---|---|
+| **D13** | `quiet_positional` + `cp>200` + bez motivu → `why=quiet_blunder` (aditivní enum), žádný nový pattern. `Q1` zůstává "Desperate Gambit Mode". | LLM rozliší tichý posun od blunderu; D4 zůstává. |
+| **D14** | King escape v šachu → `why=check_escape` (aditivní enum). J zůstává "block, nikdy king move" (D11). Kandidát na pattern se zapíše pro příští D4 gate. | Žádná změna J; mezera je pojmenovaná. |
+| **D15** | `game_impact` aditivně v detailed 1.2, s matovými stavy (`*_to_mate`) nebo `mate_after`. Práh ±100 cp dokumentovaný. | Cosmetic vs fatal blunder; bez změny verze schématu. |
+| **D16** | P0-4/P0-5/P1-4 zamítnuty jako stale (compact 2.0). Review sample musí nést `generated_by_commit` + `schema_v`. | Žádný kód; prevence opakování. |
+| **D17** | Report publikuje `segment` i `chess_phase` s popiskem; `phase_stats` není deprecated, je `effective_phase`. Závisí na T-08. | Odstraní se ambiguous "Fázově nejslabší". |
+| **D18** | P1-1/2/3 jen dokumentace aliasů; jediná změna je jednotka `confidence` (0-1 vs 0-100). | 1.2 kompatibilita; 100× chyba zmizí. |
+| **D19** | Full emituje `endgame.not_reached` (P3). | Konzistence full vs compact. |
+| **D20** | P1-6 fold do T-10 (jeden predikát C, jeden bump). | Žádná samostatná změna prahu. |
+| **D21** | Median ACPL při `max/median > 10` (report-only, P3). | Fáze nezkreslená jedním blunderem. |
+| **D22** | `opening_deviation` odloženo do doby měřitelné definice. | Žádné pole bez pravidla. |
+| **D23** | Parser `%clk` + `clock` per move podle D10a (T-16). Do té doby `clock_data_unavailable`. | Time trouble měřitelný. |
+| **D24** | CLI politika barev: explicitní `--color` vyhrává, `--username` samo = detekce, ani jedno = **obě barvy** v jednom JSON (`{"white": …, "black": …}`). `--color both` zůstává jako explicitní synonymum. `coach_single.py` navíc `--format compact\|detailed\|both` (default `both`) a chyba pipeline = stderr + exit 1, nikdy prázdný JSON. U PGN je neznámý `--username` chyba, ne tichý přepis barvy. | Jedna hra = jeden soubor s kompletní dynamikou; D6a (`both` = dvě explicitní volání) zůstává. |
+| **D25** | Detailed 1.2 dostává aditivně `flagged_moves[].fen_before` a blok `game` (jména, ratingy, TC, datum, URL, zahájení, výsledek). Anonymní placeholdery = prázdný string, neznámý rating = `null`. FEN se nepočítá znovu — už je v cache. | LLM umí popsat pozici i atribuovat tah hráči; compact 2.1 beze změny. |
+
+Nová zjištění mimo handoff: `%clk` je deklarovaný, ale nikde se neparsuje (N-01); `confidence` má dvě jednotky (N-02); `best_eval` chybí u 97,8 % tahů (N-03); `phase_stats` změní význam tichým přechodem po T-08 (N-04); vysoké ACPL 828/785 jsou matový pseudo-cp (N-05); `unclassified_reason` je uzavřený enum (N-06).
+
+### 12.1 Implementováno v [2.5]
+
+| Položka | Kód | Test |
+|---|---|---|
+| D18/N-02 `confidence` 0–100 v detailed, 0–1 v KB slim | `pattern_detector.scan_single_game` | `tests/test_confidence_unit.py` |
+| D25 `fen_before` v `flagged_moves[]` | `coaching_single_game._flagged_moves` | `tests/test_output_enrichment.py` |
+| D25 `game` blok + anonymizace + `null` rating | `coaching_single_game._game_block` | `tests/test_output_enrichment.py` |
+| D24 `resolve_colors` + klíčovaný výstup | `scripts/coach.py`, `scripts/coach_single.py` | `tests/test_coach_cli.py` |
+
+`confidence` má po D18 **jednu jednotku na artefakt**: detailed 1.2 = 0–100 (`schemas.py`), report = `{confidence}%`, KB slim = 0–1 (`/100`), compact 2.1 `conf` = 0–1 (zmrazené schema). `strength` zůstává 0–1.
+
+---
+
 ## Appendix — jak nálezy znovu ověřit
 
 Bez závislosti na číslech řádků:

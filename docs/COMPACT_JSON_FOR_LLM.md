@@ -10,6 +10,23 @@ It is the **default** output. Schema 1.2 (detailed) is opt-in via
 Typical size: **1.2–4.5 kB** per game (hard budget 4500 chars for the primary
 regression `FVhqtv1S`; measured 4400 chars) versus 13–26 kB for schema 1.2.
 
+## One game, both colours (D24)
+
+Compact 2.1 is single-perspective by contract, so a complete game is **two
+compact payloads in one file**, keyed by colour:
+
+```json
+{"white": {"v": "2.1", "game": {"color": "white"}, …},
+ "black": {"v": "2.1", "game": {"color": "black"}, …}}
+```
+
+This is the CLI default (`coach.py`, `coach_single.py` without `--color`).
+Read the key as "whose moves am I looking at" — `flags[]`, `summary.acpl`,
+`summary.phases`, `patterns[]` and `clusters` inside `white` describe White's
+moves only. With `--color white|black` the output is the bare payload, not a
+keyed object. A merged White-POV timeline is the separate `game_full` 1.0
+artifact.
+
 ## What is in it
 
 | Key | Meaning |
@@ -29,14 +46,14 @@ regression `FVhqtv1S`; measured 4400 chars) versus 13–26 kB for schema 1.2.
 | `flags[].patterns` | pattern ids whose evidence includes this ply; omitted when none |
 | `flags[].pstatus` | `matched` or `unclassified` — every flag states whether a pattern covers it (P0-7) |
 | `flags[].why` | reason code, present **only** when `pstatus == "unclassified"` (P0-7) |
-| `patterns[]` | behavioural layer: id, **ordinal `strength`** 0–1 (emitted as `conf`), frequency, severity, affected plies. `conf` is not a probability (P1) |
+| `patterns[]` | behavioural layer: id, **ordinal `strength`** 0–1 (emitted as `conf`), frequency, severity, affected plies. `conf` is not a probability (P1) and is **0–1**; the detailed payload's `confidence` is **0–100** — the same number in a different unit, never compare the two numerically (D18) |
 | `phase_method` | which phase source the detectors used: `ply_segment`, `material`, or `mixed` (P0-3). `summary.phases` follows this source; the detailed payload additionally publishes `segment_stats` and `chess_phase_stats` so the difference is auditable (P1) |
 | `patterns_meta` | mandatory: `scope`, `cross_game_suppressed`, `reason`, `coverage {flagged, matched, unclassified}`; an empty `patterns` list always has a reason |
 | `unclassified` | discovery feed: `{ply, class, cp, why}` for flagged moves without a pattern |
 | `pv` | `ply -> [SAN, SAN, SAN]` best line (max 3 moves) |
-| `pv_unavailable` | `ply -> reason` when a blunder/mistake has no PV (explicit gap) |
+| `pv_unavailable` | `ply -> reason` when a blunder/mistake has no PV (explicit gap). This **is** the truncation signal: there is no separate `pv_truncated` flag |
 | `clusters` | runs of >= 3 consecutive flagged own moves (time-pressure signal) |
-| `fen_before` | `ply -> FEN`, only for `cp > 100` (reproducible drill positions) |
+| `fen_before` | `ply -> FEN`, only for `cp > 100` (reproducible drill positions). Detailed 1.2 carries `flagged_moves[].fen_before` for **every** flag, so a narrative that needs the position of a small inaccuracy must use the detailed payload |
 | `report` | short deterministic summary, ≤900 chars, never truncated mid-structure |
 | `llm` | `{status, provider, reason}`; `failed` + `deterministic` means no LLM was used |
 
@@ -248,8 +265,11 @@ above 0.5, so they justify targeted capture/check discipline work.
 ## How to produce it
 
 ```powershell
-# one game -> compact JSON (default, offline without --no-llm only if desired)
-.\.venv\Scripts\python.exe -X utf8 scripts\coach.py --game-id Sl1s8KmU --username systeq --no-llm --out data\reports\compact_Sl1s8KmU.json
+# one game -> compact JSON for BOTH colours, keyed {"white": …, "black": …}
+.\.venv\Scripts\python.exe -X utf8 scripts\coach.py --game-id Sl1s8KmU --no-llm --out data\reports\compact_Sl1s8KmU.json
+
+# one perspective only (bare payload, not keyed)
+.\.venv\Scripts\python.exe -X utf8 scripts\coach.py --game-id Sl1s8KmU --color white --no-llm
 
 # exact schema 1.2 (debugging / cross-game)
 .\.venv\Scripts\python.exe -X utf8 scripts\coach.py --game-id Sl1s8KmU --format detailed --out detailed.json
@@ -267,3 +287,7 @@ above 0.5, so they justify targeted capture/check discipline work.
 `output_format` accepts `compact` (default, schema 2.1), `detailed` (schema
 1.2) and `both` → `{"compact": …, "detailed": …}`. `full` remains a deprecated
 alias for `detailed` for one release cycle and logs a warning.
+
+The MCP tool is always **single-perspective** (`color` is `white` or `black`,
+`both` is rejected with `INVALID_COLOR`, D6a). Both colours in one file is a
+CLI convenience: two explicit calls keyed by colour (D24).

@@ -35,11 +35,15 @@ Ověření, že server i tools jsou dostupné:
 
 Jeden vstupní bod pro všechny reálné workflow. **Výchozí výstup je compact
 JSON 2.1** (schema `schemas/single_game_v2_compact.json`); detailed 1.2 je
-opt-in přes `--format detailed`.
+opt-in přes `--format detailed`. **Výchozí rozsah jsou obě barvy** (D24):
+jedna hra = jeden JSON s oběma perspektivami, klíčovaný `{"white": …, "black": …}`.
 
 ```powershell
-# jedna hra -> compact 2.1 (výchozí)
-.\.venv\Scripts\python.exe -X utf8 scripts\coach.py --game-id FVhqtv1S --username systeq --no-llm --out data\reports\FVhqtv1S.json
+# jedna hra -> compact 2.1, obě barvy, klíčovaný JSON (výchozí)
+.\.venv\Scripts\python.exe -X utf8 scripts\coach.py --game-id FVhqtv1S --no-llm --out data\reports\FVhqtv1S.json
+
+# jen jedna perspektiva (výstup je pak plochý objekt, ne klíčovaný)
+.\.venv\Scripts\python.exe -X utf8 scripts\coach.py --game-id FVhqtv1S --color white --no-llm
 
 # explicitně detailed 1.2 (debugging / cross-game)
 .\.venv\Scripts\python.exe -X utf8 scripts\coach.py --game-id lxO3gwd3 --format detailed --out detailed.json
@@ -65,7 +69,7 @@ opt-in přes `--format detailed`.
 | `--game-id ID` | Lichess ID (8 znaků) |
 | `--pgn-file PATH` | alternativa k `--game-id`; lokální PGN |
 | `--username NAME` | Lichess nick; určí barvu automaticky |
-| `--color white\|black\|both` | `both` = dvě samostatná volání (white + black), výstup je pole. V `both` režimu se `--username` nepředává do analýzy, aby detekce barvy nepřepsala požadovanou stranu (D6a); oba reporty jsou proto bez `username`. Pro report konkrétního hráče použij jednu barvu + `--username`. |
+| `--color white\|black\|both` | **výchozí `""` = obě barvy** (klíčovaný objekt). `white`/`black` = jedna perspektiva (plochý objekt). `both` = totéž co vynechání. V režimu obou barev se `--username` nepředává do analýzy, aby detekce barvy nepřepsala požadovanou stranu (D6a). Pro report konkrétního hráče použij jednu barvu + `--username`. |
 | `--batch N` | posledních N her z `--username`; jen s `--format compact` |
 | `--depth N` | výchozí 14 |
 | `--mode fast\|deep` | `fast` = 60 s deadline, `deep` = 120 s |
@@ -88,29 +92,33 @@ Batch na konci vypíše agregát na stderr:
 aggregate: {"games": 3, "mean_acpl": 191.4, "flags": {"blunder": 2, "mistake": 6, "inaccuracy": 24}, "patterns": {"B": 2, "T": 2}}
 ```
 
-### Starší varianta: `scripts/coach_single.py` (deprecated)
+### `scripts/coach_single.py` (kompatibilní zkratka)
 
-Standardní single-game pipeline (detailed kontrakt 1.2), jen z příkazové řádky. Stále
-funguje, ale nové příkazy piš přes `coach.py`.
+Tenký wrapper nad `coach.py`: stejná pipeline, ale zapisuje rovnou do
+`data\reports\` a vypisuje lidský souhrn. **Výchozí jsou obě barvy**
+a **`--format both`** (compact 2.1 + detailed 1.2 v jednom souboru).
 
 ```powershell
-# základní: hra podle ID, barva se určí z username
-.\.venv\Scripts\python.exe -X utf8 scripts\coach_single.py lxO3gwd3 --username systeq
+# obě barvy, compact + detailed, jeden JSON (výchozí)
+.\.venv\Scripts\python.exe -X utf8 scripts\coach_single.py quOLOThu --no-llm
 
-# bez username, barva explicitně
+# jen jedna perspektiva
 .\.venv\Scripts\python.exe -X utf8 scripts\coach_single.py lxO3gwd3 --color black
 
-# hlubší režim + výstup na konkrétní cestu
-.\.venv\Scripts\python.exe -X utf8 scripts\coach_single.py lxO3gwd3 --color black --mode deep --out data\reports\lxO3gwd3.json
+# barva se určí z username (u PGN podle hlaviček White/Black)
+.\.venv\Scripts\python.exe -X utf8 scripts\coach_single.py lxO3gwd3 --username systeq
+
+# jen compact (nejmenší vstup pro LLM)
+.\.venv\Scripts\python.exe -X utf8 scripts\coach_single.py lxO3gwd3 --format compact
 
 # z lokálního PGN (bez Lichess API)
-.\.venv\Scripts\python.exe -X utf8 scripts\coach_single.py --pgn data\reports\game.pgn --color black
+.\.venv\Scripts\python.exe -X utf8 scripts\coach_single.py --pgn data\reports\game.pgn --no-llm
 
 # vynutit cold běh (ignorovat cache)
-.\.venv\Scripts\python.exe -X utf8 scripts\coach_single.py lxO3gwd3 --color black --no-cache
+.\.venv\Scripts\python.exe -X utf8 scripts\coach_single.py lxO3gwd3 --no-cache
 
 # jen souhrn, bez těla reportu
-.\.venv\Scripts\python.exe -X utf8 scripts\coach_single.py lxO3gwd3 --color black --quiet
+.\.venv\Scripts\python.exe -X utf8 scripts\coach_single.py lxO3gwd3 --quiet
 ```
 
 | Parametr | Význam |
@@ -118,18 +126,23 @@ funguje, ale nové příkazy piš přes `coach.py`.
 | `game_id` | Lichess ID (8 znaků) |
 | `--pgn PATH` | alternativa k `game_id`; cesta relativně k repozitáři |
 | `--username` | tvůj Lichess nick; určí barvu automaticky |
-| `--color white\|black` | fallback, když není username |
+| `--color white\|black\|both` | výchozí `""` = obě barvy |
+| `--format compact\|detailed\|both` | výchozí `both` (compact 2.1 + detailed 1.2) |
 | `--depth N` | výchozí `14` (auto politika: 12/14/16/18) |
 | `--mode fast\|deep` | `fast` = 60 s deadline, `deep` = 120 s |
 | `--out PATH` | výchozí `data\reports\single_game_{id}_{ts}.json` |
 | `--no-cache` | vynutí nový výpočet |
+| `--no-llm` | přeskočí všechny LLM providery |
 | `--quiet` | nevypisuje markdown report |
 
-Návratové kódy staršího skriptu: `0` = ok nebo degraded, `2` = partial
-(některé plyny neanalyzované), `1` = chyba. Nový `coach.py` používá jednotné
-kódy 0–4 viz výše.
+Návratové kódy: `0` = ok nebo degraded, `2` = partial (některé plyny
+neanalyzované), `1` = chyba. **Chyba pipeline se nikdy nezapíše jako JSON**:
+skript vypíše `error: …` na stderr, vrátí `1` a soubor nevytvoří (dřív
+vznikala validně vypadající prázdná odpověď). Neznámý `--username` u PGN je
+chyba, ne tichý přepis na opačnou barvu.
 
-Výstupní JSON obsahuje `analysis.acpl`, `analysis.accuracy`, `flagged_moves`,
+Výstupní JSON obsahuje `analysis.acpl`, `analysis.accuracy`, `game` (jména,
+ratingy, TC, datum, URL, zahájení), `flagged_moves` (včetně `fen_before`),
 `patterns`, `report`, `engine` (politika) a `timings`.
 
 ## 2. Libovolný tool: `scripts/mcp_call.py`

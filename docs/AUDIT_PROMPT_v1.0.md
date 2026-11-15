@@ -1,5 +1,7 @@
 # Cross-LLM Audit Prompt — lichess-analyzer MCP
 
+> **Zastaralé (2026-07-24).** Nahrazeno `AUDIT_PROMPT_v2.0.md`. Digital twin níže popisuje stav z července (9 toolů, 11 patternů, `DETECTOR_VERSION` 20261111) a nesmí se použít jako popis současného kódu. Drženo jen jako historie.
+
 **Verze:** 1.0 | **Datum:** 2026-07-24
 **Auditovaný systém:** lichess-analyzer-mcp v0.1.0
 **Scope:** Kompletní pipeline: MCP server → Lichess API → Stockfish → Pattern Detection → LLM Cascade
