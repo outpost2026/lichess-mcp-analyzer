@@ -1,11 +1,14 @@
-"""Unified single-game coaching CLI - compact JSON 2.0 by default.
+"""Unified single-game coaching CLI - compact JSON 2.1 by default.
 
 One entry point for the three real workflows:
 
-    # one Lichess game -> compact 2.0 (default)
+    # one Lichess game -> compact 2.1, both colours, keyed JSON
     python scripts/coach.py --game-id FVhqtv1S
 
-    # explicitly schema 1.1
+    # one perspective only
+    python scripts/coach.py --game-id FVhqtv1S --color white
+
+    # explicitly schema 1.2
     python scripts/coach.py --game-id FVhqtv1S --format detailed
 
     # both shapes in one payload {"compact": ..., "detailed": ...}
@@ -43,6 +46,23 @@ EXIT_ENGINE = 3
 EXIT_NETWORK = 4
 
 _FORMATS = ("compact", "detailed", "both", "game-full")
+
+
+def resolve_colors(color: str, username: str) -> list[str] | None:
+    """CLI colour policy (D24): explicit wins, username means detect, else both.
+
+    Returns ``None`` when the pipeline should detect the colour per game
+    (``--username`` without ``--color``). An empty colour with no username
+    means "the whole game": both perspectives in one payload.
+    """
+    value = (color or "").strip().lower()
+    if value in ("white", "black"):
+        return [value]
+    if value == "both":
+        return ["white", "black"]
+    if (username or "").strip():
+        return None
+    return ["white", "black"]
 
 
 class _Parser(argparse.ArgumentParser):
@@ -131,32 +151,52 @@ async def _single_game(
     fmt: str,
     use_llm: bool,
     no_cache: bool,
-) -> dict | list:
+) -> dict:
     from lichess_analyzer_mcp.tools.coaching_single_game import (
         lichess_coaching_single_game,
     )
 
-    colors = ["white", "black"] if color == "both" else [color]
-    # D6a: `both` is two explicit-colour calls. Passing `username` would make
-    # the collector re-detect the colour and overwrite the requested side, so
-    # the two reports would describe the same player twice.
-    username_for_call = "" if color == "both" else username
-    results = []
-    for side in colors:
+    sides = resolve_colors(color, username)
+    if sides is None:
+        # D24: `--username` without `--color` means "detect the side". The
+        # collector does that, so exactly one perspective comes back.
+        if no_cache:
+            for side in ("white", "black"):
+                _clear_cache(game_id, side, depth, mode)
+        return await lichess_coaching_single_game(
+            game_id,
+            username=username,
+            color="",
+            depth=depth,
+            mode=mode,
+            output_format=fmt,
+            use_llm=use_llm,
+        )
+
+    # D6a: two explicit-colour calls. Passing `username` would make the
+    # collector re-detect the colour and overwrite the requested side, so the
+    # two reports would describe the same player twice.
+    reports: dict[str, dict] = {}
+    for side in sides:
         if no_cache:
             _clear_cache(game_id, side, depth, mode)
-        results.append(
-            await lichess_coaching_single_game(
-                game_id,
-                username=username_for_call,
-                color=side,
-                depth=depth,
-                mode=mode,
-                output_format=fmt,
-                use_llm=use_llm,
-            )
+        report = await lichess_coaching_single_game(
+            game_id,
+            username="",
+            color=side,
+            depth=depth,
+            mode=mode,
+            output_format=fmt,
+            use_llm=use_llm,
         )
-    return results[0] if len(results) == 1 else results
+        if report.get("status") == "error":
+            # Same game, same failure: a second perspective only doubles the
+            # error. Return it bare so the caller reports one clear message.
+            return report
+        reports[side] = report
+    # Both colours are keyed, so the caller never has to guess which array
+    # element is which perspective.
+    return reports[sides[0]] if len(sides) == 1 else reports
 
 
 async def _single_pgn(
@@ -169,7 +209,7 @@ async def _single_pgn(
     fmt: str,
     use_llm: bool,
     no_cache: bool,
-) -> dict | list:
+) -> dict:
     from lichess_analyzer_mcp.services.budget import budget_for_mode
     from lichess_analyzer_mcp.services.game_analyzer import analyze_pgn
     from lichess_analyzer_mcp.tools.coaching_single_game import build_response
@@ -177,18 +217,27 @@ async def _single_pgn(
     pgn = _read_pgn(path)
     game_id = _pgn_game_id(pgn) or os.path.splitext(os.path.basename(path))[0]
     detected = _pgn_color(pgn, username)
-    # D6a: explicit `both` wins over username detection; otherwise a detected
-    # colour wins over the fallback flag.
-    if color == "both":
+    explicit = (color or "").strip().lower()
+    # D24 for PGN: an explicit `--color` wins, then the PGN header decides,
+    # and only a PGN that cannot name the player falls back to both sides.
+    if explicit == "both":
         sides = ["white", "black"]
+    elif explicit in ("white", "black"):
+        sides = [explicit]
     elif detected:
         sides = [detected]
+    elif username:
+        # Never silently analyse the wrong side: the old fallback turned a
+        # typo in `--username` into a black-perspective report.
+        raise ValueError(
+            f"username {username!r} is not in the PGN headers; pass --color white|black|both"
+        )
     else:
-        sides = [color]
+        sides = ["white", "black"]
     username_for_call = username if len(sides) == 1 else ""
     deadline_s = float(budget_for_mode(mode)["total_s"])
 
-    results = []
+    reports: dict[str, dict] = {}
     for current in sides:
         started = time.perf_counter()
         analysis = analyze_pgn(
@@ -202,23 +251,21 @@ async def _single_pgn(
         )
         if not analysis.moves:
             raise ValueError("analysis produced no moves (invalid PGN?)")
-        results.append(
-            await build_response(
-                game_id=game_id,
-                username=username_for_call,
-                detected_color=current,
-                depth=depth,
-                mode=mode,
-                deadline_s=deadline_s,
-                call_started=started,
-                analysis_obj=analysis,
-                io_s=0.0,
-                use_llm=use_llm,
-                ctx=None,
-                output_format=fmt,
-            )
+        reports[current] = await build_response(
+            game_id=game_id,
+            username=username_for_call,
+            detected_color=current,
+            depth=depth,
+            mode=mode,
+            deadline_s=deadline_s,
+            call_started=started,
+            analysis_obj=analysis,
+            io_s=0.0,
+            use_llm=use_llm,
+            ctx=None,
+            output_format=fmt,
         )
-    return results[0] if len(results) == 1 else results
+    return reports[sides[0]] if len(sides) == 1 else reports
 
 
 def _full_game(
@@ -350,9 +397,7 @@ def _write(payload, out: str, ndjson: bool) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = _Parser(
-        description="Coach chess games: compact JSON 2.0 by default (schema 1.1 on request)."
-    )
+    parser = _Parser(description="Coach chess games: compact JSON 2.1 for both colours by default.")
     source = parser.add_mutually_exclusive_group()
     source.add_argument("--game-id", default="", help="Lichess game ID")
     source.add_argument("--pgn-file", default="", help="Path to a local PGN file")
@@ -360,7 +405,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--batch", type=int, default=0, help="Analyze the last N games of --username"
     )
-    parser.add_argument("--color", default="white", choices=["white", "black", "both"])
+    parser.add_argument(
+        "--color",
+        default="",
+        choices=["", "white", "black", "both"],
+        help="Perspective: white | black | both. Omit it to analyse both "
+        "colours (keyed JSON); with --username alone the side is detected",
+    )
     parser.add_argument("--depth", type=int, default=14)
     parser.add_argument("--mode", default="fast", choices=["fast", "deep"])
     parser.add_argument(

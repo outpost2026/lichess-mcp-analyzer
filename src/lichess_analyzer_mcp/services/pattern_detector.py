@@ -938,7 +938,9 @@ def scan_single_game(analysis: GameAnalysis) -> tuple[list[dict], dict[int, dict
                     "pattern_name": cand["pattern_name"],
                     # P1: strength = ordinal event strength (0..1), not a probability.
                     "strength": 0.0,
-                    "confidence": 0.0,  # legacy alias kept for 1.2 consumers
+                    # Legacy alias for 1.2 consumers; the published unit is
+                    # 0-100 (schema `confidence`), never 0-1.
+                    "confidence": 0.0,
                     "frequency": 0,
                     "severity": pdef.severity if pdef else "medium",
                     "scope": "single_game",
@@ -956,7 +958,8 @@ def scan_single_game(analysis: GameAnalysis) -> tuple[list[dict], dict[int, dict
                 aggregated[pid] = entry
             entry["frequency"] += 1
             entry["strength"] = round(max(entry["strength"], cand["strength"]), 2)
-            entry["confidence"] = entry["strength"]
+            # 1.2 consumers expect 0-100 (schemas.py); `strength` stays 0-1.
+            entry["confidence"] = round(entry["strength"] * 100, 0)
             entry["evidence"].append(
                 {
                     "ply": move.ply,

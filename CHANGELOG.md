@@ -3,6 +3,41 @@
 Všechny změny formátu a pipeline. Verze odpovídají kontraktu compact JSON /
 single-game pipeline, ne balíčku `0.1.0` (ten zůstává beze změny).
 
+## [2.5] - 2026-11-15
+
+Integrace handoffu v1.2 → v1.3 (11 her): `docs/HANDOFF_V1_3_INTEGRATION_2026-11-15.md`,
+rozhodnutí D13–D25 v `docs/AUDIT_INTEGRATION_2026-11-13.md` §12. Cross-game
+schema 1.4, compact 2.1 a admission gate beze změny; `game_full` 1.0 beze
+změny. Všechny změny payloadu jsou aditivní.
+
+### Added
+
+- **D25** detailed `flagged_moves[].fen_before` — pozice, ze které byl tah
+  zahrán. FEN už je v cache, takže to nestojí žádný engine call; prázdný
+  string = FEN není změřen (nikdy se nedomýšlí).
+- **D25** detailed `game` blok: `player_name`, `opponent_name`,
+  `player_rating`, `opponent_rating`, `time_control`, `date`, `url`,
+  `opening`, `opening_eco`, `result`. Anonymní placeholdery (`Anonymous`,
+  `?`, `-`) se publikují jako prázdný string, neznámý rating jako `null`
+  (nikdy `0`).
+- **D24** CLI `--color` má default `""` = obě barvy. `scripts/coach.py` i
+  `scripts/coach_single.py` vrací klíčovaný objekt `{"white": …, "black": …}`,
+  takže jedna hra = jeden JSON s oběma perspektivami.
+- **D24** `scripts/coach_single.py --format compact|detailed|both`
+  (default `both`) a `--no-llm`.
+
+### Changed
+
+- **D18/N-02** `confidence` má jednu jednotku: `scan_single_game` publikuje
+  0–100 (dřív 0–1), což odpovídá `schemas.py` a tisku `{confidence}%` v
+  reportu. `strength` zůstává 0–1 (ordinální síla, nikdy pravděpodobnost).
+  KB slim artefakt dělí 100 → 0–1, compact 2.1 `conf` zůstává 0–1 (zmrazené
+  schema).
+- **D24** `scripts/coach_single.py`: chyba pipeline je chybová zpráva na
+  stderr + exit 1, **nikdy** validně vypadající prázdný JSON. Neznámý
+  `--username` u PGN je chyba, ne tichý přepis na druhou barvu.
+- **D24** `scripts/coach.py` dokumentace: compact 2.1, ne 2.0.
+
 ## [2.4] - 2026-11-14
 
 Integrace auditu 2026-11-13 (Tier 1–3) + D12. Rozhodnutí a acceptance:

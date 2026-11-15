@@ -120,6 +120,9 @@ def _flagged_moves(analysis: dict) -> list[dict]:
                 "win_prob_before": m.get("win_prob_before"),
                 "win_prob_after": m.get("win_prob_after"),
                 "phase": m.get("phase"),
+                # LLM needs the position to narrate the move; the FEN is
+                # already measured in the cache, so this costs no engine call.
+                "fen_before": m.get("fen") or "",
                 "best_move_san": m.get("best_move_san") or None,
                 "played_rank": m.get("played_rank") or None,
                 "engine_lines": m.get("engine_lines") or [],
@@ -133,6 +136,45 @@ def _flagged_moves(analysis: dict) -> list[dict]:
             }
         )
     return out
+
+
+_ANONYMOUS_NAMES = ("anonymous", "?", "-")
+
+
+def _public_name(value) -> str:
+    """Never publish a placeholder as a player name (FIX-020)."""
+    name = str(value or "").strip()
+    return "" if name.lower() in _ANONYMOUS_NAMES else name
+
+
+def _game_block(game_info: dict, game_id: str) -> dict:
+    """Who played whom; the LLM attributes every flag through this block.
+
+    PGN headers carry the names (case preserved). Anonymous games expose an
+    empty string instead of "?" so the model cannot invent a player. An
+    unknown rating is null, never 0 - 0 reads as a real rating.
+    """
+
+    def _rating(value):
+        try:
+            number = int(value)
+        except (TypeError, ValueError):
+            return None
+        return number if number > 0 else None
+
+    return {
+        "id": game_info.get("id") or game_id,
+        "player_name": _public_name(game_info.get("player_name")),
+        "opponent_name": _public_name(game_info.get("opponent_name")),
+        "player_rating": _rating(game_info.get("player_rating")),
+        "opponent_rating": _rating(game_info.get("opponent_rating")),
+        "time_control": game_info.get("time_control", ""),
+        "date": game_info.get("date", ""),
+        "url": game_info.get("url", ""),
+        "opening": game_info.get("opening", ""),
+        "opening_eco": game_info.get("opening_eco", ""),
+        "result": game_info.get("result", ""),
+    }
 
 
 def _move_counts(analysis: dict) -> dict:
@@ -517,6 +559,9 @@ async def build_response(
     response = {
         "schema_version": SCHEMA_VERSION,
         "game_id": game_id,
+        # Names/ratings were already parsed from the PGN but never published;
+        # without them the LLM cannot attribute a flag to a player.
+        "game": _game_block(game_info, game_id),
         "username": username,
         "color": detected_color,
         "mode": mode,

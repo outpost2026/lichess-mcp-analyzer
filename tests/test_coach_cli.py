@@ -111,7 +111,105 @@ def test_both_mode_ignores_username_so_colours_stay_distinct(monkeypatch):
     )
     assert [c["color"] for c in calls] == ["white", "black"]
     assert all(c["username"] == "" for c in calls)
-    assert isinstance(result, list) and len(result) == 2
+    assert set(result) == {"white", "black"}
+    assert result["white"] == {"color": "white"}
+    assert result["black"] == {"color": "black"}
+
+
+def test_default_colour_is_both(monkeypatch):
+    """D24: no --color and no --username means the whole game, both sides."""
+    import asyncio
+
+    calls = []
+
+    async def fake_tool(game_id, username="", color="", **kwargs):
+        calls.append(color)
+        return {"color": color}
+
+    import lichess_analyzer_mcp.tools.coaching_single_game as cs
+
+    monkeypatch.setattr(cs, "lichess_coaching_single_game", fake_tool)
+    result = asyncio.run(
+        coach._single_game(
+            "gid",
+            username="",
+            color="",
+            depth=14,
+            mode="fast",
+            fmt="compact",
+            use_llm=False,
+            no_cache=False,
+        )
+    )
+    assert calls == ["white", "black"]
+    assert set(result) == {"white", "black"}
+
+
+def test_username_alone_detects_the_side(monkeypatch):
+    """D24: `--username` without `--color` keeps the pipeline's detection."""
+    import asyncio
+
+    calls = []
+
+    async def fake_tool(game_id, username="", color="", **kwargs):
+        calls.append({"username": username, "color": color})
+        return {"color": "white", "detected": True}
+
+    import lichess_analyzer_mcp.tools.coaching_single_game as cs
+
+    monkeypatch.setattr(cs, "lichess_coaching_single_game", fake_tool)
+    result = asyncio.run(
+        coach._single_game(
+            "gid",
+            username="systeq",
+            color="",
+            depth=14,
+            mode="fast",
+            fmt="compact",
+            use_llm=False,
+            no_cache=False,
+        )
+    )
+    assert calls == [{"username": "systeq", "color": ""}]
+    assert result["detected"] is True
+
+
+def test_error_perspective_short_circuits_the_second_call(monkeypatch):
+    """A 404 must not be repeated for the second colour."""
+    import asyncio
+
+    calls = []
+
+    async def fake_tool(game_id, username="", color="", **kwargs):
+        calls.append(color)
+        return {"status": "error", "errors": [{"code": "PIPELINE_ERROR", "message": "404"}]}
+
+    import lichess_analyzer_mcp.tools.coaching_single_game as cs
+
+    monkeypatch.setattr(cs, "lichess_coaching_single_game", fake_tool)
+    result = asyncio.run(
+        coach._single_game(
+            "gid",
+            username="",
+            color="",
+            depth=14,
+            mode="fast",
+            fmt="compact",
+            use_llm=False,
+            no_cache=False,
+        )
+    )
+    assert calls == ["white"]
+    assert result["status"] == "error"
+
+
+def test_resolve_colors_matrix():
+    assert coach.resolve_colors("white", "") == ["white"]
+    assert coach.resolve_colors("black", "systeq") == ["black"]
+    assert coach.resolve_colors("both", "") == ["white", "black"]
+    assert coach.resolve_colors("", "systeq") is None
+    assert coach.resolve_colors("", "") == ["white", "black"]
+    assert coach.resolve_colors("  ", "  ") == ["white", "black"]
 
 
 def test_single_pgn_both_wins_over_username_detection(monkeypatch, tmp_path):
@@ -150,7 +248,67 @@ def test_single_pgn_both_wins_over_username_detection(monkeypatch, tmp_path):
         )
     )
     assert seen == ["white", "black"]
-    assert isinstance(result, list) and len(result) == 2
+    assert set(result) == {"white", "black"}
+
+
+def test_single_pgn_defaults_to_both_colours(monkeypatch, tmp_path):
+    import asyncio
+
+    path = tmp_path / "game.pgn"
+    path.write_text(PGN, encoding="utf-8")
+
+    class _Stub:
+        moves = [object()]
+
+    monkeypatch.setattr(
+        "lichess_analyzer_mcp.services.game_analyzer.analyze_pgn",
+        lambda *a, **k: _Stub(),
+    )
+    seen = []
+
+    async def fake_response(**kwargs):
+        seen.append(kwargs["detected_color"])
+        return {"color": kwargs["detected_color"]}
+
+    import lichess_analyzer_mcp.tools.coaching_single_game as cs
+
+    monkeypatch.setattr(cs, "build_response", fake_response)
+    result = asyncio.run(
+        coach._single_pgn(
+            str(path),
+            username="",
+            color="",
+            depth=14,
+            mode="fast",
+            fmt="compact",
+            use_llm=False,
+            no_cache=False,
+        )
+    )
+    assert seen == ["white", "black"]
+    assert set(result) == {"white", "black"}
+
+
+def test_single_pgn_rejects_unknown_username(monkeypatch, tmp_path):
+    """A username typo must fail, never silently analyse the other side."""
+    import asyncio
+
+    path = tmp_path / "game.pgn"
+    path.write_text(PGN, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="not in the PGN headers"):
+        asyncio.run(
+            coach._single_pgn(
+                str(path),
+                username="someoneelse",
+                color="",
+                depth=14,
+                mode="fast",
+                fmt="compact",
+                use_llm=False,
+                no_cache=False,
+            )
+        )
 
 
 def test_aggregate_ignores_unmeasured_acpl():
