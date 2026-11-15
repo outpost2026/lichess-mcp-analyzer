@@ -6,7 +6,7 @@ JSON file carries the complete game dynamic (D24).
 
 Examples
 --------
-    # both colours, compact 2.1 + detailed 1.2 in one file (default)
+    # both colours, compact 2.2 + detailed 1.2 in one file (default)
     .venv\\Scripts\\python.exe -X utf8 scripts\\coach_single.py quOLOThu
 
     # one perspective only
@@ -164,7 +164,7 @@ def main() -> int:
         dest="fmt",
         default="both",
         choices=["compact", "detailed", "both"],
-        help="compact 2.1 | detailed 1.2 | both (default)",
+        help="compact 2.2 | detailed 1.2 | both (default)",
     )
     parser.add_argument("--depth", type=int, default=14)
     parser.add_argument("--mode", default="fast", choices=["fast", "deep"])

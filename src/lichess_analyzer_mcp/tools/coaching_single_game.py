@@ -20,6 +20,15 @@ from lichess_analyzer_mcp.services.coaching_base import (
     mcp_sample_fallback,
     safe_llm_call,
 )
+from lichess_analyzer_mcp.services.game_impact import (
+    GAME_IMPACT_DEAD_ZONE_CP as _GAME_IMPACT_DEAD_ZONE_CP,
+    GAME_IMPACT_STATES,
+    MATE_CP_THRESHOLD as _MATE_CP_THRESHOLD,
+    game_impact as _game_impact_impl,
+    impact_state as _impact_state_impl,
+    mate_missed as _mate_missed,
+    pv_played as _pv_played,
+)
 from lichess_analyzer_mcp.services.llm_client import (
     COACHING_SYSTEM_PROMPT,
     get_llm_status,
@@ -95,59 +104,15 @@ def _fmt_loss(move: dict) -> str:
     return f"{value:.0f}" if isinstance(value, (int, float)) else "n/a"
 
 
-# ── D15 / T-18: game_impact ──────────────────────────────────────────────────
-# `cp_loss` answers "how much was lost"; `game_impact` answers "did the game
-# change". Both are measured from the mover's point of view (`*_mover_cp`).
-#
-# Dead zone: |eval| <= 100 cp counts as `equal`. The threshold is published
-# here, not implicit, because it decides every label.
-GAME_IMPACT_DEAD_ZONE_CP = 100
-# `engine_client._cp_from_score` encodes mate as 10000 - |mate|, so any |cp|
-# at or above this bound is a forced mate, not a centipawn evaluation (N-05).
-MATE_CP_THRESHOLD = 9000
-
-_GAME_IMPACT_PRE_STATES = ("winning", "equal", "losing")
-
-
-def _impact_state(cp: float | None) -> str | None:
-    """Coarse game state from the mover's eval: winning / equal / losing."""
-    if not isinstance(cp, (int, float)):
-        return None
-    value = float(cp)
-    if value >= MATE_CP_THRESHOLD:
-        return "winning"
-    if value <= -MATE_CP_THRESHOLD:
-        return "losing"
-    if value > GAME_IMPACT_DEAD_ZONE_CP:
-        return "winning"
-    if value < -GAME_IMPACT_DEAD_ZONE_CP:
-        return "losing"
-    return "equal"
-
-
-def _game_impact(before, after) -> tuple[str | None, str | None]:
-    """`(game_impact, mate_after)` for one flagged move.
-
-    Enum: 9 sign transitions (`winning_to_winning` ... `losing_to_losing`) plus
-    3 mate transitions (`*_to_mate`). A forced mate after the move is never
-    reported as `losing_to_losing` (P0-3): the label says `losing_to_mate` and
-    `mate_after` says for whom (`for` = mover mates, `against` = mover is mated).
-
-    `None` when either eval was not measured (legacy cache, cloud eval): the
-    field never guesses.
-    """
-    pre = _impact_state(before)
-    post_cp = after if isinstance(after, (int, float)) else None
-    if pre is None or post_cp is None:
-        return None, None
-    mate_after = None
-    post: str | None
-    if abs(float(post_cp)) >= MATE_CP_THRESHOLD:
-        post = "mate"
-        mate_after = "for" if float(post_cp) > 0 else "against"
-    else:
-        post = _impact_state(post_cp)
-    return f"{pre}_to_{post}", mate_after
+# ── D15 / T-18 / D29: game_impact ───────────────────────────────────────────
+# The classification lives in `services/game_impact.py`, because compact 2.2
+# publishes the same labels and must not re-implement the thresholds. The
+# module-level aliases keep the historical private names importable.
+GAME_IMPACT_DEAD_ZONE_CP = _GAME_IMPACT_DEAD_ZONE_CP
+MATE_CP_THRESHOLD = _MATE_CP_THRESHOLD
+_GAME_IMPACT_PRE_STATES = GAME_IMPACT_STATES
+_game_impact = _game_impact_impl
+_impact_state = _impact_state_impl
 
 
 def _flagged_moves(analysis: dict) -> list[dict]:
@@ -156,6 +121,12 @@ def _flagged_moves(analysis: dict) -> list[dict]:
         if m.get("classification") not in _FLAGGED:
             continue
         game_impact, mate_after = _game_impact(m.get("eval_before"), m.get("eval_after"))
+        # D31: a missed mate is invisible in `cp_loss` (it is measured against
+        # the mate, not against the position). Publish it explicitly.
+        mate_in, mate_via = _mate_missed(m)
+        # D32: the engine continuation after the played move. Unavailable is
+        # an explicit reason, never a silently missing key.
+        played_pv, played_pv_reason = _pv_played(m)
         out.append(
             {
                 "ply": m.get("ply"),
@@ -177,6 +148,9 @@ def _flagged_moves(analysis: dict) -> list[dict]:
                 # `mate_after` disambiguates the `*_to_mate` labels.
                 "game_impact": game_impact,
                 "mate_after": mate_after,
+                # D31: best line mates for the mover, the played move does not.
+                "mate_missed": mate_in,
+                "mate_via": mate_via,
                 "win_prob_before": m.get("win_prob_before"),
                 "win_prob_after": m.get("win_prob_after"),
                 "phase": m.get("phase"),
@@ -186,6 +160,10 @@ def _flagged_moves(analysis: dict) -> list[dict]:
                 "best_move_san": m.get("best_move_san") or None,
                 "played_rank": m.get("played_rank") or None,
                 "engine_lines": m.get("engine_lines") or [],
+                # D32: engine continuation after the played move (a line, not
+                # the opponent's actual reply).
+                "pv_played": played_pv,
+                "pv_played_unavailable": played_pv_reason,
                 "motif": m.get("motif_type"),
                 # `check` = the played move gives check (matches motif
                 # semantics). The pre-move state has its own field.
@@ -196,6 +174,26 @@ def _flagged_moves(analysis: dict) -> list[dict]:
             }
         )
     return out
+
+
+ACCURACY_WARNING_MATE_OUTLIER = "contains_mate_level_outlier"
+
+
+def _accuracy_warning(flagged: list[dict]) -> str | None:
+    """D33: a linear accuracy score hides a mate-level outlier.
+
+    `accuracy` is `mean(max(0, 100 - 0.15*cp_loss))`; one missed mate in 35
+    moves barely moves it, so a player with 2 blunders can read 92.8 %. The
+    warning names the shape and never re-scores the game: the caller decides
+    how to present it.
+    """
+    for flag in flagged:
+        if flag.get("mate_missed"):
+            return ACCURACY_WARNING_MATE_OUTLIER
+        after = flag.get("eval_after_mover_cp")
+        if isinstance(after, (int, float)) and abs(float(after)) >= MATE_CP_THRESHOLD:
+            return ACCURACY_WARNING_MATE_OUTLIER
+    return None
 
 
 _ANONYMOUS_NAMES = ("anonymous", "?", "-")
@@ -457,7 +455,7 @@ async def build_response(
     ctx,
     output_format: str,
 ) -> dict:
-    """Build a contract v1.2 response (optionally serialized to the 2.1 shape).
+    """Build a contract v1.2 response (optionally serialized to the 2.2 shape).
 
     Public so the CLI (`scripts/coach.py`) can reuse the exact same pipeline for
     PGN input, which never reaches the MCP tool's Lichess fetch.
@@ -492,16 +490,27 @@ async def build_response(
     phase_breakdown = _phase_breakdown(phase_stats)
 
     def _move_lines(items: list[dict], limit: int = 10) -> str:
-        return "\n".join(
-            f"  ply {m.get('ply')}: {m.get('move_san')} (loss {_fmt_loss(m)}cp, "
-            f"fáze={m.get('phase')}, gives_check={m.get('gives_check', False)}, "
-            f"in_check_before={m.get('was_in_check', False)}, "
-            f"tactical={m.get('is_tactical_motif', False)}, motif={m.get('motif_type')}, "
-            f"best={m.get('best_move_san') or '?'}, rank={m.get('played_rank') or '?'}, "
-            f"explanation={m.get('explanation') or 'n/a'}, "
-            f"fen={m.get('fen', '')[:60]})"
-            for m in items[:limit]
-        )
+        rows = []
+        for m in items[:limit]:
+            # D34: the deterministic prompt must carry the same game_impact the
+            # JSON publishes; otherwise the report and the data disagree.
+            impact, mate_after = _game_impact(m.get("eval_before"), m.get("eval_after"))
+            impact_txt = impact or "n/a"
+            if mate_after:
+                impact_txt = f"{impact_txt} (mate {mate_after})"
+            mate_in, mate_via = _mate_missed(m)
+            missed_txt = f", mate_missed={mate_in} via {mate_via}" if mate_in else ""
+            rows.append(
+                f"  ply {m.get('ply')}: {m.get('move_san')} (loss {_fmt_loss(m)}cp, "
+                f"fáze={m.get('phase')}, gives_check={m.get('gives_check', False)}, "
+                f"in_check_before={m.get('was_in_check', False)}, "
+                f"tactical={m.get('is_tactical_motif', False)}, motif={m.get('motif_type')}, "
+                f"best={m.get('best_move_san') or '?'}, rank={m.get('played_rank') or '?'}, "
+                f"impact={impact_txt}{missed_txt}, "
+                f"explanation={m.get('explanation') or 'n/a'}, "
+                f"fen={m.get('fen', '')[:60]})"
+            )
+        return "\n".join(rows)
 
     blunders_list = _move_lines(analysis.get("blunders", []))
     mistakes_list = _move_lines(analysis.get("mistakes", []))
@@ -637,6 +646,9 @@ async def build_response(
         "acpl": round(acpl_value, 1) if isinstance(acpl_value, (int, float)) else None,
         "accuracy": analysis.get("accuracy"),
         "accuracy_method": analysis.get("accuracy_method"),
+        # D33: explicit warning when a mate-level outlier is present; null
+        # means the score describes every flagged move.
+        "accuracy_warning": _accuracy_warning(flagged),
         "internal_accuracy_score": analysis.get("internal_accuracy_score"),
         "moves_analyzed": sum(1 for m in moves if m.get("analyzed", True)),
         **_move_counts(analysis),
@@ -703,7 +715,7 @@ async def build_response(
         },
     }
 
-    # FIX-017: compact 2.1 is the default; schema 1.2 is opt-in as "detailed".
+    # FIX-017: compact 2.2 is the default; schema 1.2 is opt-in as "detailed".
     if output_format in ("compact", "both"):
         from lichess_analyzer_mcp.services.compact_serializer import (
             to_compact_v2,
@@ -761,7 +773,7 @@ async def lichess_coaching_single_game(
         color: 'white' or 'black'; fallback when no username or detection fails
         depth: Stockfish analysis depth (8-24, 0=auto)
         mode: Budget profile — 'fast' (60 s hard deadline) or 'deep' (120 s)
-        output_format: 'compact' (schema 2.1, default), 'detailed' (contract
+        output_format: 'compact' (schema 2.2, default), 'detailed' (contract
             v1.2) or 'both' -> {"compact": ..., "detailed": ...}.
             'full' is a deprecated alias for 'detailed'.
         use_llm: False skips every LLM provider (deterministic report only)

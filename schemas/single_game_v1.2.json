@@ -131,6 +131,11 @@
         "acpl": { "type": ["number", "null"], "minimum": 0 },
         "accuracy": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
         "accuracy_method": { "type": "string" },
+        "accuracy_warning": {
+          "type": ["string", "null"],
+          "enum": ["contains_mate_level_outlier", null],
+          "description": "D33: the linear accuracy score hides at least one mate-level swing (missed mate or forced mate after the move). null = the score describes every flagged move."
+        },
         "internal_accuracy_score": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
         "moves_analyzed": { "type": "integer", "minimum": 0 },
         "moves_total": { "type": "integer", "minimum": 0 },
@@ -193,6 +198,15 @@
             "enum": ["for", "against", null],
             "description": "D15: direction of the forced mate after the move. 'for' = the mover mates, 'against' = the mover is mated. Present only together with a *_to_mate game_impact."
           },
+          "mate_missed": {
+            "type": ["integer", "null"],
+            "minimum": 1,
+            "description": "D31: the engine's best line mates for the mover in N moves and the played move does not reach a forced mate. null = no mate was available, or it was not measured."
+          },
+          "mate_via": {
+            "type": ["string", "null"],
+            "description": "D31: SAN of the mating move the engine found. Present only together with mate_missed."
+          },
           "win_prob_before": { "type": ["number", "null"] },
           "win_prob_after": { "type": ["number", "null"] },
           "phase": { "type": "string" },
@@ -210,6 +224,16 @@
                 "pv": { "type": "array", "items": { "type": "string" } }
               }
             }
+          },
+          "pv_played": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "D32: engine continuation after the played move, from the same multipv search. An engine line, not the opponent's actual reply."
+          },
+          "pv_played_unavailable": {
+            "type": ["string", "null"],
+            "enum": ["no_engine_lines", "rank_not_in_engine_lines", "no_continuation", null],
+            "description": "D32: why pv_played is empty. null = a continuation exists."
           },
           "motif": { "type": ["string", "null"] },
           "check": { "type": "boolean" },

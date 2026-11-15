@@ -28,6 +28,7 @@ def _load(name: str, relative: str):
 coach_single = _load("coach_single_cli", os.path.join("scripts", "coach_single.py"))
 
 from lichess_analyzer_mcp.tools.coaching_single_game import (  # noqa: E402
+    _accuracy_warning,
     _flagged_moves,
     _game_block,
     _llm_skip,
@@ -205,6 +206,87 @@ def test_unmeasured_evals_publish_null_instead_of_a_guess():
     flag = _flagged_moves({"moves": [_raw_move(eval_before=None, eval_after=None)]})[0]
     assert flag["game_impact"] is None
     assert flag["mate_after"] is None
+
+
+# --- 4b. D31/D32/D33: missed mate, played PV, accuracy warning ---------------
+
+MATE_LINES = [
+    {"rank": 1, "san": "e6+", "eval_cp": None, "mate_in": 10, "pv": ["e6+", "Kxe6", "fxg8=Q+"]},
+    {"rank": 2, "san": "Kg2", "eval_cp": 780, "mate_in": None, "pv": ["Kg2", "Qf4"]},
+    {"rank": 3, "san": "Bf5+", "eval_cp": 961, "mate_in": None, "pv": ["Bf5+", "Ke7"]},
+]
+
+
+def test_missed_mate_is_published_with_its_length_and_move():
+    """`WHIbVLXk` white ply 67: +825 -> +961, best line e6+ mate in 10."""
+    flag = _flagged_moves(
+        {
+            "moves": [
+                _raw_move(
+                    eval_before=825,
+                    eval_after=961,
+                    engine_lines=MATE_LINES,
+                    played_rank=3,
+                    best_move_san="e6+",
+                )
+            ]
+        }
+    )[0]
+    assert flag["game_impact"] == "winning_to_winning"
+    assert flag["mate_missed"] == 10
+    assert flag["mate_via"] == "e6+"
+
+
+def test_mate_already_reached_by_the_played_move_is_not_missed():
+    flag = _flagged_moves(
+        {
+            "moves": [
+                _raw_move(eval_before=300, eval_after=9998, engine_lines=MATE_LINES, played_rank=1)
+            ]
+        }
+    )[0]
+    assert flag["mate_after"] == "for"
+    assert flag["mate_missed"] is None
+    assert flag["mate_via"] is None
+
+
+def test_played_pv_is_the_continuation_after_the_played_move():
+    flag = _flagged_moves(
+        {
+            "moves": [
+                _raw_move(
+                    eval_before=825,
+                    eval_after=961,
+                    engine_lines=MATE_LINES,
+                    played_rank=3,
+                )
+            ]
+        }
+    )[0]
+    assert flag["pv_played"] == ["Ke7"]
+    assert flag["pv_played_unavailable"] is None
+
+
+def test_played_pv_outside_the_multipv_window_is_explicitly_unavailable():
+    flag = _flagged_moves({"moves": [_raw_move(engine_lines=MATE_LINES, played_rank=4)]})[0]
+    assert flag["pv_played"] == []
+    assert flag["pv_played_unavailable"] == "rank_not_in_engine_lines"
+
+
+def test_accuracy_warning_names_the_mate_level_outlier():
+    missed = _flagged_moves(
+        {
+            "moves": [
+                _raw_move(eval_before=825, eval_after=961, engine_lines=MATE_LINES, played_rank=3)
+            ]
+        }
+    )
+    assert _accuracy_warning(missed) == "contains_mate_level_outlier"
+    ordinary = _flagged_moves({"moves": [_raw_move(eval_before=200, eval_after=120)]})
+    assert _accuracy_warning(ordinary) is None
+    # A forced mate after the move is the other mate-level shape.
+    mated = _flagged_moves({"moves": [_raw_move(eval_before=-548, eval_after=-9999)]})
+    assert _accuracy_warning(mated) == "contains_mate_level_outlier"
 
 
 # --- 5. D28: llm_skipped --------------------------------------------------

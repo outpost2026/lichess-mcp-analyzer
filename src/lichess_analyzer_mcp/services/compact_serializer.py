@@ -1,4 +1,4 @@
-"""Compact single-game JSON (schema 2.1) — pure serialization, no IO.
+"""Compact single-game JSON (schema 2.2) — pure serialization, no IO.
 
 The full contract v1.2 payload exists for debugging and cross-game work. For
 LLM consumption only a small, lossless-for-coaching subset is needed: game
@@ -34,6 +34,21 @@ v3 additions (handoff lichess_fix_v3):
     used), not by the raw ply segment; the detailed payload publishes
     `segment_stats` and `chess_phase_stats` next to it (P1).
 
+2.2 additions (D29-D34, additive over 2.1; `single_game_v2_compact.json`
+stays the frozen 2.1 snapshot):
+  - flags[].game_impact is mandatory (nullable): the label that separates a
+    thrown-away win from a missed mate (D29).
+  - flags[].mate_missed / mate_via: the best line mates for the mover and the
+    played move does not (D31). `mate_after` stays as-is; `for` already means
+    "the mover mates after the played move", so no `for_missed` value exists.
+  - top-level pv_played / pv_played_unavailable: the engine continuation after
+    the played move, from the same multipv search (D32). It is a line, not the
+    opponent's actual reply.
+  - clusters[].plies: which plies the run contains, so an LLM does not have to
+    cross-reference flags[] (D32).
+  - summary.acc_warning: `contains_mate_level_outlier` when a linear accuracy
+    score would hide a mate-level swing (D33).
+
 Null policy (FIX-016), documented in the schema as well:
   - `rank: null`  -> rank was not measured (engine timeout), never 0 or 1.
   - `motif`        -> omitted when the move has no tactical motif; a motif is
@@ -60,11 +75,19 @@ from lichess_analyzer_mcp.models.pattern import (
 )
 from lichess_analyzer_mcp.services.eval_consistency import eval_invariant_holds
 from lichess_analyzer_mcp.services.color_contract import normalize_color
+from lichess_analyzer_mcp.services.game_impact import (
+    GAME_IMPACT_VALUES,
+    PV_PLAYED_UNAVAILABLE_REASONS,
+    game_impact,
+    mate_missed,
+    pv_played,
+)
 
-SCHEMA_V = "2.1"
+SCHEMA_V = "2.2"
 MAX_REPORT_CHARS = 900
 FEN_CP_THRESHOLD = 100
 EVAL_CP_THRESHOLD = 200
+ACCURACY_WARNINGS = ("contains_mate_level_outlier",)
 PV_UNAVAILABLE_REASONS = (
     "engine_timeout",
     "engine_error",
@@ -137,6 +160,14 @@ def _flag(
         # FIX-016: null means "not measured", never zero and never a guess.
         "rank": int(flag["played_rank"]) if int(flag.get("played_rank") or 0) >= 1 else None,
     }
+    # D29/2.2: the label that separates "threw the win away" from "missed the
+    # mate". Derived from the mover-POV evals, so a legacy payload without the
+    # field still gets it. Null = the evals were not measured.
+    impact, _mate_after = game_impact(
+        flag.get("eval_before_mover_cp", flag.get("eval_before")),
+        flag.get("eval_after_mover_cp", flag.get("eval_after")),
+    )
+    out["game_impact"] = impact
     # FIX-015: an LLM cannot narrate a swing it cannot see.
     # FIX-023: ... and it must not narrate a contradiction: when the eval pair
     # disagrees with cp_loss, omit both fields (raw values stay in detailed).
@@ -167,6 +198,14 @@ def _flag(
         mate_in = best_line.get("mate_in")
         if isinstance(mate_in, int) and mate_in != 0:
             out["mate_in"] = mate_in
+    # D31/2.2: the best line mates for the mover and the played move does not.
+    # `cp_loss` measures the distance to the mate, so without this key the
+    # single most instructive blunder reads as a plain 9027 cp swing.
+    missed_in, missed_via = mate_missed(flag)
+    if missed_in:
+        out["mate_missed"] = int(missed_in)
+        if missed_via:
+            out["mate_via"] = missed_via
     # CAND-E: which behavioural patterns this single mistake feeds.
     if cover and ply in cover:
         out["patterns"] = cover[ply]
@@ -204,11 +243,15 @@ def _clusters(flags: list[dict], min_count: int = 3) -> list[dict]:
 
 
 def _cluster(run: list[dict]) -> dict:
+    plies = [int(flag["ply"]) for flag in run]
     return {
-        "from": int(run[0]["ply"]),
-        "to": int(run[-1]["ply"]),
+        "from": plies[0],
+        "to": plies[-1],
         "count": len(run),
         "total_cp": _cp(sum(flag["cp"] for flag in run)),
+        # 2.2/D32: the plies themselves, so the narrator does not have to
+        # cross-reference flags[] to find out which moves the run contains.
+        "plies": plies,
     }
 
 
@@ -307,7 +350,7 @@ def to_compact_v2(
     moves: list[dict] | None = None,
     pv_unavailable: dict[int | str, str] | None = None,
 ) -> dict:
-    """Serialize a contract v1.2 coaching payload to schema 2.1.
+    """Serialize a contract v1.2 coaching payload to schema 2.2.
 
     Args:
         full: `lichess_coaching_single_game` response (schema 1.2).
@@ -357,6 +400,11 @@ def to_compact_v2(
     acc_method = analysis.get("accuracy_method")
     if isinstance(acc_method, str) and acc_method:
         summary["acc_method"] = acc_method
+    # D33/2.2: a linear score hides a mate-level outlier; the warning travels
+    # with the number it qualifies.
+    acc_warning = analysis.get("accuracy_warning")
+    if acc_warning in ACCURACY_WARNINGS:
+        summary["acc_warning"] = acc_warning
 
     patterns = []
     pattern_plies: dict[int, list[str]] = {}
@@ -381,6 +429,8 @@ def to_compact_v2(
     flags = []
     pv: dict[str, list[str]] = {}
     missing_pv: list[tuple[str, str | None]] = []
+    played_pv: dict[str, list[str]] = {}
+    played_unavailable: dict[str, str] = {}
     for raw in sorted(full.get("flagged_moves") or [], key=lambda f: f.get("ply") or 0):
         if raw.get("classification") not in _CLASSES:
             continue
@@ -392,6 +442,13 @@ def to_compact_v2(
             pv[ply_key] = line
         elif flag["class"] in ("blunder", "mistake"):
             missing_pv.append((ply_key, raw.get("pv_error")))
+        # D32: the engine continuation after the played move. Same policy as
+        # pv_unavailable: only blunders/mistakes pay for an explicit reason.
+        continuation, played_reason = pv_played(raw)
+        if continuation:
+            played_pv[ply_key] = continuation[:3]
+        elif played_reason and flag["class"] in ("blunder", "mistake"):
+            played_unavailable[ply_key] = played_reason
 
     coverage = {
         "flagged": len(flags),
@@ -432,6 +489,13 @@ def to_compact_v2(
     if unavailable:
         compact["pv_unavailable"] = unavailable
 
+    # 2.2/D32: what the engine searched after the played move. Kept separate
+    # from `pv` (which is the best line) so the two can never be confused.
+    if played_pv:
+        compact["pv_played"] = played_pv
+    if played_unavailable:
+        compact["pv_played_unavailable"] = played_unavailable
+
     clusters = _clusters(flags)
     if clusters:
         compact["clusters"] = clusters
@@ -453,7 +517,7 @@ def to_compact_v2(
 
 _REQUIRED_TOP = {"v", "game", "summary", "phase_method", "flags", "patterns", "patterns_meta"}
 _REQUIRED_GAME = {"id", "color", "result", "opening", "depth"}
-_REQUIRED_FLAG = {"ply", "move", "class", "cp", "best", "rank", "pstatus"}
+_REQUIRED_FLAG = {"ply", "move", "class", "cp", "best", "rank", "pstatus", "game_impact"}
 _REQUIRED_PATTERN = {"id", "conf", "freq", "sev", "plie"}
 _REQUIRED_PATTERNS_META = {"scope", "cross_game_suppressed", "reason", "coverage"}
 _PHASE_METHODS = ("ply_segment", "material", "mixed")
@@ -486,7 +550,17 @@ def validate_compact(data: dict) -> None:
         data,
         _REQUIRED_TOP,
         _REQUIRED_TOP
-        | {"pv", "pv_unavailable", "clusters", "fen_before", "report", "llm", "unclassified"},
+        | {
+            "pv",
+            "pv_unavailable",
+            "pv_played",
+            "pv_played_unavailable",
+            "clusters",
+            "fen_before",
+            "report",
+            "llm",
+            "unclassified",
+        },
         "$",
     )
     if data["v"] != SCHEMA_V:
@@ -513,7 +587,7 @@ def validate_compact(data: dict) -> None:
     _check_keys(
         summary,
         {"acpl", "acc", "phases"},
-        {"acpl", "acc", "phases", "acc_method"},
+        {"acpl", "acc", "phases", "acc_method", "acc_warning"},
         "$.summary",
     )
     for key in ("acpl", "acc"):
@@ -522,6 +596,8 @@ def validate_compact(data: dict) -> None:
             _fail(f"$.summary.{key}", "must be number or null")
     if "acc_method" in summary and summary["acc_method"] not in _ACCURACY_METHODS:
         _fail("$.summary.acc_method", f"must be one of {_ACCURACY_METHODS}")
+    if "acc_warning" in summary and summary["acc_warning"] not in ACCURACY_WARNINGS:
+        _fail("$.summary.acc_warning", f"must be one of {ACCURACY_WARNINGS}")
     phases = summary["phases"]
     _check_keys(phases, set(_PHASES), set(_PHASES), "$.summary.phases")
     for phase in _PHASES:
@@ -548,6 +624,8 @@ def validate_compact(data: dict) -> None:
                 "eval_after_mover_cp",
                 "patterns",
                 "mate_in",
+                "mate_missed",
+                "mate_via",
                 "why",
             },
             path,
@@ -575,6 +653,18 @@ def validate_compact(data: dict) -> None:
         if "mate_in" in flag:
             if not isinstance(flag["mate_in"], int) or flag["mate_in"] == 0:
                 _fail(f"{path}.mate_in", "must be a non-zero integer")
+        # 2.2/D31: a missed mate always names its length and (when known) the
+        # mating move. `mate_via` alone would be a SAN with no length.
+        if flag["game_impact"] is not None and flag["game_impact"] not in GAME_IMPACT_VALUES:
+            _fail(f"{path}.game_impact", f"must be one of {GAME_IMPACT_VALUES} or null")
+        if "mate_missed" in flag:
+            if not isinstance(flag["mate_missed"], int) or flag["mate_missed"] < 1:
+                _fail(f"{path}.mate_missed", "must be an integer >= 1")
+        if "mate_via" in flag:
+            if "mate_missed" not in flag:
+                _fail(f"{path}.mate_via", "requires mate_missed")
+            if not isinstance(flag["mate_via"], str) or not flag["mate_via"]:
+                _fail(f"{path}.mate_via", "must be a non-empty string")
         if "patterns" in flag:
             if not isinstance(flag["patterns"], list) or not flag["patterns"]:
                 _fail(f"{path}.patterns", "must be a non-empty array")
@@ -691,6 +781,35 @@ def validate_compact(data: dict) -> None:
                     f"reason must be one of {PV_UNAVAILABLE_REASONS}",
                 )
 
+    # 2.2/D32: the played-move continuation mirrors pv/pv_unavailable, but the
+    # two maps must never describe the same ply (that would be two lines for
+    # one position with no way to tell which is which).
+    played_pv = data.get("pv_played")
+    if played_pv is not None:
+        if not isinstance(played_pv, dict) or not played_pv:
+            _fail("$.pv_played", "must be a non-empty object")
+        for key, line in played_pv.items():
+            if not re.fullmatch(r"[1-9]\d*", str(key)):
+                _fail(f"$.pv_played[{key!r}]", "key must be a ply number")
+            if not isinstance(line, list) or not 1 <= len(line) <= 3:
+                _fail(f"$.pv_played[{key!r}]", "must be an array of 1..3 SAN moves")
+            if not all(isinstance(san, str) and san for san in line):
+                _fail(f"$.pv_played[{key!r}]", "SAN moves must be non-empty strings")
+    played_unavailable = data.get("pv_played_unavailable")
+    if played_unavailable is not None:
+        if not isinstance(played_unavailable, dict) or not played_unavailable:
+            _fail("$.pv_played_unavailable", "must be a non-empty object")
+        for key, reason in played_unavailable.items():
+            if not re.fullmatch(r"[1-9]\d*", str(key)):
+                _fail(f"$.pv_played_unavailable[{key!r}]", "key must be a ply number")
+            if reason not in PV_PLAYED_UNAVAILABLE_REASONS:
+                _fail(
+                    f"$.pv_played_unavailable[{key!r}]",
+                    f"reason must be one of {PV_PLAYED_UNAVAILABLE_REASONS}",
+                )
+            if played_pv and key in played_pv:
+                _fail(f"$.pv_played_unavailable[{key!r}]", "ply already has pv_played")
+
     clusters = data.get("clusters")
     if clusters is not None:
         if not isinstance(clusters, list):
@@ -699,8 +818,8 @@ def validate_compact(data: dict) -> None:
             path = f"$.clusters[{idx}]"
             _check_keys(
                 cluster,
-                {"from", "to", "count", "total_cp"},
-                {"from", "to", "count", "total_cp"},
+                {"from", "to", "count", "total_cp", "plies"},
+                {"from", "to", "count", "total_cp", "plies"},
                 path,
             )
             if not isinstance(cluster["from"], int) or cluster["from"] < 1:
@@ -711,6 +830,14 @@ def validate_compact(data: dict) -> None:
                 _fail(f"{path}.count", "must be an integer >= 3")
             if not isinstance(cluster["total_cp"], (int, float)):
                 _fail(f"{path}.total_cp", "must be a number")
+            # 2.2/D32: the ply list must describe exactly the run it summarises.
+            plies = cluster["plies"]
+            if not isinstance(plies, list) or len(plies) != cluster["count"]:
+                _fail(f"{path}.plies", "must list one ply per counted move")
+            if not all(isinstance(p, int) and p >= 1 for p in plies):
+                _fail(f"{path}.plies", "must contain positive integers")
+            if plies[0] != cluster["from"] or plies[-1] != cluster["to"]:
+                _fail(f"{path}.plies", "must start at `from` and end at `to`")
 
     fen_before = data.get("fen_before")
     if fen_before is not None:

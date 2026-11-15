@@ -48,6 +48,16 @@ PROMPT_WITH_CLEAN_PHASE = """K DISPOZICI:
 - Fázový breakdown: endgame: ACPL 438.7, 10 chyb; middlegame: ACPL 68.5, 7 chyb | čisté fáze: opening
 """
 
+# D34: the prompt now carries the game_impact verdict and a missed mate, so the
+# deterministic report can never present a 9027 cp swing as a catastrophe.
+PROMPT_WITH_MISSED_MATE = """K DISPOZICI:
+- Výsledek: 1-0, barva: white, zahájení: Caro-Kann Defense
+- Celková ACPL: 286.5
+- Počet chyb: 2 blunderů, 0 chyb, 0 nepřesností
+- Blundry (s detaily): - ply 67 Bf5+ (loss 9027cp, fáze=endgame, gives_check=True, in_check_before=False, tactical=False, motif=None, best=e6+, rank=3, impact=winning_to_winning, mate_missed=10 via e6+, explanation=n/a, fen=8/5pk1/4p3/8/8/5P2/6K1/3R4 w - - 0 34)
+- Fázový breakdown: endgame: ACPL 965.3, 5 chyb
+"""
+
 
 def test_blunder_detail_is_reported():
     content, log = generate_deterministic_report(PROMPT_WITH_BLUNDER)
@@ -152,3 +162,14 @@ def test_report_never_truncated_mid_structure():
     assert "moves_after" not in content
     line = next(ln for ln in content.splitlines() if ln.startswith("- Kritický moment:"))
     assert "ply 41" in line and "308cp" in line
+
+
+def test_missed_mate_and_game_impact_reach_the_report():
+    """D34: '9027cp' alone reads as a catastrophe; the verdict must travel
+    with it, otherwise the deterministic report contradicts the JSON."""
+    content, _ = generate_deterministic_report(PROMPT_WITH_MISSED_MATE)
+    line = next(ln for ln in content.splitlines() if ln.startswith("- Kritický moment:"))
+    assert "9027cp" in line
+    assert "winning_to_winning" in line
+    assert "mate missed: 10 via e6+" in line
+    assert "e6+," not in line

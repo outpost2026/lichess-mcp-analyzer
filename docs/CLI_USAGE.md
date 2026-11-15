@@ -39,7 +39,7 @@ opt-in přes `--format detailed`. **Výchozí rozsah jsou obě barvy** (D24):
 jedna hra = jeden JSON s oběma perspektivami, klíčovaný `{"white": …, "black": …}`.
 
 ```powershell
-# jedna hra -> compact 2.1, obě barvy, klíčovaný JSON (výchozí)
+# jedna hra -> compact 2.2, obě barvy, klíčovaný JSON (výchozí)
 .\.venv\Scripts\python.exe -X utf8 scripts\coach.py --game-id FVhqtv1S --no-llm --out data\reports\FVhqtv1S.json
 
 # jen jedna perspektiva (výstup je pak plochý objekt, ne klíčovaný)
@@ -96,7 +96,7 @@ aggregate: {"games": 3, "mean_acpl": 191.4, "flags": {"blunder": 2, "mistake": 6
 
 Tenký wrapper nad `coach.py`: stejná pipeline, ale zapisuje rovnou do
 `data\reports\` a vypisuje lidský souhrn. **Výchozí jsou obě barvy**
-a **`--format both`** (compact 2.1 + detailed 1.2 v jednom souboru).
+a **`--format both`** (compact 2.2 + detailed 1.2 v jednom souboru).
 
 ```powershell
 # obě barvy, compact + detailed, jeden JSON (výchozí)
@@ -127,7 +127,7 @@ a **`--format both`** (compact 2.1 + detailed 1.2 v jednom souboru).
 | `--pgn PATH` | alternativa k `game_id`; cesta relativně k repozitáři |
 | `--username` | tvůj Lichess nick; určí barvu automaticky |
 | `--color white\|black\|both` | výchozí `""` = obě barvy |
-| `--format compact\|detailed\|both` | výchozí `both` (compact 2.1 + detailed 1.2) |
+| `--format compact\|detailed\|both` | výchozí `both` (compact 2.2 + detailed 1.2) |
 | `--depth N` | výchozí `14` (auto politika: 12/14/16/18) |
 | `--mode fast\|deep` | `fast` = 60 s deadline, `deep` = 120 s |
 | `--out PATH` | výchozí `data\reports\single_game_{id}_{ts}.json` |
@@ -141,11 +141,13 @@ skript vypíše `error: …` na stderr, vrátí `1` a soubor nevytvoří (dřív
 vznikala validně vypadající prázdná odpověď). Neznámý `--username` u PGN je
 chyba, ne tichý přepis na opačnou barvu.
 
-Výstupní JSON obsahuje `analysis.acpl`, `analysis.accuracy`, `game` (jména,
-ratingy, TC, datum, URL, zahájení), `flagged_moves` (včetně `fen_before`,
-`game_impact` a `mate_after`), `patterns`, `report`, `engine` (politika) a
-`timings` (včetně `llm_skipped` / `llm_skip_reason`). `game_impact` je jen
-v detailed (D15); compact 2.1 ho nenese, dokud nevznikne verze 2.2.
+Výstupní JSON obsahuje `analysis.acpl`, `analysis.accuracy` (s
+`accuracy_warning`, když je ve hře mat-level výkyv), `game` (jména, ratingy,
+TC, datum, URL, zahájení), `flagged_moves` (včetně `fen_before`,
+`game_impact`, `mate_after`, `mate_missed`/`mate_via` a
+`pv_played`/`pv_played_unavailable`), `patterns`, `report`, `engine` (politika)
+a `timings` (včetně `llm_skipped` / `llm_skip_reason`). Od [2.7] nese
+`game_impact` i compact 2.2 (D35).
 
 ## 2. Libovolný tool: `scripts/mcp_call.py`
 
@@ -239,9 +241,9 @@ Poznámky k jednotlivým toolům:
 - `lichess_import_pgn` s dlouhým PGN: použij `ConvertTo-Json -Compress` jako
   v příkladu výše, ať zůstane platný JSON.
 
-## 3. Kompaktní JSON 2.1 (ETL bez LLM)
+## 3. Kompaktní JSON 2.2 (ETL bez LLM)
 
-Compact 2.1 je **výchozí** výstup `coach.py`. Sekce výše pokrývá všechny
+Compact 2.2 je **výchozí** výstup `coach.py`. Sekce výše pokrývá všechny
 případy; zde jen minimální příklady a rozdíly.
 
 ```powershell

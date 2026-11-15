@@ -1,8 +1,8 @@
-"""Unified single-game coaching CLI - compact JSON 2.1 by default.
+"""Unified single-game coaching CLI - compact JSON 2.2 by default.
 
 One entry point for the three real workflows:
 
-    # one Lichess game -> compact 2.1, both colours, keyed JSON
+    # one Lichess game -> compact 2.2, both colours, keyed JSON
     python scripts/coach.py --game-id FVhqtv1S
 
     # one perspective only
@@ -397,7 +397,7 @@ def _write(payload, out: str, ndjson: bool) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = _Parser(description="Coach chess games: compact JSON 2.1 for both colours by default.")
+    parser = _Parser(description="Coach chess games: compact JSON 2.2 for both colours by default.")
     source = parser.add_mutually_exclusive_group()
     source.add_argument("--game-id", default="", help="Lichess game ID")
     source.add_argument("--pgn-file", default="", help="Path to a local PGN file")

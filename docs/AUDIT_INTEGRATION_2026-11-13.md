@@ -348,6 +348,50 @@ black `true` / `negative_cache` (`llm_s` 0.0).
 **Otevřené (mimo tuto iteraci):** `game_impact` je jen v detailed (D15).
 Pokud má být i v compact, vyžaduje to compact **2.2** (schema má
 `additionalProperties: false`) – nová verze artefaktu, ne tichá adice.
+→ **Rozhodnuto v §12.3 (D35): autor nařídil `game_impact` i v compactu.**
+
+---
+
+## 12.3 Třetí audit `WHIbVLXk` a compact 2.2 (2026-11-15)
+
+Audit `WHIbVLXk` (Caro-Kann B12, 1-0) byl ověřen proti
+`data/reports/single_game_WHIbVLXk_20261115_125709.json` (17 flagů, 8 white /
+9 black) a proti `src/`. Čísla v auditu sedí; odchylky jsou jen v indexech
+`engine_lines` (audit u black ply 68 psal `[1]`/`[2]`, správně je rank 1 = `Ke7`
+a sehráno `Kc7` = rank 3) a v jednom tvrzení, které je **nepravdivé**:
+`mate_after: "for"` v kódu existuje (`_game_impact`), chybí jen `mate_missed`.
+
+| ID | Rozhodnutí | Dopad |
+|---|---|---|
+| **D31** | `mate_missed` (int \| null) + `mate_via` (SAN \| null) aditivně v detailed 1.2 i compact 2.2. Pravidlo: `engine_lines[0].mate_in > 0` **a** `|eval_after_mover_cp| < 9000` (sehráno samo nedává mat). `mate_after` zůstává `for`/`against`. | White ply 67 `Bf5+`: `mate_missed: 10`, `mate_via: "e6+"`, `game_impact: winning_to_winning` – LLM už nemusí dopočítávat „mohl jsi dát mat". |
+| **D32** | `pv_played` + `pv_played_unavailable` (detailed: pole per flag; compact: mapy `ply → PV`). Je to **engine pokračování po sehráno tahu** z téhož multipv search, nikdy soupeřova skutečná odpověď. `clusters[].plies` doplňuje seznam plies k `{from,to,count,total_cp}`. | White ply 63 `fxe6` (rank 4 ze 3 linií) = `rank_not_in_engine_lines`; ply 67 = `["Ke7", "Qh4+", "Kf8"]`. Cluster 59–63 = `plies [59, 61, 63]`. |
+| **D33** | `analysis.accuracy_warning` (detailed) / `summary.acc_warning` (compact) = `contains_mate_level_outlier`, když některý flag má `mate_missed` nebo `|eval_after| ≥ 9000`. Lineární accuracy se **nepřepočítává** (`accuracy_excluding_outliers` zamítnuto – druhý nespecifikovaný práh). | White `acc 92.8` už není bez kontextu: nese warning, protože ply 67 je mat-level. |
+| **D34** | Deterministický report i prompt používají `game_impact` + `mate_missed`: `_move_lines` tiskne `impact=…` a `mate_missed=N via SAN`, `ide_fallback._critical_moments` je vypisuje v `- Kritický moment:`. | Report white: `ply 67 Bf5+ 9027cp [winning_to_winning, mate missed: 10 via e6+]` místo „katastrofa 9027 cp". |
+| **D35** | **Compact 2.2** (`schemas/single_game_v2_compact_2.2.json`) publikován; `flags[].game_impact` je povinné (nullable). 2.1 soubor zůstává zmrazený. `SCHEMA_V = "2.2"`, validátor a testy ve stejné iteraci. | Autorovo „compact musí mít game_impact" splněno bez tiché adice do 2.1. |
+
+**Zamítnuto (s důvodem):**
+
+- `mate_after: "for_missed"` – `mate_after` popisuje mat **po** tahu (`for` =
+  hráč dal mat, `against` = dostal mat); zmeškaný mat je jiný fakt a má vlastní
+  pole. Třetí hodnota by rozbila enum a neřekla nic navíc proti `mate_missed`.
+- Povýšení `quiet_positional` na pattern Q1 – 11/17 flagů má `cp ≤ 149`,
+  `quiet_blunder` (D13) platí až > 200 cp; behaviorální pattern bez měřitelné
+  hranice je přesně to, co D4 zakazuje. Zůstává `why=quiet_positional`.
+- `accuracy_excluding_outliers` – druhý skóre bez definovaného prahu; warning
+  (D33) je měřitelný a nemění publikovanou metriku.
+- Drop `eval_before`/`eval_after` a „`best_eval` vs `engine_lines[0]` bug“ –
+  obojí už vysvětleno v D30 (alias 1.2; jiný search před/po tahu).
+- `time_control` per move (`clock_before`/`clock_after`) – zůstává T-16 / D23;
+  `%clk` se zatím neparsuje, pole by bylo prázdné.
+
+**Ověřeno na `WHIbVLXk` po změně** (`scripts/coach_single.py WHIbVLXk --no-llm
+--quiet`, obě barvy, 1.2 s z cache): `v = 2.2`; oba payloady validují proti
+`single_game_v2_compact_2.2.json` a `single_game_v1.2.json`; white ply 67
+`mate_missed 10` / `mate_via e6+` v compact i detailed; `acc_warning` na obou
+stranách; `pv_played_unavailable` = white `{"63": rank_not_in_engine_lines}`,
+black `{"66": rank_not_in_engine_lines}`; clustery i s plies: white
+`{from 59, to 63, count 3, total_cp 546, plies [59,61,63]}`, black
+`{from 62, to 68, count 4, total_cp 10628, plies [62,64,66,68]}`.
 
 ---
 

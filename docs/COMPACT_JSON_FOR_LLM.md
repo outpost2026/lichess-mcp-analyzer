@@ -1,4 +1,4 @@
-# Compact JSON 2.1 — guide for an LLM agent
+# Compact JSON 2.2 - guide for an LLM agent
 
 Compact JSON is the hand-off format between this pipeline and an LLM. It is
 produced **offline** (no LLM at ETL time) and contains only what a coaching
@@ -12,12 +12,12 @@ regression `FVhqtv1S`; measured 4400 chars) versus 13–26 kB for schema 1.2.
 
 ## One game, both colours (D24)
 
-Compact 2.1 is single-perspective by contract, so a complete game is **two
+Compact 2.2 is single-perspective by contract, so a complete game is **two
 compact payloads in one file**, keyed by colour:
 
 ```json
-{"white": {"v": "2.1", "game": {"color": "white"}, …},
- "black": {"v": "2.1", "game": {"color": "black"}, …}}
+{"white": {"v": "2.2", "game": {"color": "white"}, …},
+ "black": {"v": "2.2", "game": {"color": "black"}, …}}
 ```
 
 This is the CLI default (`coach.py`, `coach_single.py` without `--color`).
@@ -34,6 +34,7 @@ artifact.
 | `game` | id, username (omitted for anonymous games), color (`white` or `black` only — the side analysed), result, opening (ECO + name), tc, date, depth |
 | `summary.acpl` / `summary.acc` | centipawn loss = lower is better; `acc` is the **internal** score 0–100 (`internal_cp_linear`), not Lichess accuracy (P1) |
 | `summary.acc_method` | how `acc` was computed: `internal_cp_linear` = `mean(max(0, 100 - 0.15*cp_loss))`; omitted only for payloads that predate the field |
+| `summary.acc_warning` | `contains_mate_level_outlier` when at least one flag is mate-level (a missed mate or a forced mate after the move). The score itself is unchanged; never quote `acc` without this qualifier when it is present (D33) |
 | `summary.phases` | `[acpl, flagged_count]` for opening / middlegame / endgame, grouped by `effective_phase` — the same phase the detectors used (`phase_method`), not the raw ply segment (P1) |
 | `flags[]` | one entry per blunder/mistake/inaccuracy, ordered by ply |
 | `flags[].ply` | half-move number (1 = White's 1st move) |
@@ -43,6 +44,8 @@ artifact.
 | `flags[].eval_before_mover_cp` / `eval_after_mover_cp` | canonical eval swing in cp, **mover POV** (see "Perspective and eval POV"); present only for `cp > 200` or class blunder/mistake **and** consistent with `cp` (FIX-023) |
 | `flags[].eval_before` / `eval_after` | deprecated aliases of the two keys above, kept for one release (D9) |
 | `flags[].mate_in` | blunder only: forced mate in N moves from the best line (FIX-027); positive = for the player, negative = against |
+| `flags[].game_impact` | **mandatory** in 2.2: did the game change, from the mover's POV. 9 sign transitions (`winning_to_winning` … `losing_to_losing`) with a ±100 cp dead zone, plus 3 mate transitions (`*_to_mate`). `null` = evals not measured. A 9000 cp loss with `winning_to_winning` is a missed conversion, not a catastrophe (D29) |
+| `flags[].mate_missed` / `mate_via` | the best line mates for the mover in N moves and the played move does not; `mate_via` is the mating SAN. Present together, omitted otherwise. This is why `cp_loss` can be ~9000 while `game_impact` stays `winning_to_winning` (D31) |
 | `flags[].patterns` | pattern ids whose evidence includes this ply; omitted when none |
 | `flags[].pstatus` | `matched` or `unclassified` — every flag states whether a pattern covers it (P0-7) |
 | `flags[].why` | reason code, present **only** when `pstatus == "unclassified"` (P0-7) |
@@ -52,18 +55,20 @@ artifact.
 | `unclassified` | discovery feed: `{ply, class, cp, why}` for flagged moves without a pattern |
 | `pv` | `ply -> [SAN, SAN, SAN]` best line (max 3 moves) |
 | `pv_unavailable` | `ply -> reason` when a blunder/mistake has no PV (explicit gap). This **is** the truncation signal: there is no separate `pv_truncated` flag |
-| `clusters` | runs of >= 3 consecutive flagged own moves (time-pressure signal) |
+| `pv_played` | `ply -> [SAN, …]` (max 3): the engine continuation **after the played move**, from the same multipv search as `pv`. It is a line, not the opponent's actual reply — never narrate it as "what was played next" (D32) |
+| `pv_played_unavailable` | `ply -> reason` (`rank_not_in_engine_lines`, `no_continuation`, `no_engine_lines`) when a blunder/mistake has no played-move continuation (D32) |
+| `clusters` | runs of >= 3 consecutive flagged own moves (time-pressure signal), each with `from`, `to`, `count`, `total_cp` and `plies` — the exact moves in the run (D32) |
 | `fen_before` | `ply -> FEN`, only for `cp > 100` (reproducible drill positions). Detailed 1.2 carries `flagged_moves[].fen_before` for **every** flag, so a narrative that needs the position of a small inaccuracy must use the detailed payload |
 | `report` | short deterministic summary, ≤900 chars, never truncated mid-structure |
 | `llm` | `{status, provider, reason}`; `failed` + `deterministic` means no LLM was used |
 
 ### Perspective and eval POV
 
-Compact 2.1 is **single-perspective**: every `flags[]` entry, `summary.acpl`,
+Compact 2.2 is **single-perspective**: every `flags[]` entry, `summary.acpl`,
 `summary.phases`, `patterns[]` and `clusters` describe the moves of the colour
 in `game.color` (always `white` or `black`). Opponent moves are not part of the
 payload. A full-game view is a different artifact (`game_full` 1.0, implemented
-2026-11-14 — see `GAME_FULL_1.0.md`), not an extension of compact 2.1.
+2026-11-14 — see `GAME_FULL_1.0.md`), not an extension of compact 2.2.
 
 **Eval POV:** `eval_before_mover_cp` and `eval_after_mover_cp` are both from
 the **mover's** point of view — the player who made the flagged move.
@@ -76,7 +81,7 @@ after the move. Therefore:
   evals come from separate searches, so the subtraction is only an
   approximation (within the FIX-023 window it holds to ±50 cp). The exact
   anchor `best_eval_mover_cp` is published in the **detailed** payload; compact
-  2.1 does not carry it (size budget).
+  2.2 does not carry it (size budget).
 - a positive value always means "good for the mover", for both colours;
 - never compare `eval_before_mover_cp` of a White move with one of a Black
   move as if they shared a direction — they do not.
@@ -102,6 +107,18 @@ aliases for one release (D9). A White-POV timeline is a different artifact
 - `mate_in` absent — the best line is not a forced mate, or the flag is not a
   blunder. When present, `eval_cp` is `null` for that engine line; say
   "mat v N", never "hodnocení 0".
+- `flags[].game_impact = null` — the evals were not measured (legacy cache or
+  cloud eval). Do not infer the state from `cp` alone; `cp` says how much was
+  lost, not whether the game changed.
+- `flags[].mate_missed` absent — no mate was available, the played move itself
+  reaches a forced mate (`mate_after` says for whom), or the line was not
+  measured. `mate_missed` and `mate_via` always appear together.
+- `pv_played` absent but `pv_played_unavailable[ply]` present — say the engine
+  continuation was unavailable and name the reason; never substitute the
+  opponent's actual reply (it is not in the payload).
+- `summary.acc_warning` present — quote it next to `acc`. A high accuracy with
+  one missed mate is still a high accuracy for the other moves, but not a
+  verdict on the game.
 - `summary.acpl` / `summary.phases[*][0] = null` — no measured move in that
   scope.
 - `game.username` absent — anonymous game or unknown player; never the literal
@@ -126,16 +143,22 @@ aliases for one release (D9). A White-POV timeline is a different artifact
 
 ## What the agent must do
 
-1. Validate the JSON (schema 2.1) before using it.
+1. Validate the JSON (schema 2.2) before using it.
 2. Pick the weakest phase from `summary.phases`: highest ACPL, tie-break by
    flagged count. A phase with `flagged == 0` **and** ACPL `0.0` (or `null`) is
    clean — it is never the weakest phase. If every phase is clean, say
    "žádná slabá fáze" instead of inventing one.
 3. For every flag you discuss, read `pv[ply]` for the alternative and
    `fen_before[ply]` when you need the position. Do not reconstruct a FEN by
-   hand. If the ply is in `pv_unavailable`, state the gap.
+   hand. If the ply is in `pv_unavailable`, state the gap. `pv_played[ply]` is
+   the engine's line after the played move — useful for "what the move allows",
+   never for "what the opponent answered".
 4. Use `flags[].eval_before_mover_cp/eval_after_mover_cp` verbatim when
    present — you cannot derive a swing that was not measured.
+4b. Read `flags[].game_impact` before choosing an adjective. `winning_to_mate`
+   is fatal; `winning_to_winning` with `mate_missed: N` means "you missed the
+   mate, the position stayed winning"; `losing_to_losing` is a lost position
+   getting worse, not the decisive moment.
 5. Cross-reference `patterns[].plie` with `flags[].ply`; `flags[].patterns`
    already tells you which pattern a specific mistake feeds. For a flag with
    `pstatus == "unclassified"`, say that no calibrated pattern covers it and
@@ -156,7 +179,7 @@ aliases for one release (D9). A White-POV timeline is a different artifact
 System:
 
 ```text
-You are a chess coach. You receive one compact JSON analysis (schema 2.1) of a
+You are a chess coach. You receive one compact JSON analysis (schema 2.2) of a
 game played by the user. Base every statement on the JSON fields. Never invent
 moves, evaluations, FENs or variations. If a value is null or a key is absent,
 say it was not measured instead of guessing. The user's side is game.color.
@@ -173,6 +196,9 @@ Rules:
 3. Top 2 flags by cp: what was played, what pv[ply] says was better, why.
    Use eval_before_mover_cp/eval_after_mover_cp when present. If pv_unavailable
    has the ply, say the engine line was unavailable.
+3b. Check game_impact and mate_missed before calling a move a catastrophe.
+   winning_to_winning + mate_missed = "missed mate, still winning".
+   If summary.acc_warning is present, mention it with the accuracy.
 4. Pattern advice only for patterns with conf >= 0.5 (conf is ordinal
    `strength`, not a probability). Use flags[].patterns to link a specific
    mistake to its pattern.
@@ -188,10 +214,12 @@ JSON:
 
 Input (`Sl1s8KmU`, White, 0-1, rapid 600+0, depth 14). The example is a
 historical 2.0 payload and is intentionally limited to the core keys; a current
-2.1 payload additionally carries per-flag `pstatus`/`why`, top-level
-`phase_method` and mandatory `patterns_meta`, plus `username`,
+2.2 payload additionally carries per-flag `pstatus`/`why`/`game_impact`,
+top-level `phase_method` and mandatory `patterns_meta`, plus `username`,
 `eval_before_mover_cp/eval_after_mover_cp` (legacy `eval_before/eval_after`
-aliases), per-flag `patterns`, `pv_unavailable` and `clusters`.
+aliases), per-flag `patterns`, `mate_missed`/`mate_via`, `pv_unavailable`,
+`pv_played`/`pv_played_unavailable`, `clusters[].plies` and
+`summary.acc_warning`.
 
 ```json
 {
@@ -285,7 +313,7 @@ above 0.5, so they justify targeted capture/check discipline work.
 .\.venv\Scripts\python.exe -X utf8 scripts\mcp_call.py lichess_coaching_single_game --args '{"game_id":"Sl1s8KmU","username":"systeq","output_format":"compact"}'
 ```
 
-`output_format` accepts `compact` (default, schema 2.1), `detailed` (schema
+`output_format` accepts `compact` (default, schema 2.2), `detailed` (schema
 1.2) and `both` → `{"compact": …, "detailed": …}`. `full` remains a deprecated
 alias for `detailed` for one release cycle and logs a warning.
 

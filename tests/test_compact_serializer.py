@@ -1,4 +1,4 @@
-"""Schema 2.1 compact serializer — unit tests (no engine, no network)."""
+"""Schema 2.2 compact serializer — unit tests (no engine, no network)."""
 
 import json
 import os
@@ -168,14 +168,14 @@ def test_output_validates_against_manual_validator():
 def test_output_validates_against_json_schema_file():
     jsonschema = pytest.importorskip("jsonschema")
     schema = json.load(
-        open(os.path.join(ROOT, "schemas/single_game_v2_compact.json"), encoding="utf-8")
+        open(os.path.join(ROOT, "schemas/single_game_v2_compact_2.2.json"), encoding="utf-8")
     )
     jsonschema.validate(_compact(), schema)
 
 
 def test_metadata_and_summary():
     out = _compact()
-    assert out["v"] == "2.1"
+    assert out["v"] == "2.2"
     assert out["phase_method"] == "ply_segment"
     assert out["patterns_meta"] == {
         "scope": "single_game",
@@ -246,6 +246,7 @@ def test_all_flags_preserved_in_ply_order():
         "rank": 3,
         "pstatus": "unclassified",
         "why": "quiet_positional",
+        "game_impact": "winning_to_winning",
     }
     assert by_ply[40]["pstatus"] == "matched"
     assert "why" not in by_ply[40]
@@ -287,7 +288,9 @@ def test_patterns_per_flag_and_error_cluster():
         )
     out = to_compact_v2(full, game_meta=GAME_META)
     validate_compact(out)
-    assert out["clusters"] == [{"from": 87, "to": 91, "count": 3, "total_cp": 482}]
+    assert out["clusters"] == [
+        {"from": 87, "to": 91, "count": 3, "total_cp": 482, "plies": [87, 89, 91]}
+    ]
     by_ply = {f["ply"]: f for f in out["flags"]}
     # CAND-E: the flag itself says which behavioural patterns it feeds.
     assert by_ply[40]["patterns"] == ["T"]
@@ -607,5 +610,129 @@ def test_validator_rejects_unclassified_flag_without_reason():
 def test_validator_rejects_coverage_that_does_not_add_up():
     out = _compact()
     out["patterns_meta"]["coverage"]["unclassified"] = 99
+    with pytest.raises(ValueError):
+        validate_compact(out)
+
+
+# ── 2.2 / D29-D33: game_impact, missed mate, played PV, cluster plies ───────
+
+
+def test_every_flag_carries_game_impact():
+    """2.2: the label that separates a thrown win from a missed mate is
+    mandatory. Null = the evals were not measured, never a guessed state."""
+    out = _compact()
+    assert all("game_impact" in flag for flag in out["flags"])
+    full = json.loads(json.dumps(FULL))
+    full["flagged_moves"][0]["eval_before"] = None
+    full["flagged_moves"][0]["eval_after"] = None
+    unmeasured = to_compact_v2(full, game_meta=GAME_META)
+    assert unmeasured["flags"][0]["game_impact"] is None
+    validate_compact(unmeasured)
+
+
+def test_mate_missed_names_the_length_and_the_mating_move():
+    """`WHIbVLXk` white ply 67: Bf5+ 9027cp while the best line is e6+ mate in 10."""
+    full = json.loads(json.dumps(FULL))
+    full["flagged_moves"].append(
+        {
+            **FLAG_TEMPLATE,
+            "ply": 67,
+            "san": "Bf5+",
+            "classification": "blunder",
+            "cp_loss": 9027.0,
+            "eval_before": 825,
+            "eval_after": 961,
+            "best_move_san": "e6+",
+            "played_rank": 3,
+            "engine_lines": [
+                {"rank": 1, "san": "e6+", "eval_cp": None, "mate_in": 10, "pv": ["e6+", "Kxe6"]},
+                {"rank": 2, "san": "Kg2", "eval_cp": 780, "pv": ["Kg2", "Qf4"]},
+                {"rank": 3, "san": "Bf5+", "eval_cp": 961, "pv": ["Bf5+", "Ke7"]},
+            ],
+        }
+    )
+    out = to_compact_v2(full, game_meta=GAME_META)
+    validate_compact(out)
+    flag = next(f for f in out["flags"] if f["ply"] == 67)
+    assert flag["game_impact"] == "winning_to_winning"
+    assert flag["mate_missed"] == 10
+    assert flag["mate_via"] == "e6+"
+    # The continuation after the played move is the third line, not the best one.
+    assert out["pv_played"]["67"] == ["Ke7"]
+
+
+def test_a_move_that_mates_is_not_a_missed_mate():
+    full = json.loads(json.dumps(FULL))
+    full["flagged_moves"].append(
+        {
+            **FLAG_TEMPLATE,
+            "ply": 70,
+            "san": "Qxh7+",
+            "classification": "blunder",
+            "cp_loss": 400.0,
+            "eval_before": 300,
+            "eval_after": 9998,
+            "played_rank": 1,
+            "engine_lines": [
+                {"rank": 1, "san": "Qxh7+", "eval_cp": None, "mate_in": 2, "pv": ["Qxh7+", "Kxh7"]}
+            ],
+        }
+    )
+    out = to_compact_v2(full, game_meta=GAME_META)
+    validate_compact(out)
+    flag = next(f for f in out["flags"] if f["ply"] == 70)
+    assert flag["game_impact"] == "winning_to_mate"
+    assert "mate_missed" not in flag
+
+
+def test_played_pv_unavailable_when_rank_is_outside_the_multipv_window():
+    """`WHIbVLXk` white ply 63 `fxe6` was rank 4 of 3 searched lines."""
+    full = json.loads(json.dumps(FULL))
+    full["flagged_moves"].append(
+        {
+            **FLAG_TEMPLATE,
+            "ply": 63,
+            "san": "fxe6",
+            "classification": "blunder",
+            "cp_loss": 406.0,
+            "eval_before": 179,
+            "eval_after": -229,
+            "played_rank": 4,
+            "engine_lines": [
+                {"rank": 1, "san": "Qf2", "eval_cp": 177, "pv": ["Qf2", "Rh8+"]},
+                {"rank": 2, "san": "Kg2", "eval_cp": 150, "pv": ["Kg2", "Rh8"]},
+                {"rank": 3, "san": "Rg1", "eval_cp": 120, "pv": ["Rg1", "bxa5"]},
+            ],
+        }
+    )
+    out = to_compact_v2(full, game_meta=GAME_META)
+    validate_compact(out)
+    assert out["pv_played_unavailable"]["63"] == "rank_not_in_engine_lines"
+    assert "63" not in out.get("pv_played", {})
+
+
+def test_accuracy_warning_travels_with_the_score():
+    full = json.loads(json.dumps(FULL))
+    full["analysis"]["accuracy_warning"] = "contains_mate_level_outlier"
+    out = to_compact_v2(full, game_meta=GAME_META)
+    validate_compact(out)
+    assert out["summary"]["acc_warning"] == "contains_mate_level_outlier"
+
+
+def test_validator_rejects_mate_via_without_mate_missed():
+    out = _compact()
+    out["flags"][0]["mate_via"] = "Qh5#"
+    with pytest.raises(ValueError):
+        validate_compact(out)
+
+
+def test_validator_rejects_cluster_plies_that_do_not_match_the_run():
+    full = json.loads(json.dumps(FULL))
+    for ply, cp in ((87, 186.0), (89, 237.0), (91, 59.0)):
+        full["flagged_moves"].append(
+            {**FLAG_TEMPLATE, "ply": ply, "san": f"M{ply}", "cp_loss": cp, "engine_lines": []}
+        )
+    out = to_compact_v2(full, game_meta=GAME_META)
+    out["clusters"][0]["plies"] = [87, 89]
     with pytest.raises(ValueError):
         validate_compact(out)

@@ -50,9 +50,23 @@ def _critical_moments(value: str, max_items: int = 3) -> str:
             continue
         seen.add(ply)
         san = m.group(2)
-        tail = value[m.end() : m.end() + 160]
+        tail = value[m.end() : m.end() + 260]
         cp_m = re.search(r"(?:loss|cp_loss)\s*[=:]?\s*([\d.]+)", tail)
-        parts.append(f"ply {ply} {san} {cp_m.group(1)}cp" if cp_m else f"ply {ply} {san}")
+        # D34: the deterministic report must carry the same verdict the JSON
+        # publishes - otherwise "9027cp" reads as a catastrophe even when the
+        # position stayed winning.
+        impact_m = re.search(r"impact=([a-z_]+)", tail)
+        missed_m = re.search(r"mate_missed=(\d+)(?:\s+via\s+([^\s,;)]+))?", tail)
+        notes = []
+        if impact_m:
+            notes.append(impact_m.group(1))
+        if missed_m:
+            via = f" via {missed_m.group(2)}" if missed_m.group(2) else ""
+            notes.append(f"mate missed: {missed_m.group(1)}{via}")
+        suffix = f" [{', '.join(notes)}]" if notes else ""
+        parts.append(
+            f"ply {ply} {san} {cp_m.group(1)}cp{suffix}" if cp_m else f"ply {ply} {san}{suffix}"
+        )
         if len(parts) >= max_items:
             break
     return "; ".join(parts)

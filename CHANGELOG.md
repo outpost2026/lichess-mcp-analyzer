@@ -3,6 +3,58 @@
 Všechny změny formátu a pipeline. Verze odpovídají kontraktu compact JSON /
 single-game pipeline, ne balíčku `0.1.0` (ten zůstává beze změny).
 
+## [2.7] - 2026-11-15
+
+Integrace třetího auditu (`WHIbVLXk`, Caro-Kann B12) + **compact 2.2**.
+Rozhodnutí D31–D35 v `docs/AUDIT_INTEGRATION_2026-11-13.md` §12.3. Cross-game
+schema 1.4, detailed 1.2 a admission gate beze změny verze; všechny změny
+payloadu jsou aditivní. `schemas/single_game_v2_compact.json` (2.1) zůstává
+zmrazený, nový artefakt je `schemas/single_game_v2_compact_2.2.json`.
+
+### Added
+
+- **D35 compact 2.2**: `flags[].game_impact` je **povinné** (nullable) —
+  autorovo „compact musí mít game_impact“. `SCHEMA_V = "2.2"`, validátor i
+  testy ve stejné iteraci. 2.1 payloady se už negenerují, ale soubor schématu
+  se nemění.
+- **D31 `mate_missed` + `mate_via`** (detailed i compact): nejlepší linie matuje
+  pro hráče v N tazích a sehráno tah ne. `WHIbVLXk` white ply 67 `Bf5+`:
+  `mate_missed: 10`, `mate_via: "e6+"`, `game_impact: winning_to_winning` —
+  `cp_loss 9027` je ztráta relativně k matu, ne katastrofa.
+- **D32 `pv_played` / `pv_played_unavailable`** (detailed pole per flag, compact
+  mapy `ply -> PV`): engine pokračování **po sehráno tahu** z téhož multipv
+  search, max 3 tahy v compactu. Není to soupeřova skutečná odpověď a je to tak
+  i dokumentováno. `clusters[].plies` doplňuje seznam plies k
+  `{from,to,count,total_cp}`.
+- **D33 `analysis.accuracy_warning` / `summary.acc_warning`**:
+  `contains_mate_level_outlier`, když některý flag má `mate_missed` nebo
+  `|eval_after| >= 9000`. Lineární `accuracy` se nepřepočítává.
+- **D34 report a prompt používají `game_impact`**: `_move_lines` tiskne
+  `impact=…` a `mate_missed=N via SAN`; `ide_fallback._critical_moments`
+  je vypisuje v `- Kritický moment:`. White `WHIbVLXk` report už neříká
+  „9027 cp“ bez kontextu, ale `[winning_to_winning, mate missed: 10 via e6+]`.
+- **`services/game_impact.py`**: prahy a klasifikace na jednom místě pro
+  detailed i compact (dřív jen v `tools/coaching_single_game.py`).
+
+### Rejected (audit claims)
+
+- **`mate_after: "for_missed"`**: `mate_after` popisuje mat **po** tahu
+  (`for`/`against`); zmeškaný mat je jiný fakt a má vlastní pole `mate_missed`.
+- **Pattern Q1 pro `quiet_positional`**: 11/17 flagů má `cp <= 149`,
+  `quiet_blunder` (D13) platí až > 200 cp; behaviorální pattern bez měřitelné
+  hranice porušuje D4.
+- **`accuracy_excluding_outliers`**: druhý práh bez definice; warning (D33)
+  je měřitelný a nemění publikovanou metriku.
+- **`time_control` per move**: `%clk` se zatím neparsuje (T-16 / D23).
+
+### Verified
+
+`scripts/coach_single.py WHIbVLXk --no-llm --quiet` (obě barvy, 1.2 s z cache):
+oba payloady validují proti 2.2 i 1.2 schématu; `mate_missed`/`mate_via` u white
+ply 67 v compact i detailed; `acc_warning` na obou stranách; `pv_played_unavailable`
+white `63` a black `66` = `rank_not_in_engine_lines`; clustery
+white `59–63` (`plies [59,61,63]`) a black `62–68` (`plies [62,64,66,68]`).
+
 ## [2.6] - 2026-11-15
 
 Integrace třetího auditu JSON výstupu (`S23Qm04u`, schema 2.1 + dual
