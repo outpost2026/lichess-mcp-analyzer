@@ -12,9 +12,12 @@ from lichess_analyzer_mcp.models.game import GameAnalysis, GameSummary, MoveAnal
 from lichess_analyzer_mcp.services.pattern_detector import (
     PATTERN_STATUS_MATCHED,
     PATTERN_STATUS_UNCLASSIFIED,
+    QUIET_BLUNDER_CP,
     UNCLASSIFIED_CAPTURE,
+    UNCLASSIFIED_CHECK_ESCAPE,
     UNCLASSIFIED_EVIDENCE_GAP,
     UNCLASSIFIED_FORCING_MOVE,
+    UNCLASSIFIED_QUIET_BLUNDER,
     UNCLASSIFIED_QUIET_POSITIONAL,
     detect_single_game,
     scan_single_game,
@@ -143,6 +146,93 @@ def test_reason_capture_without_pattern():
     )
 
 
+# ── D13 quiet_blunder / D14 check_escape ─────────────────────────────────────
+
+
+def test_reason_quiet_blunder_above_threshold():
+    assert (
+        unclassified_reason_for(
+            san="Ne3",
+            in_check=False,
+            gives_check=False,
+            has_engine_evidence=True,
+            cp_loss=QUIET_BLUNDER_CP + 1,
+        )
+        == UNCLASSIFIED_QUIET_BLUNDER
+    )
+
+
+def test_reason_quiet_positional_at_and_below_threshold():
+    """The threshold is strict: 200 cp is still a positional shift."""
+    for cp_loss in (QUIET_BLUNDER_CP, QUIET_BLUNDER_CP - 1, None):
+        assert (
+            unclassified_reason_for(
+                san="Ne3",
+                in_check=False,
+                gives_check=False,
+                has_engine_evidence=True,
+                cp_loss=cp_loss,
+            )
+            == UNCLASSIFIED_QUIET_POSITIONAL
+        )
+
+
+def test_reason_quiet_blunder_needs_absent_motif():
+    """A motif-carrying quiet move is a tactical shape, not a quiet blunder."""
+    assert (
+        unclassified_reason_for(
+            san="Ne3",
+            in_check=False,
+            gives_check=False,
+            has_engine_evidence=True,
+            cp_loss=QUIET_BLUNDER_CP + 100,
+            has_motif=True,
+        )
+        == UNCLASSIFIED_QUIET_POSITIONAL
+    )
+
+
+def test_reason_check_escape_is_a_non_capturing_king_move():
+    assert (
+        unclassified_reason_for(
+            san="Kf1", in_check=True, gives_check=False, has_engine_evidence=True
+        )
+        == UNCLASSIFIED_CHECK_ESCAPE
+    )
+    # A king capture is not a retreat; a piece block is J's territory.
+    assert (
+        unclassified_reason_for(
+            san="Kxd4", in_check=True, gives_check=False, has_engine_evidence=True
+        )
+        == UNCLASSIFIED_FORCING_MOVE
+    )
+    assert (
+        unclassified_reason_for(
+            san="Bd2", in_check=True, gives_check=False, has_engine_evidence=True
+        )
+        == UNCLASSIFIED_FORCING_MOVE
+    )
+
+
+def test_reason_from_flagged_payload_sees_cp_loss_and_motif():
+    quiet_blunder = {
+        "san": "Ne3",
+        "in_check_before": False,
+        "check": False,
+        "best_move_san": "Qf4+",
+        "cp_loss": 300.0,
+    }
+    assert unclassified_reason_from_flag(quiet_blunder) == UNCLASSIFIED_QUIET_BLUNDER
+    escape = {
+        "san": "Kf1",
+        "in_check_before": True,
+        "check": False,
+        "best_move_san": "Qf4+",
+        "cp_loss": 300.0,
+    }
+    assert unclassified_reason_from_flag(escape) == UNCLASSIFIED_CHECK_ESCAPE
+
+
 def test_reason_from_flagged_payload_accepts_both_key_styles():
     flagged = {"san": "Ne3", "in_check_before": False, "check": False, "best_move_san": "Qf4+"}
     raw = {"move_san": "Ne3", "was_in_check": False, "gives_check": False, "best_move_san": "Qf4+"}
@@ -152,7 +242,9 @@ def test_reason_from_flagged_payload_accepts_both_key_styles():
 
 def test_reason_from_move_object():
     move = _move(25, "Bf4", 543.0, best="Qf4+")
-    assert unclassified_reason(move) == UNCLASSIFIED_QUIET_POSITIONAL
+    # D13: quiet but 543 cp lost - a blunder by magnitude, not a positional shift.
+    assert unclassified_reason(move) == UNCLASSIFIED_QUIET_BLUNDER
+    assert unclassified_reason(_move(26, "Bf4", 120.0)) == UNCLASSIFIED_QUIET_POSITIONAL
     blind = _move(27, "", 400.0, best="", rank=0)
     assert unclassified_reason(blind) == UNCLASSIFIED_EVIDENCE_GAP
 
@@ -189,7 +281,7 @@ def test_coverage_accounts_for_every_flagged_move():
     ]
     assert matched == [27, 29]
     assert unclassified == [25, 31]
-    assert coverage[25]["unclassified_reason"] == UNCLASSIFIED_QUIET_POSITIONAL
+    assert coverage[25]["unclassified_reason"] == UNCLASSIFIED_QUIET_BLUNDER
     assert coverage[31]["unclassified_reason"] == UNCLASSIFIED_EVIDENCE_GAP
     assert coverage[25]["pattern_ids"] == []
     assert coverage[27]["pattern_ids"] == ["B"]

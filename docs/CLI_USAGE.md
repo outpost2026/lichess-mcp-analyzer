@@ -142,8 +142,10 @@ vznikala validně vypadající prázdná odpověď). Neznámý `--username` u PG
 chyba, ne tichý přepis na opačnou barvu.
 
 Výstupní JSON obsahuje `analysis.acpl`, `analysis.accuracy`, `game` (jména,
-ratingy, TC, datum, URL, zahájení), `flagged_moves` (včetně `fen_before`),
-`patterns`, `report`, `engine` (politika) a `timings`.
+ratingy, TC, datum, URL, zahájení), `flagged_moves` (včetně `fen_before`,
+`game_impact` a `mate_after`), `patterns`, `report`, `engine` (politika) a
+`timings` (včetně `llm_skipped` / `llm_skip_reason`). `game_impact` je jen
+v detailed (D15); compact 2.1 ho nenese, dokud nevznikne verze 2.2.
 
 ## 2. Libovolný tool: `scripts/mcp_call.py`
 

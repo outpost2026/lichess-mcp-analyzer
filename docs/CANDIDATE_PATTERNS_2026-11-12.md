@@ -262,7 +262,8 @@ zbytku, který D4 říká ponechat jako `unclassified`, ne vymýšlet pattern na
 
 Dva návrhy z handoffu byly zamítnuty **jako pattern** (D13/D14), ale zapsány
 sem, aby se mezera nezatratila: jde o kandidáty pro příští D4 gate, ne o
-hotové detektory. Do té doby je publikuje `why` enum v compact 2.1.
+hotové detektory. Od [2.6] je publikuje `why` enum v compact 2.1 **i**
+detailed 1.2 (`quiet_blunder`, `check_escape`); pattern ID stále nemají.
 
 | Kandidát | Data | Proč to není pattern teď | Co by musel D4 gate doložit |
 |---|---|---|---|
@@ -271,7 +272,8 @@ hotové detektory. Do té doby je publikuje `why` enum v compact 2.1.
 
 Do implementace platí: `why=quiet_blunder` a `why=check_escape` jsou
 **pojmenované mezery**, ne patterny. LLM je musí číst jako „žádný kalibrovaný
-pattern to nepokrývá", nikdy jako diagnózu.
+pattern to nepokrývá", nikdy jako diagnózu. Implementováno v [2.6]
+(`pattern_detector.unclassified_reason_for`, prahy `QUIET_BLUNDER_CP`).
 
 ## 6. Behaviorální / psychologické hypotézy (LLM offline — NE data, NE runtime)
 

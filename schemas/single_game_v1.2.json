@@ -76,7 +76,25 @@
         "engine_calls": { "type": "integer", "minimum": 0 },
         "engine_timeouts": { "type": "integer", "minimum": 0 },
         "engine_retries": { "type": "integer", "minimum": 0 },
-        "cache_hit": { "type": "boolean" }
+        "cache_hit": { "type": "boolean" },
+        "llm_skipped": {
+          "type": "boolean",
+          "description": "D28: true when no LLM provider was contacted (llm disabled, no key, negative cache). Makes llm_s=0.0 unambiguous."
+        },
+        "llm_skip_reason": {
+          "type": ["string", "null"],
+          "enum": [
+            "llm_disabled",
+            "no_provider_configured",
+            "no_api_key",
+            "negative_cache",
+            "unknown_provider",
+            "all_providers_skipped",
+            "pipeline_error",
+            null
+          ],
+          "description": "D28: why the LLM stage was skipped. null = at least one provider was actually contacted."
+        }
       }
     },
     "engine": {
@@ -151,6 +169,30 @@
           "eval_before_mover_cp": { "type": ["number", "null"] },
           "eval_after_mover_cp": { "type": ["number", "null"] },
           "best_eval_mover_cp": { "type": ["number", "null"] },
+          "game_impact": {
+            "type": ["string", "null"],
+            "enum": [
+              "winning_to_winning",
+              "winning_to_equal",
+              "winning_to_losing",
+              "winning_to_mate",
+              "equal_to_winning",
+              "equal_to_equal",
+              "equal_to_losing",
+              "equal_to_mate",
+              "losing_to_winning",
+              "losing_to_equal",
+              "losing_to_losing",
+              "losing_to_mate",
+              null
+            ],
+            "description": "D15: did the game change, from the mover's point of view. Nine sign transitions with a documented +/-100 cp dead zone, plus three mate transitions; a forced mate is never reported as losing_to_losing. null = eval not measured."
+          },
+          "mate_after": {
+            "type": ["string", "null"],
+            "enum": ["for", "against", null],
+            "description": "D15: direction of the forced mate after the move. 'for' = the mover mates, 'against' = the mover is mated. Present only together with a *_to_mate game_impact."
+          },
           "win_prob_before": { "type": ["number", "null"] },
           "win_prob_after": { "type": ["number", "null"] },
           "phase": { "type": "string" },
@@ -180,6 +222,8 @@
             "enum": [
               "evidence_gap",
               "quiet_positional",
+              "quiet_blunder",
+              "check_escape",
               "forcing_move_unexplained",
               "capture_unexplained",
               "mechanism_not_identified",

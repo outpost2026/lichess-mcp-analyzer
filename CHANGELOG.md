@@ -3,6 +3,60 @@
 Všechny změny formátu a pipeline. Verze odpovídají kontraktu compact JSON /
 single-game pipeline, ne balíčku `0.1.0` (ten zůstává beze změny).
 
+## [2.6] - 2026-11-15
+
+Integrace třetího auditu JSON výstupu (`S23Qm04u`, schema 2.1 + dual
+perspective). Rozhodnutí D26-D30 v `docs/AUDIT_INTEGRATION_2026-11-13.md` §12.2.
+Cross-game schema 1.4, compact 2.1 a admission gate beze změny; všechny změny
+payloadu jsou aditivní (jediná výjimka je oprava jednotky, viz D26).
+
+### Fixed
+
+- **D26 `confidence` v detailed 1.2 je zpět 0-1.** `[2.5]` publikovalo 0-100,
+  což porušuje `schemas/single_game_v1.2.json` (`patterns.items.confidence`
+  má `minimum: 0, maximum: 1`) a rozešlo se s compact `conf: 0.48`. Detailní
+  `confidence` = `strength` = 0-1; compact `conf` = 0-1 beze změny;
+  cross-game (`schemas.py`) zůstává 0-100. Audit BUG-1/BUG-2 byl správný.
+- **D27 `report_persister` normalizuje podle artefaktu.** `single_game`
+  (0-1) se v reportu tiskne jako procenta a do KB slim jde 0-1; cross-game
+  kindy (0-100) se nemění. Normalizace je `kind`-based, nikdy podle velikosti
+  čísla (`1.0` by bylo ambiguous).
+
+### Added
+
+- **D15/T-18 `game_impact`** v detailed `flagged_moves[]`: 9 přechodů znaménka
+  (`winning_to_winning` ... `losing_to_losing`) s dokumentovanou mrtvou zónou
+  ±100 cp, plus 3 matové přechody (`*_to_mate`). `mate_after` (`for`/`against`)
+  říká, kdo matuje. Vynucený mat po tahu se nikdy nepublikuje jako
+  `losing_to_losing` (P0-3). `null` = eval neměřen. Detailed-only (D15).
+- **D28 `timings.llm_skipped` + `timings.llm_skip_reason`**: `llm_s: 0.0` už
+  není ambiguous. Reason je `llm_disabled`, `no_provider_configured`,
+  `no_api_key`, `negative_cache`, `unknown_provider`,
+  `all_providers_skipped` nebo `pipeline_error`. Deterministický fallback
+  v `cascade_log` se nepočítá jako pokus o providera.
+- **D13/T-19 `why=quiet_blunder`**: tichý tah (bez capture, bez šachu, ne
+  v šachu) s `cp_loss > 200` a bez motivu. Prah je konstanta
+  `pattern_detector.QUIET_BLUNDER_CP`. Žádný nový pattern ID.
+- **D14/T-20 `why=check_escape`**: neberoucí královský tah v šachu. J zůstává
+  "piece block, nikdy king move" (D11). Žádný nový pattern ID.
+- **N-06** `schemas/single_game_v2_compact.json` a
+  `schemas/single_game_v1.2.json` rozšiřují enum `why` / `unclassified_reason`
+  o `quiet_blunder` a `check_escape`. Schema i validátor jdou spolu.
+
+### Rejected (audit claims)
+
+- **BUG-3** `best_eval_mover_cp` vs `engine_lines[0].eval_cp`: nejde o stejné
+  měření. `best_eval` je eval **po** nejlepším tahu (post-move search),
+  `engine_lines[]` pochází ze samostatného `analyze_position_ex(multipv=3)` na
+  pozici **před** tahem. Srovnatelný pár je `eval_before_mover_cp` vs
+  `engine_lines[0].eval_cp` (naměřeno max 36 cp). Dokumentováno, hodnota se
+  nemění.
+- **BUG-4** `patterns_meta.unclassified_reasons` v compact: compact už nese
+  `unclassified[]` s `{ply, class, cp, why}` pro každý flag. Agregace by
+  vyžadovala compact 2.2 (schema má `additionalProperties: false`).
+- **BUG-6** `eval_before` == `eval_before_mover_cp`: záměrný alias 1.2 (D18),
+  ne duplicita k opravě.
+
 ## [2.5] - 2026-11-15
 
 Integrace handoffu v1.2 → v1.3 (11 her): `docs/HANDOFF_V1_3_INTEGRATION_2026-11-15.md`,
@@ -28,11 +82,11 @@ změny. Všechny změny payloadu jsou aditivní.
 
 ### Changed
 
-- **D18/N-02** `confidence` má jednu jednotku: `scan_single_game` publikuje
-  0–100 (dřív 0–1), což odpovídá `schemas.py` a tisku `{confidence}%` v
-  reportu. `strength` zůstává 0–1 (ordinální síla, nikdy pravděpodobnost).
-  KB slim artefakt dělí 100 → 0–1, compact 2.1 `conf` zůstává 0–1 (zmrazené
-  schema).
+- **D18/N-02** `confidence` mělo mít jednu jednotku na artefakt. `[2.5]`
+  publikovalo v detailed 1.2 hodnotu 0–100; to bylo **chybné** (porušovalo
+  `schemas/single_game_v1.2.json`) a `[2.6]` je vrací na 0–1 (D26). `strength`
+  zůstává 0–1 (ordinální síla, nikdy pravděpodobnost). Compact 2.1 `conf`
+  zůstává 0–1 (zmrazená schema), cross-game `confidence` 0–100.
 - **D24** `scripts/coach_single.py`: chyba pipeline je chybová zpráva na
   stderr + exit 1, **nikdy** validně vypadající prázdný JSON. Neznámý
   `--username` u PGN je chyba, ne tichý přepis na druhou barvu.

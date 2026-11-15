@@ -32,6 +32,24 @@ KINDS = {
 }
 FORMATS = {"json", "md", "both"}
 TARGETS = {"docs", "kb"}
+# D26/D27: `confidence` has one unit per artifact, and the artifact decides it.
+# `single_game` patterns come from `pattern_detector.scan_single_game` and follow
+# the frozen detailed schema 1.2 (0-1). Every other kind aggregates through
+# `coaching_base` / `schemas.py` (0-100). Never sniff the magnitude: `1.0` would
+# be ambiguous between "100 %" and "1 %".
+CONFIDENCE_FRACTION_KINDS = {"single_game"}
+
+
+def _confidence_is_fraction(kind: str) -> bool:
+    return kind in CONFIDENCE_FRACTION_KINDS
+
+
+def _confidence_percent(pattern: dict, *, fraction: bool) -> str:
+    """Report cell for `confidence`, always printed as a percentage."""
+    value = pattern.get("confidence")
+    if not isinstance(value, (int, float)):
+        return "?"
+    return f"{(float(value) * 100.0) if fraction else float(value):g}"
 
 
 def _ts() -> str:
@@ -86,14 +104,16 @@ def _build_md(kind: str, ref: str, result: dict) -> str:
 
     patterns = result.get("patterns") or []
     if patterns:
+        fraction = _confidence_is_fraction(kind)
         lines.append(f"## Patterns ({len(patterns)})")
         lines.append("")
         lines.append("| Pattern | Name | Confidence | Frequency | Severity |")
         lines.append("|---------|------|------------|-----------|----------|")
         for p in patterns:
+            confidence = _confidence_percent(p, fraction=fraction)
             lines.append(
                 f"| {p.get('pattern_id', '?')} | {p.get('pattern_name', '?')} | "
-                f"{p.get('confidence', '?')}% | {p.get('frequency', '?')} | "
+                f"{confidence}% | {p.get('frequency', '?')} | "
                 f"{p.get('severity', '?').upper()} |"
             )
         lines.append("")
@@ -148,12 +168,18 @@ def _build_md(kind: str, ref: str, result: dict) -> str:
     return "\n".join(lines)
 
 
-def _kb_pattern_slim(patterns: list[dict]) -> list[dict]:
+def _kb_pattern_slim(patterns: list[dict], *, fraction: bool = False) -> list[dict]:
+    """KB pattern record; `confidence` is always 0-1 here (D26/D27)."""
     return [
         {
             "pattern_id": p.get("pattern_id"),
             "pattern_name": p.get("pattern_name"),
-            "confidence": round(p.get("confidence", 0) / 100, 2),
+            "confidence": round(
+                float(p.get("confidence") or 0.0)
+                if fraction
+                else float(p.get("confidence") or 0.0) / 100.0,
+                2,
+            ),
             "severity": p.get("severity"),
         }
         for p in patterns
@@ -169,7 +195,9 @@ def _write_kb(kind: str, ref: str, result: dict) -> list[dict]:
     artifacts = []
     patterns = result.get("patterns") or []
     if patterns:
-        path = write_pattern_report(ref, _kb_pattern_slim(patterns))
+        path = write_pattern_report(
+            ref, _kb_pattern_slim(patterns, fraction=_confidence_is_fraction(kind))
+        )
         if not os.path.isfile(path) or os.path.getsize(path) == 0:
             raise OSError(f"read-after-write verification failed: {path}")
         artifacts.append({"path": path, "size_bytes": os.path.getsize(path)})

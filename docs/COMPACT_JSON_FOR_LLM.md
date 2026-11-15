@@ -46,7 +46,7 @@ artifact.
 | `flags[].patterns` | pattern ids whose evidence includes this ply; omitted when none |
 | `flags[].pstatus` | `matched` or `unclassified` — every flag states whether a pattern covers it (P0-7) |
 | `flags[].why` | reason code, present **only** when `pstatus == "unclassified"` (P0-7) |
-| `patterns[]` | behavioural layer: id, **ordinal `strength`** 0–1 (emitted as `conf`), frequency, severity, affected plies. `conf` is not a probability (P1) and is **0–1**; the detailed payload's `confidence` is **0–100** — the same number in a different unit, never compare the two numerically (D18) |
+| `patterns[]` | behavioural layer: id, **ordinal `strength`** 0-1 (emitted as `conf`), frequency, severity, affected plies. `conf` is not a probability (P1) and is **0-1**; the detailed payload's `confidence` is also **0-1** (same number, D26) - only cross-game artifacts use 0-100, so never mix the two families |
 | `phase_method` | which phase source the detectors used: `ply_segment`, `material`, or `mixed` (P0-3). `summary.phases` follows this source; the detailed payload additionally publishes `segment_stats` and `chess_phase_stats` so the difference is auditable (P1) |
 | `patterns_meta` | mandatory: `scope`, `cross_game_suppressed`, `reason`, `coverage {flagged, matched, unclassified}`; an empty `patterns` list always has a reason |
 | `unclassified` | discovery feed: `{ply, class, cp, why}` for flagged moves without a pattern |
@@ -115,8 +115,9 @@ aliases for one release (D9). A White-POV timeline is a different artifact
 - `flags[].pstatus` — always present. `matched` means at least one pattern in
   `flags[].patterns`; `unclassified` means none did. `why` is present exactly
   when `pstatus == "unclassified"` and absent when matched.
-- `why` values — `evidence_gap`, `quiet_positional`,
-  `forcing_move_unexplained`, `capture_unexplained`,
+- `why` values - `evidence_gap`, `quiet_positional`, `quiet_blunder`
+  (quiet shape with `cp > 200`, D13), `check_escape` (non-capturing king move
+  out of check, D14), `forcing_move_unexplained`, `capture_unexplained`,
   `mechanism_not_identified` (`not_classified` only in payloads that predate
   P0-7). A reason describes the measured **shape** of the move, never a
   mechanism: do not promote it to a named pattern.

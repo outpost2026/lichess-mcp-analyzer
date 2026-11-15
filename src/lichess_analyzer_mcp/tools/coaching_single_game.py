@@ -95,11 +95,67 @@ def _fmt_loss(move: dict) -> str:
     return f"{value:.0f}" if isinstance(value, (int, float)) else "n/a"
 
 
+# ── D15 / T-18: game_impact ──────────────────────────────────────────────────
+# `cp_loss` answers "how much was lost"; `game_impact` answers "did the game
+# change". Both are measured from the mover's point of view (`*_mover_cp`).
+#
+# Dead zone: |eval| <= 100 cp counts as `equal`. The threshold is published
+# here, not implicit, because it decides every label.
+GAME_IMPACT_DEAD_ZONE_CP = 100
+# `engine_client._cp_from_score` encodes mate as 10000 - |mate|, so any |cp|
+# at or above this bound is a forced mate, not a centipawn evaluation (N-05).
+MATE_CP_THRESHOLD = 9000
+
+_GAME_IMPACT_PRE_STATES = ("winning", "equal", "losing")
+
+
+def _impact_state(cp: float | None) -> str | None:
+    """Coarse game state from the mover's eval: winning / equal / losing."""
+    if not isinstance(cp, (int, float)):
+        return None
+    value = float(cp)
+    if value >= MATE_CP_THRESHOLD:
+        return "winning"
+    if value <= -MATE_CP_THRESHOLD:
+        return "losing"
+    if value > GAME_IMPACT_DEAD_ZONE_CP:
+        return "winning"
+    if value < -GAME_IMPACT_DEAD_ZONE_CP:
+        return "losing"
+    return "equal"
+
+
+def _game_impact(before, after) -> tuple[str | None, str | None]:
+    """`(game_impact, mate_after)` for one flagged move.
+
+    Enum: 9 sign transitions (`winning_to_winning` ... `losing_to_losing`) plus
+    3 mate transitions (`*_to_mate`). A forced mate after the move is never
+    reported as `losing_to_losing` (P0-3): the label says `losing_to_mate` and
+    `mate_after` says for whom (`for` = mover mates, `against` = mover is mated).
+
+    `None` when either eval was not measured (legacy cache, cloud eval): the
+    field never guesses.
+    """
+    pre = _impact_state(before)
+    post_cp = after if isinstance(after, (int, float)) else None
+    if pre is None or post_cp is None:
+        return None, None
+    mate_after = None
+    post: str | None
+    if abs(float(post_cp)) >= MATE_CP_THRESHOLD:
+        post = "mate"
+        mate_after = "for" if float(post_cp) > 0 else "against"
+    else:
+        post = _impact_state(post_cp)
+    return f"{pre}_to_{post}", mate_after
+
+
 def _flagged_moves(analysis: dict) -> list[dict]:
     out = []
     for m in analysis.get("moves", []):
         if m.get("classification") not in _FLAGGED:
             continue
+        game_impact, mate_after = _game_impact(m.get("eval_before"), m.get("eval_after"))
         out.append(
             {
                 "ply": m.get("ply"),
@@ -117,6 +173,10 @@ def _flagged_moves(analysis: dict) -> list[dict]:
                 "best_eval_mover_cp": m.get("best_eval"),
                 "eval_before": m.get("eval_before"),
                 "eval_after": m.get("eval_after"),
+                # D15/T-18: did the game change, not only how much was lost.
+                # `mate_after` disambiguates the `*_to_mate` labels.
+                "game_impact": game_impact,
+                "mate_after": mate_after,
                 "win_prob_before": m.get("win_prob_before"),
                 "win_prob_after": m.get("win_prob_after"),
                 "phase": m.get("phase"),
@@ -349,6 +409,39 @@ def _token_totals(cascade_log: list[dict]) -> dict:
     return {"input": inp, "output": out}
 
 
+def _is_fallback_entry(entry: dict) -> bool:
+    """The deterministic tail of the cascade is not a provider attempt."""
+    return bool(entry.get("fallback")) or entry.get("source") == "deterministic"
+
+
+def _llm_skip(use_llm: bool, cascade_log: list[dict]) -> tuple[bool, str | None]:
+    """D28: `timings.llm_s == 0.0` must say *why* no provider was contacted.
+
+    `llm_s` alone cannot distinguish "the LLM answered instantly" from "the
+    negative cache short-circuited every provider". This returns
+    `(llm_skipped, llm_skip_reason)` from the cascade log, never from timing.
+    The deterministic fallback entry is not a provider, so it never counts as
+    an attempt.
+    """
+    if not use_llm:
+        return True, "llm_disabled"
+    entries = [
+        entry for entry in cascade_log if isinstance(entry, dict) and not _is_fallback_entry(entry)
+    ]
+    if not entries:
+        return True, "no_provider_configured"
+    if not all(entry.get("skipped") for entry in entries):
+        return False, None
+    text = " ".join(str(entry.get("error") or "") for entry in entries).lower()
+    if "negative cache" in text:
+        return True, "negative_cache"
+    if "no api key" in text:
+        return True, "no_api_key"
+    if "unknown provider" in text:
+        return True, "unknown_provider"
+    return True, "all_providers_skipped"
+
+
 async def build_response(
     *,
     game_id: str,
@@ -501,6 +594,7 @@ async def build_response(
     engine_timeouts = 0 if cache_hit else int(analysis.get("engine_timeouts", 0))
     engine_retries = 0 if cache_hit else int(analysis.get("engine_retries", 0))
     overhead_s = max(0.0, total_s - io_s - engine_s - llm_s)
+    llm_skipped, llm_skip_reason = _llm_skip(use_llm, cascade_log)
     timings = {
         "io_s": round(io_s, 3),
         "engine_s": round(engine_s, 3),
@@ -513,6 +607,9 @@ async def build_response(
         "engine_timeouts": engine_timeouts,
         "engine_retries": engine_retries,
         "cache_hit": cache_hit,
+        # D28: llm_s alone cannot tell "fast answer" from "never asked".
+        "llm_skipped": llm_skipped,
+        "llm_skip_reason": llm_skip_reason,
     }
 
     llm_status = get_llm_status()
@@ -738,6 +835,9 @@ async def lichess_coaching_single_game(
                 "engine_timeouts": 0,
                 "engine_retries": 0,
                 "cache_hit": False,
+                # D28: the pipeline never reached the LLM stage.
+                "llm_skipped": True,
+                "llm_skip_reason": "pipeline_error",
             },
             "engine": _engine_block(depth, None),
             "cache": {"hit": False, "layer": "none", "key": None},

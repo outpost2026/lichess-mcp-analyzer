@@ -17,9 +17,11 @@ from lichess_analyzer_mcp.models.pattern import (
     PatternMatch,
     PatternLibrary,
     UNCLASSIFIED_CAPTURE,
+    UNCLASSIFIED_CHECK_ESCAPE,
     UNCLASSIFIED_EVIDENCE_GAP,
     UNCLASSIFIED_FORCING_MOVE,
     UNCLASSIFIED_MECHANISM,
+    UNCLASSIFIED_QUIET_BLUNDER,
     UNCLASSIFIED_QUIET_POSITIONAL,
 )
 from lichess_analyzer_mcp.models.game import GameAnalysis, effective_phase
@@ -40,6 +42,10 @@ THRESHOLD_ACTIVE_DEFENSE_EVAL = -150
 THRESHOLD_S_CAPTURE_AVERSION_CP = 500
 THRESHOLD_GIFT_EVAL_JUMP = 70
 THRESHOLD_TACTICAL_SHAPED_CP = 50
+# D13: a quiet (non-capture, non-check) flagged move above this loss is a
+# blunder by magnitude, not a positional shift. Threshold is published, not
+# implicit: it separates `why=quiet_blunder` from `why=quiet_positional`.
+QUIET_BLUNDER_CP = 200
 
 # P1 / schema 1.3: patterns without a runtime control group must say so instead
 # of publishing a fabricated lift. Admission-time lift is measured offline
@@ -819,32 +825,47 @@ def unclassified_reason_for(
     in_check: bool,
     gives_check: bool,
     has_engine_evidence: bool,
+    cp_loss: float | None = None,
+    has_motif: bool = False,
 ) -> str:
     """Deterministic reason why no per-move pattern covers a flagged move.
 
-    Decision order (first match wins) — each branch is a measured property of
+    Decision order (first match wins) - each branch is a measured property of
     the move, not an interpretation:
 
-    1. `evidence_gap` — no SAN text and no engine comparison: the move has no
+    1. `evidence_gap` - no SAN text and no engine comparison: the move has no
        shape to describe (family Z). Measured 2026-11-12: the game cache carries
        SAN for every flagged move, so this branch is a guard, not the norm.
        Absence of a PV is NOT a per-move reason: it is a global property of the
        payload and is reported in `patterns_meta` instead. Otherwise 88 % of the
        cache would read "evidence_gap" while the shape (quiet/capture/check) is
-       known — the reason must describe the move, not the cache fidelity.
-    2. `quiet_positional` — no capture, no check, not in check (family F7 core:
+       known - the reason must describe the move, not the cache fidelity.
+    2. `check_escape` (D14) - a non-capturing king move played out of check.
+       J keeps its contract "piece block, never king move" (D11), so the king
+       retreat is named here instead of being folded into J.
+    3. `quiet_blunder` (D13) - no capture, no check, not in check, no motif, and
+       `cp_loss > QUIET_BLUNDER_CP`. Same shape as `quiet_positional`, but the
+       magnitude says "this was a blunder", not a positional shift.
+    4. `quiet_positional` - no capture, no check, not in check (family F7 core:
        the measured 51/97 quiet blunders without any proxy).
-    3. `forcing_move_unexplained` — the move gives check or was played out of
+    5. `forcing_move_unexplained` - the move gives check or was played out of
        check but no pattern fired (family F3 candidate).
-    4. `capture_unexplained` — a capture below the `B` threshold (family F4).
-    5. `mechanism_not_identified` — fallback; still explicit.
+    6. `capture_unexplained` - a capture below the `B` threshold (family F4).
+    7. `mechanism_not_identified` - fallback; still explicit.
+
+    `cp_loss` / `has_motif` default to "not measured" so callers that only know
+    the move shape keep the pre-D13 behaviour.
     """
     text = san or ""
     if not text:
         return UNCLASSIFIED_EVIDENCE_GAP if not has_engine_evidence else UNCLASSIFIED_MECHANISM
     is_capture = "x" in text
     is_check = bool(gives_check) or "+" in text or "#" in text
+    if in_check and not is_capture and text.startswith("K"):
+        return UNCLASSIFIED_CHECK_ESCAPE
     if not is_capture and not is_check and not in_check:
+        if cp_loss is not None and float(cp_loss) > QUIET_BLUNDER_CP and not has_motif:
+            return UNCLASSIFIED_QUIET_BLUNDER
         return UNCLASSIFIED_QUIET_POSITIONAL
     if is_check or in_check:
         return UNCLASSIFIED_FORCING_MOVE
@@ -868,6 +889,10 @@ def unclassified_reason(move) -> str:
         in_check=bool(getattr(move, "was_in_check", False)),
         gives_check=bool(getattr(move, "gives_check", False)),
         has_engine_evidence=_has_engine_evidence(move),
+        cp_loss=getattr(move, "centipawn_loss", None),
+        has_motif=bool(
+            getattr(move, "is_tactical_motif", False) or getattr(move, "motif_type", None)
+        ),
     )
 
 
@@ -890,11 +915,16 @@ def unclassified_reason_from_flag(flag: dict) -> str:
         or flag.get("engine_lines")
         or int(flag.get("played_rank") or 0) >= 1
     )
+    cp_loss = flag.get("cp_loss")
+    if cp_loss is None:
+        cp_loss = flag.get("centipawn_loss")
     return unclassified_reason_for(
         san=san,
         in_check=bool(in_check),
         gives_check=bool(gives_check),
         has_engine_evidence=has_evidence,
+        cp_loss=cp_loss if isinstance(cp_loss, (int, float)) else None,
+        has_motif=bool(flag.get("motif") or flag.get("motif_type")),
     )
 
 
@@ -938,8 +968,9 @@ def scan_single_game(analysis: GameAnalysis) -> tuple[list[dict], dict[int, dict
                     "pattern_name": cand["pattern_name"],
                     # P1: strength = ordinal event strength (0..1), not a probability.
                     "strength": 0.0,
-                    # Legacy alias for 1.2 consumers; the published unit is
-                    # 0-100 (schema `confidence`), never 0-1.
+                    # D26: detailed 1.2 `confidence` is 0-1 and equals `strength`.
+                    # `schemas/single_game_v1.2.json` pins minimum 0 / maximum 1;
+                    # publishing 0-100 here was a regression, not an upgrade.
                     "confidence": 0.0,
                     "frequency": 0,
                     "severity": pdef.severity if pdef else "medium",
@@ -958,8 +989,9 @@ def scan_single_game(analysis: GameAnalysis) -> tuple[list[dict], dict[int, dict
                 aggregated[pid] = entry
             entry["frequency"] += 1
             entry["strength"] = round(max(entry["strength"], cand["strength"]), 2)
-            # 1.2 consumers expect 0-100 (schemas.py); `strength` stays 0-1.
-            entry["confidence"] = round(entry["strength"] * 100, 0)
+            # D26: one unit per artifact. Detailed single-game = 0-1 (frozen
+            # schema 1.2); cross-game (`schemas.py`) stays 0-100.
+            entry["confidence"] = entry["strength"]
             entry["evidence"].append(
                 {
                     "ply": move.ply,

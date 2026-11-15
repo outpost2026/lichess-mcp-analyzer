@@ -30,6 +30,7 @@ coach_single = _load("coach_single_cli", os.path.join("scripts", "coach_single.p
 from lichess_analyzer_mcp.tools.coaching_single_game import (  # noqa: E402
     _flagged_moves,
     _game_block,
+    _llm_skip,
 )
 
 
@@ -157,3 +158,81 @@ def test_compact_of_finds_wrapped_and_bare_compact():
     bare = {"v": "2.1", "summary": {}, "flags": []}
     assert coach_single._compact_of(bare) is bare
     assert coach_single._compact_of({"schema_version": "1.2"}) is None
+
+
+# --- 4. D15/T-18: game_impact ---------------------------------------------
+
+
+def test_mate_against_the_mover_is_never_losing_to_losing():
+    """P0-3 evidence: `Qe3` -548 -> -9999. `losing_to_losing` would hide the mate."""
+    flag = _flagged_moves({"moves": [_raw_move()]})[0]
+    assert flag["game_impact"] == "losing_to_mate"
+    assert flag["mate_after"] == "against"
+
+
+def test_mate_for_the_mover_is_reported_with_its_direction():
+    flag = _flagged_moves({"moves": [_raw_move(eval_before=-548, eval_after=9998)]})[0]
+    assert flag["game_impact"] == "losing_to_mate"
+    assert flag["mate_after"] == "for"
+
+
+def test_game_impact_marks_a_winning_position_thrown_away():
+    """`S23Qm04u` white `Bxf6`: +197 -> -13. The audit called this
+    "winning to losing"; with the documented +/-100 cp dead zone the position
+    was given back (`winning_to_equal`), not lost outright."""
+    flag = _flagged_moves({"moves": [_raw_move(eval_before=197, eval_after=-130)]})[0]
+    assert flag["game_impact"] == "winning_to_losing"
+    assert flag["mate_after"] is None
+    equal = _flagged_moves({"moves": [_raw_move(eval_before=197, eval_after=-13)]})[0]
+    assert equal["game_impact"] == "winning_to_equal"
+
+
+def test_dead_zone_boundary_is_inclusive():
+    """|eval| <= 100 cp is `equal`; the threshold is documented, not implicit."""
+    at_boundary = _flagged_moves({"moves": [_raw_move(eval_before=100, eval_after=-100)]})[0]
+    assert at_boundary["game_impact"] == "equal_to_equal"
+    over_boundary = _flagged_moves({"moves": [_raw_move(eval_before=101, eval_after=-101)]})[0]
+    assert over_boundary["game_impact"] == "winning_to_losing"
+
+
+def test_mate_before_is_read_as_a_sign_not_as_a_state():
+    """A mate already on the board is winning/losing, never a third pre-state."""
+    flag = _flagged_moves({"moves": [_raw_move(eval_before=9999, eval_after=200)]})[0]
+    assert flag["game_impact"] == "winning_to_winning"
+
+
+def test_unmeasured_evals_publish_null_instead_of_a_guess():
+    flag = _flagged_moves({"moves": [_raw_move(eval_before=None, eval_after=None)]})[0]
+    assert flag["game_impact"] is None
+    assert flag["mate_after"] is None
+
+
+# --- 5. D28: llm_skipped --------------------------------------------------
+
+
+def test_llm_disabled_is_an_explicit_skip():
+    assert _llm_skip(False, [{"provider": "deterministic"}]) == (True, "llm_disabled")
+
+
+def test_negative_cache_is_named_as_the_skip_reason():
+    log = [
+        {"provider": "NVIDIA", "skipped": True, "error": "Negative cache (recent 4xx)"},
+        # The deterministic tail is not a provider attempt.
+        {"provider": "Deterministic report", "fallback": True, "source": "deterministic"},
+    ]
+    assert _llm_skip(True, log) == (True, "negative_cache")
+
+
+def test_missing_api_key_is_named_as_the_skip_reason():
+    assert _llm_skip(True, [{"provider": "X", "skipped": True, "error": "No API key"}]) == (
+        True,
+        "no_api_key",
+    )
+
+
+def test_a_real_provider_attempt_is_not_a_skip():
+    assert _llm_skip(True, [{"provider": "X", "error": "Payment required"}]) == (False, None)
+
+
+def test_empty_cascade_log_means_no_provider_configured():
+    assert _llm_skip(True, []) == (True, "no_provider_configured")

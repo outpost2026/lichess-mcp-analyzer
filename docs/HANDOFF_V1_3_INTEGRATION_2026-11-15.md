@@ -161,19 +161,24 @@ T-17 před T-18, protože `game_impact` půjde do stejného payloadu a jednotka 
 
 ---
 
-## 9. Stav implementace (2026-11-15, [2.5])
+## 9. Stav implementace (2026-11-15, [2.5] + [2.6])
 
 Hotovo v této iteraci (kód + test, gate zelený):
 
 | Položka | Změna | Test |
 |---|---|---|
-| **D18 / N-02** | `scan_single_game` publikuje `confidence` 0–100; `strength` zůstává 0–1 | `tests/test_confidence_unit.py` |
+| ~~**D18 / N-02**~~ **opraveno v [2.6] (D26)** | `scan_single_game` publikuje `confidence` **0–1** (= `strength`); `[2.5]` mělo chybně 0–100 proti `schemas/single_game_v1.2.json` | `tests/test_confidence_unit.py` |
+| **D27** | `report_persister` normalizuje `confidence` podle `kind` (single_game 0–1 → tisk v %, KB slim 0–1) | `tests/test_confidence_unit.py` |
+| **D15 / T-18** | detailed `flagged_moves[].game_impact` + `mate_after` (9 přechodů, mrtvá zóna ±100 cp, 3 matové stavy) | `tests/test_output_enrichment.py` |
+| **D13 / T-19** | `why=quiet_blunder` (`cp_loss > QUIET_BLUNDER_CP`, bez motivu) | `tests/test_pattern_coverage.py` |
+| **D14 / T-20** | `why=check_escape` (neberoucí královský tah v šachu) | `tests/test_pattern_coverage.py` |
+| **D28** | `timings.llm_skipped` + `llm_skip_reason` | `tests/test_output_enrichment.py` |
 | **D25** | detailed `flagged_moves[].fen_before` | `tests/test_output_enrichment.py` |
 | **D25** | detailed `game` blok; `Anonymous`/`?`/`-` → `""`, rating `0` → `null` | `tests/test_output_enrichment.py` |
 | **D24** | `--color ""` = obě barvy, klíčovaný JSON; `coach_single.py --format both` default | `tests/test_coach_cli.py` |
 | **D24** | chyba pipeline = stderr + exit 1, nikdy prázdný JSON | `tests/test_output_enrichment.py` |
 
-Zbývá (v pořadí z §7): T-13, T-02, T-01, T-03, T-04, T-07, T-06, T-05, T-10, T-11, T-14, T-18, T-19/T-20, T-12, T-16, T-21, T-22, T-23, T-15.
+Zbývá (v pořadí z §7): T-13, T-02, T-01, T-03, T-04, T-07, T-06, T-05, T-10, T-11, T-14, T-12, T-16, T-21, T-22, T-23, T-15. (T-17, T-18, T-19, T-20 hotové; D28 navíc.)
 
 Ověřeno na korpusu 2026-11-15:
 

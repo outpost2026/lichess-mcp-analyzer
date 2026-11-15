@@ -89,12 +89,14 @@
             "enum": [
               "evidence_gap",
               "quiet_positional",
+              "quiet_blunder",
+              "check_escape",
               "forcing_move_unexplained",
               "capture_unexplained",
               "mechanism_not_identified",
               "not_classified"
             ],
-            "description": "P0-7: measured reason the detector is silent. 'evidence_gap' = no engine line/best move/rank. 'quiet_positional' = no capture, no check, not in check. 'forcing_move_unexplained' = check given or faced without a pattern. 'capture_unexplained' = capture below the B threshold. 'mechanism_not_identified' = explicit fallback. 'not_classified' = source payload predates P0-7. Never a claimed mechanism."
+            "description": "P0-7: measured reason the detector is silent. 'evidence_gap' = no engine line/best move/rank. 'quiet_positional' = no capture, no check, not in check. 'quiet_blunder' = same quiet shape but cp_loss > 200 (D13). 'check_escape' = non-capturing king move out of check (D14). 'forcing_move_unexplained' = check given or faced without a pattern. 'capture_unexplained' = capture below the B threshold. 'mechanism_not_identified' = explicit fallback. 'not_classified' = source payload predates P0-7. Never a claimed mechanism."
           },
           "motif": {
             "type": "string",
@@ -197,6 +199,8 @@
             "enum": [
               "evidence_gap",
               "quiet_positional",
+              "quiet_blunder",
+              "check_escape",
               "forcing_move_unexplained",
               "capture_unexplained",
               "mechanism_not_identified",

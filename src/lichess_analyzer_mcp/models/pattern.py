@@ -29,10 +29,19 @@ UNCLASSIFIED_CAPTURE = "capture_unexplained"
 UNCLASSIFIED_MECHANISM = "mechanism_not_identified"
 # Only the compact serializer emits this, for payloads that predate P0-7.
 UNCLASSIFIED_NOT_CLASSIFIED = "not_classified"
+# D13: a quiet move that still lost more than the quiet-blunder threshold
+# (`pattern_detector.QUIET_BLUNDER_CP`) is not a positional shift. Same shape as
+# `quiet_positional`, different magnitude - no new pattern.
+UNCLASSIFIED_QUIET_BLUNDER = "quiet_blunder"
+# D14: a non-capturing king move played out of check. J stays "piece block,
+# never king move" (D11), so the king escape is named here instead.
+UNCLASSIFIED_CHECK_ESCAPE = "check_escape"
 
 UNCLASSIFIED_REASONS = (
     UNCLASSIFIED_EVIDENCE_GAP,
     UNCLASSIFIED_QUIET_POSITIONAL,
+    UNCLASSIFIED_QUIET_BLUNDER,
+    UNCLASSIFIED_CHECK_ESCAPE,
     UNCLASSIFIED_FORCING_MOVE,
     UNCLASSIFIED_CAPTURE,
     UNCLASSIFIED_MECHANISM,

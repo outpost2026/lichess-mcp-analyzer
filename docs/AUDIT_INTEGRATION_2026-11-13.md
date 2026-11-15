@@ -309,12 +309,45 @@ Nová zjištění mimo handoff: `%clk` je deklarovaný, ale nikde se neparsuje (
 
 | Položka | Kód | Test |
 |---|---|---|
-| D18/N-02 `confidence` 0–100 v detailed, 0–1 v KB slim | `pattern_detector.scan_single_game` | `tests/test_confidence_unit.py` |
+| ~~D18/N-02 `confidence` 0–100 v detailed~~ **chybné, opraveno v [2.6] (D26)** | `pattern_detector.scan_single_game` | `tests/test_confidence_unit.py` |
 | D25 `fen_before` v `flagged_moves[]` | `coaching_single_game._flagged_moves` | `tests/test_output_enrichment.py` |
 | D25 `game` blok + anonymizace + `null` rating | `coaching_single_game._game_block` | `tests/test_output_enrichment.py` |
 | D24 `resolve_colors` + klíčovaný výstup | `scripts/coach.py`, `scripts/coach_single.py` | `tests/test_coach_cli.py` |
 
-`confidence` má po D18 **jednu jednotku na artefakt**: detailed 1.2 = 0–100 (`schemas.py`), report = `{confidence}%`, KB slim = 0–1 (`/100`), compact 2.1 `conf` = 0–1 (zmrazené schema). `strength` zůstává 0–1.
+`confidence` má po D26 **jednu jednotku na artefakt**: detailed 1.2 = 0–1
+(`schemas/single_game_v1.2.json`, `minimum: 0, maximum: 1`), compact 2.1
+`conf` = 0–1, cross-game `schemas.py` = 0–100. Report tiskne procenta a
+normalizuje podle `kind` (`report_persister._confidence_is_fraction`), KB slim
+je vždy 0–1. `strength` zůstává 0–1. Původní tvrzení v [2.5] (detailed 0–100)
+bylo regresí proti zmrazené schema.
+
+---
+
+## 12.2 Integrace třetího auditu JSON výstupu (2026-11-15)
+
+Audit `S23Qm04u` (schema 2.1 + dual perspective). Ověřeno proti
+`data/reports/single_game_S23Qm04u_20261115_110247.json` a `src/`.
+Tvrzení o přínosech refaktoru (dual perspective, `conf` 0–1, FEN pro cp>100,
+PV u všech flagů, `coverage`, negative cache) sedí. Níže rozhodnutí k nálezům.
+
+| ID | Rozhodnutí | Dopad |
+|---|---|---|
+| **D26** | BUG-1/BUG-2 **přijaty jako defekt**: detailed 1.2 `confidence` zpět 0–1 (= `strength`). Schema 1.2 je autorita, ne `schemas.py` (ten platí pro cross-game). | Compact a detailed už nedávají dvě čísla pro tutéž věc; žádná změna verze schématu. |
+| **D27** | `report_persister` normalizuje `confidence` podle `kind`, ne podle velikosti čísla: `single_game` = 0–1, ostatní = 0–100. | Report i KB slim mají správnou jednotku; `1.0` není ambiguous. |
+| **D28** | BUG-5 **přijat**: `timings.llm_skipped` + `timings.llm_skip_reason`. Deterministický fallback v `cascade_log` není pokus o providera. | `llm_s: 0.0` je vysvětlené, ne jen malé. |
+| **D29** | `game_impact` (D15) má 9 přechodů znaménka s mrtvou zónou ±100 cp **plus** 3 matové přechody (`*_to_mate`); `mate_after` = `for`/`against` říká směr. Střední stav se jmenuje `equal` (ne `drawing`). Mat po tahu nikdy není `losing_to_losing`. | LLM rozliší kosmetickou a fatální chybu; `S23Qm04u` white `Bxf6` (197 → −13) = `winning_to_equal`, black `gxf6` (13 → −125) = `equal_to_losing`. |
+| **D30** | BUG-3, BUG-4, BUG-6 **odmítnuty**: (3) `best_eval_mover_cp` je eval **po** nejlepším tahu, `engine_lines[]` je samostatný multipv search **před** tahem – srovnatelný pár je `eval_before_mover_cp` vs `engine_lines[0].eval_cp` (max 36 cp); (4) compact už nese `unclassified[]` s `why` per flag, agregace by vyžadovala 2.2; (6) `eval_before` je záměrný alias 1.2. | Žádná změna hodnot ani schématu; mezery jsou dokumentované. |
+
+Ověřeno na `S23Qm04u` po změně (2026-11-15, `--format detailed`, obě barvy):
+detailed `confidence` 0.48 / 0.6 (B/T, white) a 0.26 / 0.32 (black), tj. shodné
+s compact `conf`; `game_impact` white 9 a 19 `winning_to_winning`, 21 a 33
+`winning_to_equal`; black 6 `equal_to_losing`, 8/12/14/16 `losing_to_losing`,
+22 a 32 `equal_to_losing`; `timings.llm_skipped` white `false` (`llm_s` 6.728),
+black `true` / `negative_cache` (`llm_s` 0.0).
+
+**Otevřené (mimo tuto iteraci):** `game_impact` je jen v detailed (D15).
+Pokud má být i v compact, vyžaduje to compact **2.2** (schema má
+`additionalProperties: false`) – nová verze artefaktu, ne tichá adice.
 
 ---
 
