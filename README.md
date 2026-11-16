@@ -2,9 +2,9 @@
 
 # Lichess MCP Analyzer
 
-**MCP server pro analýzu šachových partií, detekci vzorových chyb (pattern library jako kompresní model dle T. Mikolova) a spaced repetition trénink (FSRS/SM-2).**
+**MCP server pro analýzu šachových partií, detekci vzorových chyb (pattern library jako kompresní model dle T. Mikolova) a spaced repetition trénink (SM-2-like; FSRS zatím neimplementován).**
 
-Verze: `0.1.0` | Stav: **single-game pipeline v4** (compact 2.3 default) | Testy: **263 fast + 15 real engine** | Nástrojů: **18** | v4: `7ce7f61`
+Verze: `0.1.0` | Stav (2026-11-16): **single-game pipeline [2.9]** (compact 2.3 default, detailed 1.2) | Testy (ověřeno 2026-11-16): **513 fast + 11 real-engine** (18 deselected) | Nástrojů: **18** | Schémata: compact 2.3 / detailed 1.2 / cross-game 1.4 / game_full 1.0
 
 
 ## Proč?
@@ -33,7 +33,7 @@ lichess-analyzer-mcp (Python FastMCP)
        +--- BlunderFactSheet -------------- DBCL Phase 2 (context window, engine_lines, pattern_matches)
        +--- Narrative validator ----------- LLM hallucination guard (5 claim categories)
        +--- LLM reasoning (cascade) ------- NVIDIA / Cerebras / DeepSeek V4 Flash
-       +--- FSRS/SM-2 engine -------------- spaced repetition
+       +--- SM-2-like engine -------------- spaced repetition
        +--- KB writer --------------------- B2B-Knowledge-Base
        +--- MD reporter ------------------- docs/ coaching reports
 ```
@@ -397,7 +397,7 @@ lichess-analyzer-mcp/
 │   ├── pgn_to_compact.py        ← Deprecated shim nad coach.py
 │   ├── setup_stockfish.ps1      ← Automatické stažení Stockfish
 │   └── ...                      ← 20+ pomocných scriptů
-├── tests/                       ← 254 fast testů + 15 real-engine (marker real_engine)
+├── tests/                       ← 513 fast + 11 real-engine (2026-11-16; marker real_engine)
 │   ├── test_services.py         ← modely, komprese, validace
 │   ├── test_prompt_contract.py  ← schema a mapování promptů
 │   ├── test_engine_client.py    ← Stockfish (sdílený engine; real-engine = marker real_engine)
@@ -454,7 +454,7 @@ lichess-analyzer-mcp/
 | Framework | FastMCP (mcp>=1.0.0) |
 | Lichess API | berserk>=0.14.0 |
 | Šachový engine | chess>=1.11.0 (python-chess) + Stockfish 18 BMI2 |
-| Spaced repetition | SM-2 (FSRS připraven na upgrade) |
+| Spaced repetition | SM-2-like (FSRS vyžaduje samostatnou implementaci a migraci stavu) |
 | HTTP / LLM API | httpx>=0.28.0 |
 | LLM providers | NVIDIA (nemotron-3), Cerebras (gpt-oss), DeepSeek (deepseek-v4-flash) |
 | Dokuments | python-docx>=1.2.0 |
@@ -507,8 +507,9 @@ lichess-analyzer-mcp/
   E401 16, F401 11, F841 3, E722 1).
 - **`tests/test_engine_client.py`** býval maskován dvakrát (lokálně
   `--ignore`, v CI za RED mypy gate). Od 2026-11-11 je rozdělen markerem
-  `real_engine`: default `pytest` = 254 fast testů, `pytest -m real_engine`
-  = 15 testů proti skutečnému Stockfish. Stale expectation `top_move == "f2c2"`
+  `real_engine`: default `pytest` = 254 fast testů (historické číslo k 11. 11.;
+  aktuálně 513), `pytest -m real_engine` = 15 testů proti skutečnému Stockfish
+  (dnes 11 passed / 18 deselected). Stale expectation `top_move == "f2c2"`
   (závislá na buildu a `multipv`; Stockfish 18 v `multipv=1` dává `b1h7`)
   nahrazeny invariantami: hloubka ≥ 12 + Qh4 není #1.
 - **TT carry-over mění `cp_loss` v rámci procesu** (naměřeno 2026-11-11):

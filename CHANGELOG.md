@@ -3,6 +3,37 @@
 Všechny změny formátu a pipeline. Verze odpovídají kontraktu compact JSON /
 single-game pipeline, ne balíčku `0.1.0` (ten zůstává beze změny).
 
+## [2.10] - 2026-11-16
+
+Ověření externího generálního code review (3. LLM, `e136fee`) před P0-9.
+Kompletní verifikační tabulka: `docs/CODE_REVIEW_2026-11-16_VERIFICATION.md`.
+Auditní HEAD předcházel [2.9], takže jeho P0-4 a „compact 2.2 stable“ jsou
+**stale** — P0-4 je hotové a current artefakt je compact 2.3.
+
+### Fixed
+
+- **P-03 `max_games` doc vs clamp**: 6 toolů uvádělo `5-50`, ale clamp byl
+  `5..999`. Docstringy sjednoceny na skutečný hard clamp; `persist_report`
+  (průchozí) zdokumentován stejně. Nový `tests/test_tool_param_contract.py`
+  porovnává deklarovaný rozsah s clampem, aby se rozdíl nevrátil.
+- **P-04 falešná FSRS informace**: `services/srs_engine.py` tvrdil 3parametrický
+  model a gradient descent, ale `review_card()` je SM-2-like násobič. Docstring
+  i README nyní říkají „SM-2-like, FSRS neimplementován“ a jmenují známé limity
+  JSON prototypu. Algoritmus se nezměnil.
+- **README drift**: statusní řádek má datum 2026-11-16, aktuální počty testů
+  (515 fast / 11 engine), seznam schémat a žádné zastaralé `v4: 7ce7f61`;
+  historická poznámka o 254 testech je označena jako snapshot z 11. 11.
+
+### Nezměněno (záměr)
+
+`game_full` 1.0 zůstává merge vrstva, `run_id` zůstává policy fingerprint (DB
+identita až Phase 1), `status` 1.2 zůstává, žádný nový pattern ani frontend.
+Auditní návrhy L-01/L-02/L-03/DB-01 patří do Phase 1–2, ne do P0-9.
+
+### Verified
+
+`pytest` **515 passed**, `ruff` clean, mypy **72 souborů** clean.
+
 ## [2.9] - 2026-11-16
 
 P0-4 z originálního plánu refaktoru: **tři pojmenované dimenze confidence**

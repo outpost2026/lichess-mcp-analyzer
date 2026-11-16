@@ -34,7 +34,7 @@ async def lichess_coaching_training_plan(
 
     Args:
         username: Lichess username
-        max_games: Number of games to analyze (5-50)
+        max_games: Number of games to analyze (5-999; 999 is a hard clamp, not a recommendation)
         hours_per_week: Available training hours per week
         rating: Current rating (0 = unknown)
         depth: Stockfish depth (8-18, 0=auto)

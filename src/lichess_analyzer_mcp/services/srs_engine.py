@@ -1,8 +1,15 @@
-﻿"""FSRS spaced repetition engine wrapper.
+﻿"""SM-2-like spaced repetition over a JSON file (prototype, not FSRS).
 
-FSRS (Free Spaced Repetition Scheduler) uses a 3-parameter memory model:
-stability, difficulty, retrievability. Adapts per-user via gradient descent.
-Requires ~20 reviews for calibration, then outperforms SM-2 by ~30% fewer reviews.
+`review_card()` uses a simple easiness multiplier (`2.5 - 0.1*(5-quality)`)
+and resets the interval to 1 day after a lapse. There is no retrievability
+model, no gradient-descent calibration and no FSRS state migration here.
+`FSRSState` in `models/srs_card.py` is only the persisted container name;
+calling this scheduler "FSRS" would be a false capability claim.
+
+Known limits of this prototype: the whole file is rewritten on every change,
+there are no transactions, concurrent writes can lose updates, and a corrupt
+JSON load is skipped silently (see `_load`). DB-backed scheduling belongs to
+the storage phase, with the scheduler strategy recorded explicitly.
 """
 
 import json

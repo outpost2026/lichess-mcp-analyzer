@@ -26,7 +26,7 @@ async def lichess_diagnose_player(
 
     Args:
         username: Lichess username
-        max_games: Number of recent games to analyze (5-50)
+        max_games: Number of recent games to analyze (5-999; 999 is a hard clamp, not a recommendation)
         depth: Stockfish depth for analysis (8-18, 0=auto)
         result: Filtr dle vysledku - 'all', 'win', 'loss', 'draw'
         max_seconds: Max wall-clock seconds for this batch (0 = unlimited).

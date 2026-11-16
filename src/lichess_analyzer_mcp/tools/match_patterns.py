@@ -58,7 +58,7 @@ async def lichess_match_patterns(
 
     Args:
         username: Lichess username (optional if game_ids provided)
-        max_games: Number of games to analyze (5-50)
+        max_games: Number of games to analyze (5-999; 999 is a hard clamp, not a recommendation)
         depth: Stockfish depth (8-18, 0=auto)
         result: Filtr dle vysledku - 'all', 'win', 'loss', 'draw'
         game_ids: Comma-separated 8-char game IDs for anonymous/cached games

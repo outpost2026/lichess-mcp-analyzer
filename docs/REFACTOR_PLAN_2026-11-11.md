@@ -489,6 +489,11 @@ odvodit ze svého vlastního pravidla. Cross-game kontrakt 1.4 se **nemění**
 (users already publish `support` a `hypothesis_confidence`); změna je jen v
 single-game detailed 1.2 a v novém compactu 2.3 (2.2 zůstává zmrazený).
 
+**Externí code review 3. LLM (16. 11.)** byl ověřen proti kódu; výsledek je v
+`docs/CODE_REVIEW_2026-11-16_VERIFICATION.md`. Z něj byly v [2.10] opraveny tři
+konkrétní defekty (max_games doc vs clamp, falešné FSRS tvrzení, zastaralý
+README status). Zbytek jsou návrhy pro Phase 1–2, ne změny fáze 0.
+
 **Další v pořadí:** P0-9 (rozdělení CI jobů `fast`/`engine` a pinnutý build).
 Fáze 1 (SQLite + `analysis_runs`) následuje až po uzavření fáze 0.
 

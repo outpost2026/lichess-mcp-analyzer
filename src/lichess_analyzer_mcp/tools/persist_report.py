@@ -45,7 +45,7 @@ async def lichess_persist_report(
         username: Lichess username (kind=cross_game/training_plan/opening_report/diagnosis)
         game_ids: Comma-separated game IDs (kind=opponent_pool)
         color: Your color ('white' or 'black', kind=single_game)
-        max_games: Number of games to analyze (5-50)
+        max_games: Number of games to analyze (5-999; 999 is a hard clamp, not a recommendation)
         depth: Stockfish depth (0=auto per depth policy)
         hours_per_week: Available training hours (kind=training_plan)
         rating: Current rating (kind=training_plan)

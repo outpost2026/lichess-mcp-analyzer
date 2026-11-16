@@ -46,7 +46,7 @@ async def lichess_coaching_opening_report(
 
     Args:
         username: Lichess username
-        max_games: Number of games to analyze (5-50)
+        max_games: Number of games to analyze (5-999; 999 is a hard clamp, not a recommendation)
         depth: Stockfish depth (8-18, 0=auto)
         result: Filter - 'all', 'win', 'loss', 'draw'
         max_seconds: Max wall-clock seconds for this batch (0 = unlimited).
