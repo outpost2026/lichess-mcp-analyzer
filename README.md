@@ -4,7 +4,7 @@
 
 **MCP server pro analýzu šachových partií, detekci vzorových chyb (pattern library jako kompresní model dle T. Mikolova) a spaced repetition trénink (SM-2-like; FSRS zatím neimplementován).**
 
-Verze: `0.1.0` | Stav (2026-11-16): **single-game pipeline [2.12]** (compact 2.4 default, detailed 1.2) | Testy (ověřeno 2026-11-16): **521 fast + 18 real-engine** (pinnutý Stockfish 18) | Nástrojů: **18** | Schémata: compact 2.4 / detailed 1.2 / cross-game 1.4 / game_full 1.0
+Verze: `0.1.0` | Stav (2026-11-16): **single-game pipeline [2.12]** (compact 2.4 default, detailed 1.2) | Testy (ověřeno 2026-11-16): **521 fast** (bez `test_engine_client.py`) / **532 v CI fast jobu** (vč. 11 mock engine testů) + **18 real-engine** (pinnutý Stockfish 18) | Nástrojů: **18** | Schémata: compact 2.4 / detailed 1.2 / cross-game 1.4 / game_full 1.0
 
 
 ## Proč?

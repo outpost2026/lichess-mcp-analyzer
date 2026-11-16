@@ -35,9 +35,11 @@ a žádné tiché preskakování testů. Žádná změna payload schémat.
 
 ### Verified
 
-Lokálně: fast **521 passed**, real engine **18 passed / 11 deselected za 12,8 s**
-(s lokálním `sf_18` binary, který prošel verifikací), Ruff clean, mypy
-**73 souborů** clean. `pytest -m real_engine` vrací exit 5, pokud neexistuje žádný
+Lokálně: fast **521 passed** (bez `test_engine_client.py`), real engine
+**18 passed / 11 deselected za 12,8 s** (s lokálním `sf_18` binary, který prošel
+verifikací), Ruff clean, mypy **73 souborů** clean. CI: fast job **532 passed /
+18 deselected**, engine job **18 passed / 11 deselected**; verifikace vypsala
+`stockfish-ubuntu-x86-64`, `uci_name: Stockfish 18`, `hash_ok: true`, `name_ok: true`. `pytest -m real_engine` vrací exit 5, pokud neexistuje žádný
 engine test — job tedy nemůže projít „prázdným výběrem“.
 
 ## [2.11] - 2026-11-16
