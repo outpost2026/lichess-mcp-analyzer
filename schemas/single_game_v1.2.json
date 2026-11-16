@@ -166,6 +166,29 @@
             }
           }
         },
+        "confidence_dimensions": {
+          "type": "object",
+          "description": "P0-4: names the three confidence dimensions so `confidence` cannot be mistaken for a probability.",
+          "required": [
+            "kinds",
+            "published_kind",
+            "support_basis",
+            "behavioral_confidence",
+            "behavioral_confidence_reason",
+            "n_patterns"
+          ],
+          "properties": {
+            "kinds": {
+              "type": "array",
+              "items": { "enum": ["detection_strength", "evidence_support", "behavioral_confidence"] }
+            },
+            "published_kind": { "const": "detection_strength" },
+            "support_basis": { "const": "flagged_moves_in_game" },
+            "behavioral_confidence": { "const": null },
+            "behavioral_confidence_reason": { "const": "not_calibrated" },
+            "n_patterns": { "type": "integer", "minimum": 0 }
+          }
+        },
         "internal_accuracy_score": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
         "moves_analyzed": { "type": "integer", "minimum": 0 },
         "moves_total": { "type": "integer", "minimum": 0 },
@@ -325,6 +348,31 @@
           "frequency": { "type": "integer", "minimum": 1 },
           "severity": { "type": "string" },
           "scope": { "const": "single_game" },
+          "detection_strength": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "P0-4: ordinal detector strength. Same number as `strength` and the deprecated `confidence` alias; not a probability."
+          },
+          "evidence_support": {
+            "type": ["number", "null"],
+            "minimum": 0,
+            "maximum": 1,
+            "description": "P0-4: measured share of flagged moves in this game covered by the pattern (basis and denominator in evidence_support_basis / evidence_support_n_units). null = no measured move."
+          },
+          "evidence_support_basis": { "const": "flagged_moves_in_game" },
+          "evidence_support_n_units": { "type": "integer", "minimum": 0 },
+          "behavioral_confidence": {
+            "type": ["number", "null"],
+            "minimum": 0,
+            "maximum": 1,
+            "description": "P0-4: calibrated confidence in the mechanism. null until calibration (Phase 3); reason in behavioral_confidence_reason."
+          },
+          "behavioral_confidence_reason": { "const": "not_calibrated" },
+          "confidence_kind": {
+            "enum": ["detection_strength", "evidence_support", "behavioral_confidence"],
+            "description": "P0-4: which dimension the legacy `confidence` alias names."
+          },
           "evidence": { "type": "array" },
           "affected_games": { "type": "array", "items": { "type": "string" } },
           "mitigation": { "type": "string" }

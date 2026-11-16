@@ -1,4 +1,4 @@
-"""Schema 2.2 compact serializer — unit tests (no engine, no network)."""
+"""Schema 2.3 compact serializer — unit tests (no engine, no network)."""
 
 import json
 import os
@@ -168,14 +168,14 @@ def test_output_validates_against_manual_validator():
 def test_output_validates_against_json_schema_file():
     jsonschema = pytest.importorskip("jsonschema")
     schema = json.load(
-        open(os.path.join(ROOT, "schemas/single_game_v2_compact_2.2.json"), encoding="utf-8")
+        open(os.path.join(ROOT, "schemas/single_game_v2_compact_2.3.json"), encoding="utf-8")
     )
     jsonschema.validate(_compact(), schema)
 
 
 def test_metadata_and_summary():
     out = _compact()
-    assert out["v"] == "2.2"
+    assert out["v"] == "2.3"
     assert out["phase_method"] == "ply_segment"
     assert out["patterns_meta"] == {
         "scope": "single_game",
@@ -269,7 +269,11 @@ def test_fen_only_above_100cp():
 
 def test_patterns_preserved():
     out = _compact()
-    assert out["patterns"] == [{"id": "T", "conf": 0.16, "freq": 1, "sev": "medium", "plie": [40]}]
+    assert out["patterns"] == [
+        {"id": "T", "conf": 0.16, "freq": 1, "sev": "medium", "plie": [40], "support": None}
+    ]
+    assert out["confidence_dims"]["published_kind"] == "detection_strength"
+    assert out["confidence_dims"]["behavioral_confidence"] is None
 
 
 def test_patterns_per_flag_and_error_cluster():

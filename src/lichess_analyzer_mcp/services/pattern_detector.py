@@ -26,6 +26,7 @@ from lichess_analyzer_mcp.models.pattern import (
 )
 from lichess_analyzer_mcp.models.game import GameAnalysis, effective_phase
 from lichess_analyzer_mcp.services import board_facts
+from lichess_analyzer_mcp.services.confidence_dims import detailed_dims
 from lichess_analyzer_mcp.services.provenance import build_provenance
 from lichess_analyzer_mcp.services.stability import build_stability
 from lichess_analyzer_mcp.services.statistics import rate_ratio_with_ci, rate_with_ci
@@ -1001,6 +1002,13 @@ def scan_single_game(analysis: GameAnalysis) -> tuple[list[dict], dict[int, dict
                     "detail": cand["detail"],
                 }
             )
+
+    # P0-4: attach the dimensions after aggregation, when strength and the
+    # number of measured flagged moves are final. `behavioral_confidence`
+    # stays null with a reason: calibrating a mechanism is Phase 3 work, not
+    # something a detector can infer from its own rule.
+    for entry in aggregated.values():
+        entry.update(detailed_dims(entry["strength"], entry["frequency"], len(coverage)))
 
     order = {"B": 0, "J": 1, "S": 2, "C": 3, "R": 4, "T": 5}
     patterns = sorted(

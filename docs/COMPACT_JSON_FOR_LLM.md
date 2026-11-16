@@ -1,4 +1,4 @@
-# Compact JSON 2.2 - guide for an LLM agent
+# Compact JSON 2.3 - guide for an LLM agent
 
 Compact JSON is the hand-off format between this pipeline and an LLM. It is
 produced **offline** (no LLM at ETL time) and contains only what a coaching
@@ -12,12 +12,12 @@ regression `FVhqtv1S`; measured 4400 chars) versus 13–26 kB for schema 1.2.
 
 ## One game, both colours (D24)
 
-Compact 2.2 is single-perspective by contract, so a complete game is **two
+Compact 2.3 is single-perspective by contract, so a complete game is **two
 compact payloads in one file**, keyed by colour:
 
 ```json
-{"white": {"v": "2.2", "game": {"color": "white"}, …},
- "black": {"v": "2.2", "game": {"color": "black"}, …}}
+{"white": {"v": "2.3", "game": {"color": "white"}, …},
+ "black": {"v": "2.3", "game": {"color": "black"}, …}}
 ```
 
 This is the CLI default (`coach.py`, `coach_single.py` without `--color`).
@@ -44,12 +44,14 @@ artifact.
 | `flags[].eval_before_mover_cp` / `eval_after_mover_cp` | canonical eval swing in cp, **mover POV** (see "Perspective and eval POV"); present only for `cp > 200` or class blunder/mistake **and** consistent with `cp` (FIX-023) |
 | `flags[].eval_before` / `eval_after` | deprecated aliases of the two keys above, kept for one release (D9) |
 | `flags[].mate_in` | blunder only: forced mate in N moves from the best line (FIX-027); positive = for the player, negative = against |
-| `flags[].game_impact` | **mandatory** in 2.2: did the game change, from the mover's POV. 9 sign transitions (`winning_to_winning` … `losing_to_losing`) with a ±100 cp dead zone, plus 3 mate transitions (`*_to_mate`). `null` = evals not measured. A 9000 cp loss with `winning_to_winning` is a missed conversion, not a catastrophe (D29) |
+| `flags[].game_impact` | **mandatory** since 2.2: did the game change, from the mover's POV. 9 sign transitions (`winning_to_winning` … `losing_to_losing`) with a ±100 cp dead zone, plus 3 mate transitions (`*_to_mate`). `null` = evals not measured. A 9000 cp loss with `winning_to_winning` is a missed conversion, not a catastrophe (D29) |
 | `flags[].mate_missed` / `mate_via` | the best line mates for the mover in N moves and the played move does not; `mate_via` is the mating SAN. Present together, omitted otherwise. This is why `cp_loss` can be ~9000 while `game_impact` stays `winning_to_winning` (D31) |
 | `flags[].patterns` | pattern ids whose evidence includes this ply; omitted when none |
 | `flags[].pstatus` | `matched` or `unclassified` — every flag states whether a pattern covers it (P0-7) |
 | `flags[].why` | reason code, present **only** when `pstatus == "unclassified"` (P0-7) |
-| `patterns[]` | behavioural layer: id, **ordinal `strength`** 0-1 (emitted as `conf`), frequency, severity, affected plies. `conf` is not a probability (P1) and is **0-1**; the detailed payload's `confidence` is also **0-1** (same number, D26) - only cross-game artifacts use 0-100, so never mix the two families |
+| `patterns[]` | behavioural layer: id, **ordinal `strength`** 0-1 (emitted as `conf`), frequency, severity, affected plies, and `support` (0-1 or null). `conf` is not a probability (P1) and is **0-1**; the detailed payload's `confidence` is also **0-1** (same number, D26) - only cross-game artifacts use 0-100, so never mix the two families |
+| `patterns[].support` | 2.3/P0-4: measured share of flagged moves in this game covered by that pattern (`flagged_moves_in_game` basis, denominator in detailed `evidence_support_n_units`). Null = no measured move. This is **evidence support**, not detector strength |
+| `confidence_dims` | 2.3/P0-4: mandatory. `kinds` = `detection_strength`, `evidence_support`, `behavioral_confidence`; `published_kind = detection_strength` names what `conf` means; `behavioral_confidence = null` with `behavioral_confidence_reason = not_calibrated`. Never present a pattern `conf` as a calibrated probability |
 | `phase_method` | which phase source the detectors used: `ply_segment`, `material`, or `mixed` (P0-3). `summary.phases` follows this source; the detailed payload additionally publishes `segment_stats` and `chess_phase_stats` so the difference is auditable (P1) |
 | `patterns_meta` | mandatory: `scope`, `cross_game_suppressed`, `reason`, `coverage {flagged, matched, unclassified}`; an empty `patterns` list always has a reason |
 | `unclassified` | discovery feed: `{ply, class, cp, why}` for flagged moves without a pattern |
@@ -64,11 +66,11 @@ artifact.
 
 ### Perspective and eval POV
 
-Compact 2.2 is **single-perspective**: every `flags[]` entry, `summary.acpl`,
+Compact 2.3 is **single-perspective**: every `flags[]` entry, `summary.acpl`,
 `summary.phases`, `patterns[]` and `clusters` describe the moves of the colour
 in `game.color` (always `white` or `black`). Opponent moves are not part of the
 payload. A full-game view is a different artifact (`game_full` 1.0, implemented
-2026-11-14 — see `GAME_FULL_1.0.md`), not an extension of compact 2.2.
+2026-11-14 — see `GAME_FULL_1.0.md`), not an extension of compact 2.3.
 
 **Eval POV:** `eval_before_mover_cp` and `eval_after_mover_cp` are both from
 the **mover's** point of view — the player who made the flagged move.
@@ -81,7 +83,7 @@ after the move. Therefore:
   evals come from separate searches, so the subtraction is only an
   approximation (within the FIX-023 window it holds to ±50 cp). The exact
   anchor `best_eval_mover_cp` is published in the **detailed** payload; compact
-  2.2 does not carry it (size budget). Since [2.8] the detailed payload also
+  2.3 does not carry it (size budget). Since [2.8] the detailed payload also
   carries `analysis.eval_provenance`: `anchor_coverage` tells you what share of
   measured moves can actually be reconstructed from that anchor, and
   `flagged_moves[].cp_loss_basis` says `unknown` when they cannot. Do not claim
@@ -147,7 +149,7 @@ aliases for one release (D9). A White-POV timeline is a different artifact
 
 ## What the agent must do
 
-1. Validate the JSON (schema 2.2) before using it.
+1. Validate the JSON (schema 2.3) before using it.
 2. Pick the weakest phase from `summary.phases`: highest ACPL, tie-break by
    flagged count. A phase with `flagged == 0` **and** ACPL `0.0` (or `null`) is
    clean — it is never the weakest phase. If every phase is clean, say
@@ -166,7 +168,10 @@ aliases for one release (D9). A White-POV timeline is a different artifact
 5. Cross-reference `patterns[].plie` with `flags[].ply`; `flags[].patterns`
    already tells you which pattern a specific mistake feeds. For a flag with
    `pstatus == "unclassified"`, say that no calibrated pattern covers it and
-   quote `why`; never invent a mechanism.
+   quote `why`; never invent a mechanism. Read `confidence_dims` before quoting
+   a pattern `conf`: it is an ordinal detection strength, `support` is measured
+   coverage of flagged moves, and `behavioral_confidence` is null because no
+   mechanism calibration exists.
 6. Mention `clusters` as a time-pressure / attention hypothesis, not a proven
    cause. A cluster is a run of flagged own moves, not a diagnosis.
 7. Answer in this order: one-sentence verdict, weakest phase + one drill, top
@@ -183,7 +188,7 @@ aliases for one release (D9). A White-POV timeline is a different artifact
 System:
 
 ```text
-You are a chess coach. You receive one compact JSON analysis (schema 2.2) of a
+You are a chess coach. You receive one compact JSON analysis (schema 2.3) of a
 game played by the user. Base every statement on the JSON fields. Never invent
 moves, evaluations, FENs or variations. If a value is null or a key is absent,
 say it was not measured instead of guessing. The user's side is game.color.
@@ -203,6 +208,9 @@ Rules:
 3b. Check game_impact and mate_missed before calling a move a catastrophe.
    winning_to_winning + mate_missed = "missed mate, still winning".
    If summary.acc_warning is present, mention it with the accuracy.
+3c. Never call a pattern conf a probability. confidence_dims says which
+   dimension is published (detection strength); patterns[].support is measured
+   coverage; behavioral_confidence is not calibrated.
 4. Pattern advice only for patterns with conf >= 0.5 (conf is ordinal
    `strength`, not a probability). Use flags[].patterns to link a specific
    mistake to its pattern.
@@ -218,12 +226,12 @@ JSON:
 
 Input (`Sl1s8KmU`, White, 0-1, rapid 600+0, depth 14). The example is a
 historical 2.0 payload and is intentionally limited to the core keys; a current
-2.2 payload additionally carries per-flag `pstatus`/`why`/`game_impact`,
+2.3 payload additionally carries per-flag `pstatus`/`why`/`game_impact`,
 top-level `phase_method` and mandatory `patterns_meta`, plus `username`,
 `eval_before_mover_cp/eval_after_mover_cp` (legacy `eval_before/eval_after`
 aliases), per-flag `patterns`, `mate_missed`/`mate_via`, `pv_unavailable`,
-`pv_played`/`pv_played_unavailable`, `clusters[].plies` and
-`summary.acc_warning`.
+`pv_played`/`pv_played_unavailable`, `clusters[].plies`,
+`summary.acc_warning`, `patterns[].support` and `confidence_dims`.
 
 ```json
 {
@@ -317,7 +325,7 @@ above 0.5, so they justify targeted capture/check discipline work.
 .\.venv\Scripts\python.exe -X utf8 scripts\mcp_call.py lichess_coaching_single_game --args '{"game_id":"Sl1s8KmU","username":"systeq","output_format":"compact"}'
 ```
 
-`output_format` accepts `compact` (default, schema 2.2), `detailed` (schema
+`output_format` accepts `compact` (default, schema 2.3), `detailed` (schema
 1.2) and `both` → `{"compact": …, "detailed": …}`. `full` remains a deprecated
 alias for `detailed` for one release cycle and logs a warning.
 

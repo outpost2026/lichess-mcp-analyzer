@@ -20,6 +20,7 @@ from lichess_analyzer_mcp.services.coaching_base import (
     mcp_sample_fallback,
     safe_llm_call,
 )
+from lichess_analyzer_mcp.services.confidence_dims import dimensions_block
 from lichess_analyzer_mcp.services.eval_provenance import (
     cp_loss_basis as _cp_loss_basis,
     provenance_summary as _provenance_summary,
@@ -110,7 +111,7 @@ def _fmt_loss(move: dict) -> str:
 
 
 # ── D15 / T-18 / D29: game_impact ───────────────────────────────────────────
-# The classification lives in `services/game_impact.py`, because compact 2.2
+# The classification lives in `services/game_impact.py`, because compact 2.3
 # publishes the same labels and must not re-implement the thresholds. The
 # module-level aliases keep the historical private names importable.
 GAME_IMPACT_DEAD_ZONE_CP = _GAME_IMPACT_DEAD_ZONE_CP
@@ -680,6 +681,9 @@ async def build_response(
             schema_version=SCHEMA_VERSION,
         ),
         "eval_provenance": _provenance_summary(moves),
+        # P0-4: name the dimension behind `confidence` before an LLM reads an
+        # ordinal detector weight as a probability.
+        "confidence_dimensions": dimensions_block(len(patterns)),
     }
 
     cache = {
@@ -739,7 +743,7 @@ async def build_response(
         },
     }
 
-    # FIX-017: compact 2.2 is the default; schema 1.2 is opt-in as "detailed".
+    # FIX-017: compact 2.3 is the default; schema 1.2 is opt-in as "detailed".
     if output_format in ("compact", "both"):
         from lichess_analyzer_mcp.services.compact_serializer import (
             to_compact_v2,
@@ -797,7 +801,7 @@ async def lichess_coaching_single_game(
         color: 'white' or 'black'; fallback when no username or detection fails
         depth: Stockfish analysis depth (8-24, 0=auto)
         mode: Budget profile — 'fast' (60 s hard deadline) or 'deep' (120 s)
-        output_format: 'compact' (schema 2.2, default), 'detailed' (contract
+        output_format: 'compact' (schema 2.3, default), 'detailed' (contract
             v1.2) or 'both' -> {"compact": ..., "detailed": ...}.
             'full' is a deprecated alias for 'detailed'.
         use_llm: False skips every LLM provider (deterministic report only)

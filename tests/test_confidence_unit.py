@@ -6,7 +6,7 @@ The unit is a contract, not a style choice - an LLM that reads `0.8` as
 | Artifact                          | Unit  | Owner                                   |
 |-----------------------------------|-------|-----------------------------------------|
 | detailed 1.2 `confidence`         | 0-1   | `pattern_detector.scan_single_game`     |
-| compact 2.1 `conf`                | 0-1   | frozen `single_game_v2_compact.json`    |
+| compact 2.3 `conf`                | 0-1   | `schemas/single_game_v2_compact_2.3.json` |
 | cross-game `confidence`           | 0-100 | `schemas.py`, `coaching_base`           |
 | report text                       | %     | `report_persister._build_md`            |
 | KB slim `confidence`              | 0-1   | `report_persister._kb_pattern_slim`     |

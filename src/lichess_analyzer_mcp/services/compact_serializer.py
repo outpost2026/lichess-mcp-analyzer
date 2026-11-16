@@ -1,4 +1,4 @@
-"""Compact single-game JSON (schema 2.2) — pure serialization, no IO.
+"""Compact single-game JSON (schema 2.3) — pure serialization, no IO.
 
 The full contract v1.2 payload exists for debugging and cross-game work. For
 LLM consumption only a small, lossless-for-coaching subset is needed: game
@@ -49,6 +49,14 @@ stays the frozen 2.1 snapshot):
   - summary.acc_warning: `contains_mate_level_outlier` when a linear accuracy
     score would hide a mate-level swing (D33).
 
+2.3 additions (P0-4, additive over 2.2; `single_game_v2_compact_2.2.json`
+stays the frozen 2.2 snapshot):
+  - patterns[].support = measured share of flagged moves covered by that
+    pattern (`flagged_moves_in_game` basis), null when no move was measured.
+  - confidence_dims = one payload-level explanation of the three confidence
+    dimensions: `conf` is the ordinal detection strength, support is measured,
+    behavioral confidence is null because no mechanism calibration exists.
+
 Null policy (FIX-016), documented in the schema as well:
   - `rank: null`  -> rank was not measured (engine timeout), never 0 or 1.
   - `motif`        -> omitted when the move has no tactical motif; a motif is
@@ -73,6 +81,12 @@ from lichess_analyzer_mcp.models.pattern import (
     UNCLASSIFIED_NOT_CLASSIFIED,
     UNCLASSIFIED_REASONS,
 )
+from lichess_analyzer_mcp.services.confidence_dims import (
+    BEHAVIORAL_REASON_NOT_CALIBRATED,
+    CONFIDENCE_KIND_DETECTION,
+    SUPPORT_BASIS_SINGLE_GAME,
+    dimensions_block,
+)
 from lichess_analyzer_mcp.services.eval_consistency import eval_invariant_holds
 from lichess_analyzer_mcp.services.color_contract import normalize_color
 from lichess_analyzer_mcp.services.game_impact import (
@@ -83,7 +97,7 @@ from lichess_analyzer_mcp.services.game_impact import (
     pv_played,
 )
 
-SCHEMA_V = "2.2"
+SCHEMA_V = "2.3"
 MAX_REPORT_CHARS = 900
 FEN_CP_THRESHOLD = 100
 EVAL_CP_THRESHOLD = 200
@@ -350,7 +364,7 @@ def to_compact_v2(
     moves: list[dict] | None = None,
     pv_unavailable: dict[int | str, str] | None = None,
 ) -> dict:
-    """Serialize a contract v1.2 coaching payload to schema 2.2.
+    """Serialize a contract v1.2 coaching payload to schema 2.3.
 
     Args:
         full: `lichess_coaching_single_game` response (schema 1.2).
@@ -420,6 +434,10 @@ def to_compact_v2(
                     pattern.get("strength", pattern.get("confidence")), pattern.get("severity")
                 ),
                 "plie": plies,
+                # P0-4/2.3: measured coverage, not another name for `conf`.
+                # The detailed payload publishes the basis and denominator;
+                # a legacy payload without them gets null, never a guess.
+                "support": pattern.get("evidence_support"),
             }
         )
         for ply in plies:
@@ -469,6 +487,8 @@ def to_compact_v2(
         "flags": flags,
         "patterns": patterns,
         "patterns_meta": _patterns_meta(full, coverage),
+        # P0-4/2.3: one explanation for all three confidence dimensions.
+        "confidence_dims": dimensions_block(len(patterns)),
     }
 
     # P0-7: the discovery feed — critical moments no pattern explains. Omitted
@@ -515,11 +535,28 @@ def to_compact_v2(
     return compact
 
 
-_REQUIRED_TOP = {"v", "game", "summary", "phase_method", "flags", "patterns", "patterns_meta"}
+_REQUIRED_TOP = {
+    "v",
+    "game",
+    "summary",
+    "phase_method",
+    "flags",
+    "patterns",
+    "patterns_meta",
+    "confidence_dims",
+}
 _REQUIRED_GAME = {"id", "color", "result", "opening", "depth"}
 _REQUIRED_FLAG = {"ply", "move", "class", "cp", "best", "rank", "pstatus", "game_impact"}
-_REQUIRED_PATTERN = {"id", "conf", "freq", "sev", "plie"}
+_REQUIRED_PATTERN = {"id", "conf", "freq", "sev", "plie", "support"}
 _REQUIRED_PATTERNS_META = {"scope", "cross_game_suppressed", "reason", "coverage"}
+_REQUIRED_CONFIDENCE_DIMS = {
+    "kinds",
+    "published_kind",
+    "support_basis",
+    "behavioral_confidence",
+    "behavioral_confidence_reason",
+    "n_patterns",
+}
 _PHASE_METHODS = ("ply_segment", "material", "mixed")
 _ACCURACY_METHODS = ("internal_cp_linear",)
 
@@ -538,7 +575,7 @@ def _check_keys(obj: dict, required: set[str], allowed: set[str], path: str) -> 
 
 
 def validate_compact(data: dict) -> None:
-    """Structural validation mirroring `schemas/single_game_v2_compact.json`.
+    """Structural validation mirroring `schemas/single_game_v2_compact_2.3.json`.
 
     Dependency-free on purpose: ETL must run in any environment. The test
     suite additionally validates real output against the JSON Schema file.
@@ -699,6 +736,25 @@ def validate_compact(data: dict) -> None:
             isinstance(p, int) for p in pattern["plie"]
         ):
             _fail(f"{path}.plie", "must be an array of integers")
+        support = pattern["support"]
+        if support is not None and (not isinstance(support, (int, float)) or not 0 <= support <= 1):
+            _fail(f"{path}.support", "must be a number 0..1 or null")
+
+    dims = data["confidence_dims"]
+    _check_keys(dims, _REQUIRED_CONFIDENCE_DIMS, _REQUIRED_CONFIDENCE_DIMS, "$.confidence_dims")
+    if dims["published_kind"] != CONFIDENCE_KIND_DETECTION:
+        _fail("$.confidence_dims.published_kind", f"must be {CONFIDENCE_KIND_DETECTION!r}")
+    if dims["support_basis"] != SUPPORT_BASIS_SINGLE_GAME:
+        _fail("$.confidence_dims.support_basis", f"must be {SUPPORT_BASIS_SINGLE_GAME!r}")
+    if dims["behavioral_confidence"] is not None:
+        _fail("$.confidence_dims.behavioral_confidence", "must be null until calibration exists")
+    if dims["behavioral_confidence_reason"] != BEHAVIORAL_REASON_NOT_CALIBRATED:
+        _fail(
+            "$.confidence_dims.behavioral_confidence_reason",
+            f"must be {BEHAVIORAL_REASON_NOT_CALIBRATED!r}",
+        )
+    if not isinstance(dims["n_patterns"], int) or dims["n_patterns"] != len(data["patterns"]):
+        _fail("$.confidence_dims.n_patterns", "must equal the number of patterns")
 
     meta = data["patterns_meta"]
     _check_keys(

@@ -3,6 +3,38 @@
 Všechny změny formátu a pipeline. Verze odpovídají kontraktu compact JSON /
 single-game pipeline, ne balíčku `0.1.0` (ten zůstává beze změny).
 
+## [2.9] - 2026-11-16
+
+P0-4 z originálního plánu refaktoru: **tři pojmenované dimenze confidence**
+(D37, `docs/REFACTOR_PLAN_2026-11-11.md` §11). Cross-game schema 1.4, detailed
+1.2 kontrakt a admission gate se nemění; změny jsou aditivní. Compact 2.2 je
+zmrazený, nový artefakt je `schemas/single_game_v2_compact_2.3.json`.
+
+### Added
+
+- **Detailed 1.2**: každý pattern nese `detection_strength` (= `strength`),
+  `evidence_support` (podíl flagovaných tahů pokrytých patternem, basis
+  `flagged_moves_in_game` + jmenovatel `evidence_support_n_units`),
+  `behavioral_confidence = null` s `behavioral_confidence_reason =
+  "not_calibrated"` a `confidence_kind = "detection_strength"`. Plus
+  `analysis.confidence_dimensions` s jedním vysvětlením pro celý payload.
+- **Compact 2.3**: `patterns[].support` (nullable) a top-level
+  `confidence_dims`; `conf` zůstává ordinální detection strength. `SCHEMA_V =
+  "2.3"`, validátor a testy ve stejné iteraci.
+- **`services/confidence_dims.py`** — sdílená čistá logika (bez engine/IO) pro
+  oba formáty; support se nikdy neodhaduje, chybí-li jmenovatel.
+
+### Záměrně nezměněno
+
+- `strength` / `confidence` zůstávají 0–1 aliasy (D26/D27); cross-game 0–100
+  zůstává nedotčené. `behavioral_confidence` se nevymýšlí — kalibrace
+  mechanismů je fáze 3.
+- 2.2 payloady se už negenerují, soubor schématu 2.2 se nemění.
+
+### Verified
+
+`pytest` **513 passed**, `ruff` clean, mypy **72 souborů** clean.
+
 ## [2.8] - 2026-11-16
 
 P0-6 / T-02 z originálního plánu refaktoru (§4 `docs/REFACTOR_PLAN_2026-11-11.md`):

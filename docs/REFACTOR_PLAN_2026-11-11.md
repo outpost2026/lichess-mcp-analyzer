@@ -459,7 +459,7 @@ nový plán, jen průběžná evidence pro další iteraci.
 | P0-1 centrální board facts | **Hotovo** | `services/board_facts.py` (`king_capture_played`, `capture_checking_piece_possible`, `played_piece_type`, `chess_phase`); žádná duplicitní implementace |
 | P0-2 jediný per-blunder detektor | **Hotovo** | `game_analyzer._per_blunder_patterns` je jediná cesta; BFS i single-game čtou stejné predikáty |
 | P0-3 `phase` / `segment` / `chess_phase` | **Hotovo** | payload nese `phase_method`, `phase_stats` = `effective_phase`, vedle toho `segment_stats` a `chess_phase_stats` |
-| P0-4 dimenze `confidence` | **Nehotovo** | vyřešena jen jednotka (D26 `strength` 0–1, D27 normalizace podle `kind`); `detection_strength` / `evidence_support` / `behavioral_confidence` v kódu nejsou |
+| P0-4 dimenze `confidence` | **Hotovo v [2.9]** | `detection_strength` = ordinální `strength`, `evidence_support` = měřené pokrytí flagovaných tahů, `behavioral_confidence = null` + důvod; `confidence_kind` jmenuje alias; compact 2.3 nese `patterns[].support` a `confidence_dims` |
 | P0-5 `accuracy_method` | **Hotovo** | `analysis.accuracy_method` + compact `summary.acc_method` = `internal_cp_linear`; report nikdy netvrdí Lichess accuracy |
 | P0-6 eval provenance | **Hotovo v [2.8]** | `cp_loss_basis` / `eval_source` na flagu, `analysis.run_id` + `analysis.eval_provenance` v payloadu; compact nadále potlačuje nekonzistentní eval pár |
 | P0-7 `unclassified` | **Hotovo** | `pattern_status` + `why`, `patterns_meta.coverage`, top-level discovery feed |
@@ -478,8 +478,18 @@ engine provenance patří do `analysis_runs` (fáze 1). Compact se nemění: pod
 P0-6 zachovává potlačení nekonzistentního eval páru, explicitní provenance
 nese detailed 1.2.
 
-**Další v pořadí:** P0-4 (tři dimenze confidence + `confidence_kind`, additivně
-do 1.2, bez změny `strength`), poté P0-9 (rozdělení CI jobů a pinnutý engine).
+**D37 — P0-4 (tři dimenze confidence):** `confidence` zůstává deprecated alias
+`strength` (D26/D27), ale payload nově jmenuje, co znamená: `confidence_kind =
+"detection_strength"`. `evidence_support` je podíl flagovaných tahů v této hře
+pokrytých patternem (basis `flagged_moves_in_game`, jmenovatel v
+`evidence_support_n_units`); je to měřená veličina, ne jiné jméno pro `conf`.
+`behavioral_confidence` je `null` s `behavioral_confidence_reason =
+"not_calibrated"` — kalibrace mechanismů je fáze 3, detection ji nemůže
+odvodit ze svého vlastního pravidla. Cross-game kontrakt 1.4 se **nemění**
+(users already publish `support` a `hypothesis_confidence`); změna je jen v
+single-game detailed 1.2 a v novém compactu 2.3 (2.2 zůstává zmrazený).
+
+**Další v pořadí:** P0-9 (rozdělení CI jobů `fast`/`engine` a pinnutý build).
 Fáze 1 (SQLite + `analysis_runs`) následuje až po uzavření fáze 0.
 
 ---
