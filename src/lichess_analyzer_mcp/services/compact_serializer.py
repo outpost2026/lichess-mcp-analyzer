@@ -1,4 +1,4 @@
-"""Compact single-game JSON (schema 2.3) — pure serialization, no IO.
+"""Compact single-game JSON (schema 2.4) — pure serialization, no IO.
 
 The full contract v1.2 payload exists for debugging and cross-game work. For
 LLM consumption only a small, lossless-for-coaching subset is needed: game
@@ -39,8 +39,9 @@ stays the frozen 2.1 snapshot):
   - flags[].game_impact is mandatory (nullable): the label that separates a
     thrown-away win from a missed mate (D29).
   - flags[].mate_missed / mate_via: the best line mates for the mover and the
-    played move does not (D31). `mate_after` stays as-is; `for` already means
-    "the mover mates after the played move", so no `for_missed` value exists.
+    played move does not (D31). `for` already means "the mover mates after the
+    played move", so no `for_missed` value exists. 2.3 did not actually emit
+    `mate_after` — fixed additively in 2.4.
   - top-level pv_played / pv_played_unavailable: the engine continuation after
     the played move, from the same multipv search (D32). It is a line, not the
     opponent's actual reply.
@@ -56,6 +57,15 @@ stays the frozen 2.2 snapshot):
   - confidence_dims = one payload-level explanation of the three confidence
     dimensions: `conf` is the ordinal detection strength, support is measured,
     behavioral confidence is null because no mechanism calibration exists.
+
+2.4 additions (LLM-input clarity; `single_game_v2_compact_2.3.json` stays the
+frozen 2.3 snapshot):
+  - flags[].mate_after = direction of a `*_to_mate` impact (`for` = mover mates,
+    `against` = mover is mated). 2.3 documented this key but never emitted it,
+    so an LLM could not tell who was mated.
+  - pipeline = analysis completeness vs coaching source vs llm_requested,
+    derived by the shared `services/pipeline_status` module. `status=degraded`
+    with `use_llm=false` is offline ETL, not a failed analysis.
 
 Null policy (FIX-016), documented in the schema as well:
   - `rank: null`  -> rank was not measured (engine timeout), never 0 or 1.
@@ -88,6 +98,7 @@ from lichess_analyzer_mcp.services.confidence_dims import (
     dimensions_block,
 )
 from lichess_analyzer_mcp.services.eval_consistency import eval_invariant_holds
+from lichess_analyzer_mcp.services.pipeline_status import pipeline_block
 from lichess_analyzer_mcp.services.color_contract import normalize_color
 from lichess_analyzer_mcp.services.game_impact import (
     GAME_IMPACT_VALUES,
@@ -97,7 +108,7 @@ from lichess_analyzer_mcp.services.game_impact import (
     pv_played,
 )
 
-SCHEMA_V = "2.3"
+SCHEMA_V = "2.4"
 MAX_REPORT_CHARS = 900
 FEN_CP_THRESHOLD = 100
 EVAL_CP_THRESHOLD = 200
@@ -182,6 +193,10 @@ def _flag(
         flag.get("eval_after_mover_cp", flag.get("eval_after")),
     )
     out["game_impact"] = impact
+    # 2.4: `{winning,equal,losing}_to_mate` is ambiguous without the direction.
+    # Prefer the detailed flag's measured value; fall back to the same pure
+    # classifier for legacy payloads that predate the field.
+    out["mate_after"] = flag.get("mate_after") or _mate_after
     # FIX-015: an LLM cannot narrate a swing it cannot see.
     # FIX-023: ... and it must not narrate a contradiction: when the eval pair
     # disagrees with cp_loss, omit both fields (raw values stay in detailed).
@@ -364,7 +379,7 @@ def to_compact_v2(
     moves: list[dict] | None = None,
     pv_unavailable: dict[int | str, str] | None = None,
 ) -> dict:
-    """Serialize a contract v1.2 coaching payload to schema 2.3.
+    """Serialize a contract v1.2 coaching payload to schema 2.4.
 
     Args:
         full: `lichess_coaching_single_game` response (schema 1.2).
@@ -489,6 +504,14 @@ def to_compact_v2(
         "patterns_meta": _patterns_meta(full, coverage),
         # P0-4/2.3: one explanation for all three confidence dimensions.
         "confidence_dims": dimensions_block(len(patterns)),
+        # 2.4: same shared decomposition as the detailed payload; no second
+        # implementation of the degraded/offline distinction.
+        "pipeline": pipeline_block(
+            status=str(full.get("status") or ""),
+            partial=bool(full.get("partial")),
+            llm_reason=(full.get("llm") or {}).get("reason"),
+            report_source=(full.get("report_meta") or {}).get("source"),
+        ),
     }
 
     # P0-7: the discovery feed — critical moments no pattern explains. Omitted
@@ -544,9 +567,20 @@ _REQUIRED_TOP = {
     "patterns",
     "patterns_meta",
     "confidence_dims",
+    "pipeline",
 }
 _REQUIRED_GAME = {"id", "color", "result", "opening", "depth"}
-_REQUIRED_FLAG = {"ply", "move", "class", "cp", "best", "rank", "pstatus", "game_impact"}
+_REQUIRED_FLAG = {
+    "ply",
+    "move",
+    "class",
+    "cp",
+    "best",
+    "rank",
+    "pstatus",
+    "game_impact",
+    "mate_after",
+}
 _REQUIRED_PATTERN = {"id", "conf", "freq", "sev", "plie", "support"}
 _REQUIRED_PATTERNS_META = {"scope", "cross_game_suppressed", "reason", "coverage"}
 _REQUIRED_CONFIDENCE_DIMS = {
@@ -557,6 +591,9 @@ _REQUIRED_CONFIDENCE_DIMS = {
     "behavioral_confidence_reason",
     "n_patterns",
 }
+_REQUIRED_PIPELINE = {"analysis", "coaching", "llm_requested"}
+_PIPELINE_ANALYSIS = ("complete", "partial", "failed")
+_PIPELINE_COACHING = ("llm", "deterministic_fallback", "data_only", "failed")
 _PHASE_METHODS = ("ply_segment", "material", "mixed")
 _ACCURACY_METHODS = ("internal_cp_linear",)
 
@@ -575,7 +612,7 @@ def _check_keys(obj: dict, required: set[str], allowed: set[str], path: str) -> 
 
 
 def validate_compact(data: dict) -> None:
-    """Structural validation mirroring `schemas/single_game_v2_compact_2.3.json`.
+    """Structural validation mirroring `schemas/single_game_v2_compact_2.4.json`.
 
     Dependency-free on purpose: ETL must run in any environment. The test
     suite additionally validates real output against the JSON Schema file.
@@ -694,6 +731,17 @@ def validate_compact(data: dict) -> None:
         # mating move. `mate_via` alone would be a SAN with no length.
         if flag["game_impact"] is not None and flag["game_impact"] not in GAME_IMPACT_VALUES:
             _fail(f"{path}.game_impact", f"must be one of {GAME_IMPACT_VALUES} or null")
+        # 2.4: a mate impact without a direction is not narratable.
+        mate_after = flag["mate_after"]
+        if mate_after not in ("for", "against", None):
+            _fail(f"{path}.mate_after", "must be 'for', 'against' or null")
+        is_mate_impact = isinstance(flag["game_impact"], str) and flag["game_impact"].endswith(
+            "_to_mate"
+        )
+        if is_mate_impact and mate_after is None:
+            _fail(f"{path}.mate_after", "required for a *_to_mate game_impact")
+        if not is_mate_impact and mate_after is not None:
+            _fail(f"{path}.mate_after", "must be null unless game_impact ends in _to_mate")
         if "mate_missed" in flag:
             if not isinstance(flag["mate_missed"], int) or flag["mate_missed"] < 1:
                 _fail(f"{path}.mate_missed", "must be an integer >= 1")
@@ -755,6 +803,15 @@ def validate_compact(data: dict) -> None:
         )
     if not isinstance(dims["n_patterns"], int) or dims["n_patterns"] != len(data["patterns"]):
         _fail("$.confidence_dims.n_patterns", "must equal the number of patterns")
+
+    pipeline = data["pipeline"]
+    _check_keys(pipeline, _REQUIRED_PIPELINE, _REQUIRED_PIPELINE, "$.pipeline")
+    if pipeline["analysis"] not in _PIPELINE_ANALYSIS:
+        _fail("$.pipeline.analysis", f"must be one of {_PIPELINE_ANALYSIS}")
+    if pipeline["coaching"] not in _PIPELINE_COACHING:
+        _fail("$.pipeline.coaching", f"must be one of {_PIPELINE_COACHING}")
+    if not isinstance(pipeline["llm_requested"], bool):
+        _fail("$.pipeline.llm_requested", "must be a boolean")
 
     meta = data["patterns_meta"]
     _check_keys(

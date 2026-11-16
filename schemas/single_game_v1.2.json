@@ -36,6 +36,19 @@
     "mode": { "enum": ["fast", "deep"] },
     "depth": { "type": "integer", "minimum": 8, "maximum": 24 },
     "status": { "enum": ["ok", "degraded", "partial", "error"] },
+    "pipeline": {
+      "type": "object",
+      "description": "2.4 additive: separates analysis completeness from coaching source. `status` can be degraded because the LLM was disabled; that is not an analysis failure.",
+      "required": ["analysis", "coaching", "llm_requested"],
+      "additionalProperties": false,
+      "properties": {
+        "analysis": { "enum": ["complete", "partial", "failed"] },
+        "coaching": {
+          "enum": ["llm", "deterministic_fallback", "data_only", "failed"]
+        },
+        "llm_requested": { "type": "boolean" }
+      }
+    },
     "partial": { "type": "boolean" },
     "errors": {
       "type": "array",

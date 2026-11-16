@@ -156,7 +156,7 @@ def _compact():
 
 def test_compact_publishes_support_and_the_payload_level_explanation():
     compact = _compact()
-    assert compact["v"] == "2.3"
+    assert compact["v"] == "2.4"
     assert compact["confidence_dims"]["published_kind"] == "detection_strength"
     for pattern in compact["patterns"]:
         assert "support" in pattern

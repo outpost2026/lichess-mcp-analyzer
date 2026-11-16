@@ -3,6 +3,38 @@
 Všechny změny formátu a pipeline. Verze odpovídají kontraktu compact JSON /
 single-game pipeline, ne balíčku `0.1.0` (ten zůstává beze změny).
 
+## [2.11] - 2026-11-16
+
+LLM input audit na reálných tool calls (4 hry × 2 barvy = 8 payloadů). Kompletní
+evidence: `docs/LLM_INPUT_AUDIT_2026-11-16.md`. Nový read-only kontrolor:
+`scripts/audit_single_game_output.py` (12 invariantů, 8/8 PASS).
+
+### Fixed
+
+- **Chybějící směr matu v compactu**: `WHIbVLXk` black ply 68 měl
+  `game_impact=losing_to_mate`, ale `mate_after` se nepublikoval, přestože to
+  dokumentace tvrdila. Compact **2.4** přidává povinné `flags[].mate_after`
+  (`for`/`against`; null mimo `*_to_mate`). 2.3 zůstává zmrazený.
+- **`--no-llm` vypadalo jako selhání analýzy**: nový `pipeline` blok v detailed
+  1.2 i compact 2.4 odděluje `analysis` (complete/partial/failed), `coaching`
+  (llm/deterministic_fallback/data_only/failed) a `llm_requested`. Sdílená
+  logika v `services/pipeline_status.py`, aby se oba surface nemohly rozejít.
+
+### Documented (beze změny schématu)
+
+- `flags` kolize: detailed = config objekt, compact = pole flagů → v LLM guide
+  nová sekce „Aliases and collisions“.
+- Ponechané kompatibilní aliasy (`eval_before*`, `accuracy`/`internal_accuracy_score`,
+  `strength`/`confidence`/`detection_strength`/`conf`, `cascade_log`/`llm.attempts`,
+  `pstatus`/`unclassified[]`, `flags[].patterns`/`patterns[].plie`) se počítají
+  jednou; `report` je shrnutí, ne zdroj faktů.
+
+### Verified
+
+8 MCP tool calls (`use_llm=false`, `output_format=both`), 12/12 kontrol PASS na
+8/8 payloadů; obě schémata validují. `pytest` **518 passed**, `ruff` clean,
+mypy **73 souborů** clean.
+
 ## [2.10] - 2026-11-16
 
 Ověření externího generálního code review (3. LLM, `e136fee`) před P0-9.

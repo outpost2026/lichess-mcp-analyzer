@@ -82,7 +82,7 @@ def test_default_is_compact_v2(monkeypatch):
     result = asyncio.run(
         cs.lichess_coaching_single_game("testgame", color="white", depth=14, use_llm=False)
     )
-    assert result["v"] == "2.3"
+    assert result["v"] == "2.4"
     assert result["game"]["id"] == "testgame"
     assert result["flags"][0]["ply"] == 3
 
@@ -141,6 +141,12 @@ def test_detailed_payload_carries_run_identity_and_provenance(monkeypatch):
     assert provenance["moves_measured"] == 2
     assert provenance["cp_loss_basis"]["unknown"] == 2
     assert result["flagged_moves"][0]["cp_loss_basis"] == "unknown"
+    # 2.4: offline ETL is not an analysis failure.
+    assert result["pipeline"] == {
+        "analysis": "complete",
+        "coaching": "deterministic_fallback",
+        "llm_requested": False,
+    }
 
 
 def test_full_is_deprecated_alias_for_detailed(monkeypatch):
@@ -160,7 +166,7 @@ def test_compact_output_is_schema_22(monkeypatch):
             "testgame", color="white", depth=14, output_format="compact", use_llm=False
         )
     )
-    assert result["v"] == "2.3"
+    assert result["v"] == "2.4"
     assert result["game"]["id"] == "testgame"
     assert result["flags"][0]["ply"] == 3
     assert result["flags"][0]["rank"] == 4
@@ -177,7 +183,7 @@ def test_both_returns_compact_and_detailed(monkeypatch):
         )
     )
     assert set(result) == {"compact", "detailed"}
-    assert result["compact"]["v"] == "2.3"
+    assert result["compact"]["v"] == "2.4"
     assert result["detailed"]["schema_version"] == "1.2"
 
 

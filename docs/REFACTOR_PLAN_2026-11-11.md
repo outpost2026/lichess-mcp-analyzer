@@ -494,6 +494,11 @@ single-game detailed 1.2 a v novém compactu 2.3 (2.2 zůstává zmrazený).
 konkrétní defekty (max_games doc vs clamp, falešné FSRS tvrzení, zastaralý
 README status). Zbytek jsou návrhy pro Phase 1–2, ne změny fáze 0.
 
+**LLM input audit (16. 11., [2.11])**: 8 reálných tool calls ověřilo 12
+invariantů; výsledek a nálezy F1–F7 v `docs/LLM_INPUT_AUDIT_2026-11-16.md`.
+Opraveny směr matu v compactu a rozlišení offline ETL vs selhání analýzy
+(compact 2.4, `pipeline` v obou surfacech).
+
 **Další v pořadí:** P0-9 (rozdělení CI jobů `fast`/`engine` a pinnutý build).
 Fáze 1 (SQLite + `analysis_runs`) následuje až po uzavření fáze 0.
 

@@ -2,7 +2,7 @@
 
 One entry point for the three real workflows:
 
-    # one Lichess game -> compact 2.3, both colours, keyed JSON
+    # one Lichess game -> compact 2.4, both colours, keyed JSON
     python scripts/coach.py --game-id FVhqtv1S
 
     # one perspective only

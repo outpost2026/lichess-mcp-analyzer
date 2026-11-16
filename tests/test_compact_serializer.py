@@ -1,4 +1,4 @@
-"""Schema 2.3 compact serializer — unit tests (no engine, no network)."""
+"""Schema 2.4 compact serializer — unit tests (no engine, no network)."""
 
 import json
 import os
@@ -168,14 +168,14 @@ def test_output_validates_against_manual_validator():
 def test_output_validates_against_json_schema_file():
     jsonschema = pytest.importorskip("jsonschema")
     schema = json.load(
-        open(os.path.join(ROOT, "schemas/single_game_v2_compact_2.3.json"), encoding="utf-8")
+        open(os.path.join(ROOT, "schemas/single_game_v2_compact_2.4.json"), encoding="utf-8")
     )
     jsonschema.validate(_compact(), schema)
 
 
 def test_metadata_and_summary():
     out = _compact()
-    assert out["v"] == "2.3"
+    assert out["v"] == "2.4"
     assert out["phase_method"] == "ply_segment"
     assert out["patterns_meta"] == {
         "scope": "single_game",
@@ -247,6 +247,7 @@ def test_all_flags_preserved_in_ply_order():
         "pstatus": "unclassified",
         "why": "quiet_positional",
         "game_impact": "winning_to_winning",
+        "mate_after": None,
     }
     assert by_ply[40]["pstatus"] == "matched"
     assert "why" not in by_ply[40]
@@ -713,6 +714,58 @@ def test_played_pv_unavailable_when_rank_is_outside_the_multipv_window():
     validate_compact(out)
     assert out["pv_played_unavailable"]["63"] == "rank_not_in_engine_lines"
     assert "63" not in out.get("pv_played", {})
+
+
+def test_mate_after_direction_survives_compaction():
+    """2.4: `losing_to_mate` without a direction is not narratable (live ply 68 of WHIbVLXk)."""
+    full = json.loads(json.dumps(FULL))
+    full["flagged_moves"].append(
+        {
+            **FLAG_TEMPLATE,
+            "ply": 70,
+            "san": "Kc7",
+            "classification": "blunder",
+            "cp_loss": 9470.0,
+            "eval_before": -961,
+            "eval_after": -9996,
+            "game_impact": "losing_to_mate",
+            "mate_after": "against",
+        }
+    )
+    out = to_compact_v2(full, game_meta=GAME_META)
+    validate_compact(out)
+    flag = next(f for f in out["flags"] if f["ply"] == 70)
+    assert flag["game_impact"] == "losing_to_mate"
+    assert flag["mate_after"] == "against"
+
+
+def test_validator_rejects_mate_impact_without_direction():
+    out = _compact()
+    out["flags"][0]["game_impact"] = "winning_to_mate"
+    out["flags"][0]["mate_after"] = None
+    with pytest.raises(ValueError, match="mate_after"):
+        validate_compact(out)
+
+
+def test_pipeline_separates_offline_etl_from_a_failed_analysis():
+    base = json.loads(json.dumps(FULL))
+    base["report_meta"] = {"source": "deterministic"}
+    out = to_compact_v2(base, game_meta=GAME_META)
+    validate_compact(out)
+    assert out["pipeline"] == {
+        "analysis": "complete",
+        "coaching": "deterministic_fallback",
+        "llm_requested": True,
+    }
+    offline = json.loads(json.dumps(base))
+    offline["llm"]["reason"] = "llm_disabled"
+    out2 = to_compact_v2(offline, game_meta=GAME_META)
+    validate_compact(out2)
+    assert out2["pipeline"] == {
+        "analysis": "complete",
+        "coaching": "deterministic_fallback",
+        "llm_requested": False,
+    }
 
 
 def test_accuracy_warning_travels_with_the_score():

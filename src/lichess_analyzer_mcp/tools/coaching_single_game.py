@@ -40,6 +40,7 @@ from lichess_analyzer_mcp.services.llm_client import (
     get_llm_status,
 )
 from lichess_analyzer_mcp.services.logger import get_logger
+from lichess_analyzer_mcp.services.pipeline_status import pipeline_block
 from lichess_analyzer_mcp.services.pattern_detector import (
     PATTERN_STATUS_MATCHED,
     PATTERN_STATUS_UNCLASSIFIED,
@@ -111,7 +112,7 @@ def _fmt_loss(move: dict) -> str:
 
 
 # ── D15 / T-18 / D29: game_impact ───────────────────────────────────────────
-# The classification lives in `services/game_impact.py`, because compact 2.3
+# The classification lives in `services/game_impact.py`, because compact 2.4
 # publishes the same labels and must not re-implement the thresholds. The
 # module-level aliases keep the historical private names importable.
 GAME_IMPACT_DEAD_ZONE_CP = _GAME_IMPACT_DEAD_ZONE_CP
@@ -693,6 +694,9 @@ async def build_response(
     }
 
     report_text = report or ""
+    # 2.4: one reason string feeds both `llm.reason` (legacy) and `pipeline`
+    # (new), so an offline ETL run can never be labelled as a failed analysis.
+    llm_reason = "ok" if llm_ok else ("llm_disabled" if not use_llm else "all_providers_failed")
     response = {
         "schema_version": SCHEMA_VERSION,
         "game_id": game_id,
@@ -704,6 +708,13 @@ async def build_response(
         "mode": mode,
         "depth": depth,
         "status": status,
+        # 2.4: explicit decomposition; `status` stays unchanged for 1.2 consumers.
+        "pipeline": pipeline_block(
+            status=status,
+            partial=bool(unanalyzed),
+            llm_reason=llm_reason,
+            report_source=source_label,
+        ),
         "partial": bool(unanalyzed),
         "errors": errors,
         "unanalyzed_plies": unanalyzed,
@@ -719,9 +730,7 @@ async def build_response(
             "status": "ok" if llm_ok else "degraded",
             "provider": report_source,
             "degraded": not llm_ok,
-            "reason": (
-                "ok" if llm_ok else ("llm_disabled" if not use_llm else "all_providers_failed")
-            ),
+            "reason": llm_reason,
             "attempts": _llm_attempts(cascade_log),
             "configured_providers": llm_status.get("total_configured", 0),
             "timeout_s": round(llm_timeout, 3),
@@ -743,7 +752,7 @@ async def build_response(
         },
     }
 
-    # FIX-017: compact 2.3 is the default; schema 1.2 is opt-in as "detailed".
+    # FIX-017: compact 2.4 is the default; schema 1.2 is opt-in as "detailed".
     if output_format in ("compact", "both"):
         from lichess_analyzer_mcp.services.compact_serializer import (
             to_compact_v2,
@@ -801,7 +810,7 @@ async def lichess_coaching_single_game(
         color: 'white' or 'black'; fallback when no username or detection fails
         depth: Stockfish analysis depth (8-24, 0=auto)
         mode: Budget profile — 'fast' (60 s hard deadline) or 'deep' (120 s)
-        output_format: 'compact' (schema 2.3, default), 'detailed' (contract
+        output_format: 'compact' (schema 2.4, default), 'detailed' (contract
             v1.2) or 'both' -> {"compact": ..., "detailed": ...}.
             'full' is a deprecated alias for 'detailed'.
         use_llm: False skips every LLM provider (deterministic report only)
