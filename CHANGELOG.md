@@ -3,6 +3,34 @@
 Všechny změny formátu a pipeline. Verze odpovídají kontraktu compact JSON /
 single-game pipeline, ne balíčku `0.1.0` (ten zůstává beze změny).
 
+## [2.12] - 2026-11-16
+
+P0-9: **fáze 0 uzavřena**. Rozdělení CI na `fast` a `engine`, pinnutý Stockfish
+a žádné tiché preskakování testů. Žádná změna payload schémat.
+
+### Added
+
+- `.github/workflows/test.yml` má dva joby: `fast` (Python 3.12, Ruff, mypy,
+  `pytest -m "not real_engine"` s coverage) a `engine` (pinnutý Stockfish 18,
+  `pytest -m real_engine`). `--strict-markers` je i v `pyproject.toml`,
+  takže neznámý marker nebo prázdný výběr znamená červený job.
+- **`config/engine_identity.json`** — release `sf_18`, URL a SHA-256 archivu
+  `stockfish-ubuntu-x86-64.tar` (`5c6f38b0…`), SHA-256 binárky
+  (`7a44d64f…`), očekávaný UCI název `Stockfish 18` a hash lokálního
+  Windows BMI2 buildu pro provenienci.
+- **`scripts/verify_engine_identity.py`** — ověří UCI `id name` **a** hash
+  spustitelného souboru; výstupem je jedna JSON linka do CI logu. Při driftu
+  ukončí job s exit 1.
+- **`tests/test_engine_identity.py`** — 3 testy konfigurace a přesného
+  porovnání identity.
+
+### Verified
+
+Lokálně: fast **521 passed**, real engine **18 passed / 11 deselected za 13,3 s**
+(s lokálním `sf_18` binary, který prošel verifikací), Ruff clean, mypy
+**73 souborů** clean. `pytest -m real_engine` vrací exit 5, pokud neexistuje žádný
+engine test — job tedy nemůže projít „prázdným výběrem“.
+
 ## [2.11] - 2026-11-16
 
 LLM input audit na reálných tool calls (4 hry × 2 barvy = 8 payloadů). Kompletní

@@ -1,0 +1,18 @@
+{
+  "release_tag": "sf_18",
+  "expected_uci_name": "Stockfish 18",
+  "linux_ci": {
+    "asset_name": "stockfish-ubuntu-x86-64.tar",
+    "url": "https://github.com/official-stockfish/Stockfish/releases/download/sf_18/stockfish-ubuntu-x86-64.tar",
+    "archive_sha256": "5c6f38b02a4da5f3ffe763f27da6c3e743eebefd92b50cb3661623b96696adff",
+    "archive_bytes": 114391040,
+    "binary_in_archive": "stockfish/stockfish-ubuntu-x86-64",
+    "binary_sha256": "7a44d64fd877ee888a5160349827563444e1935ca6c1095d0f8e0859d57101c7"
+  },
+  "local_windows_bmi2": {
+    "binary": "stockfish/stockfish-bmi2.exe",
+    "sha256": "bf2d8bf60ac6f3ba58df08b1b0c5f4dec759b994d8f4532b07fe62986dc03288",
+    "note": "Developer binary from the same sf_18 release; recorded for provenance, not used in CI."
+  },
+  "why_pinned": "Engine build changes best moves at fixed depth. The real_engine job must report the exact UCI name and binary hash, and fail on drift, otherwise a green CI only proves someone's Stockfish was installed."
+}

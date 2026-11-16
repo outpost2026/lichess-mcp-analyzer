@@ -54,7 +54,7 @@ pythonpath = ["src"]
 markers = [
     "real_engine: spousti realny Stockfish binary (pomaly; vylouceno z defaultu)",
 ]
-addopts = ["-m", "not real_engine"]
+addopts = ["-m", "not real_engine", "--strict-markers"]
 
 [tool.mypy]
 python_version = "3.12"

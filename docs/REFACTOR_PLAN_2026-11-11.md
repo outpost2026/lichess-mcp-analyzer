@@ -464,7 +464,7 @@ nový plán, jen průběžná evidence pro další iteraci.
 | P0-6 eval provenance | **Hotovo v [2.8]** | `cp_loss_basis` / `eval_source` na flagu, `analysis.run_id` + `analysis.eval_provenance` v payloadu; compact nadále potlačuje nekonzistentní eval pár |
 | P0-7 `unclassified` | **Hotovo** | `pattern_status` + `why`, `patterns_meta.coverage`, top-level discovery feed |
 | P0-8 compact kontrakt | **Hotovo** | 2.2 (`game_impact` povinné), 2.1 soubor zmrazen jako historický snapshot |
-| P0-9 test split + pinned engine | **Nehotovo** | CI má jeden job `pytest tests/`; chybí fast/engine split, pinnutý build a jmenovaný reason pro případný ignore |
+| P0-9 test split + pinned engine | **Hotovo v [2.12]** | CI má joby `fast` (`-m "not real_engine"` + coverage) a `engine` (pinnutý SF 18, hash archivu i binary, UCI identita); `--strict-markers`, žádné tiché deselektování |
 
 **D36 — P0-6 / T-02 (provenance):** `cp_loss_basis` je `best_eval` jen tehdy,
 když je D12 anchor přítomen a triple do 1 cp rekonstruuje; jinak `unknown`
@@ -499,8 +499,13 @@ invariantů; výsledek a nálezy F1–F7 v `docs/LLM_INPUT_AUDIT_2026-11-16.md`.
 Opraveny směr matu v compactu a rozlišení offline ETL vs selhání analýzy
 (compact 2.4, `pipeline` v obou surfacech).
 
-**Další v pořadí:** P0-9 (rozdělení CI jobů `fast`/`engine` a pinnutý build).
-Fáze 1 (SQLite + `analysis_runs`) následuje až po uzavření fáze 0.
+**P0-9 dokončeno v [2.12]**: `config/engine_identity.json` drží release `sf_18`,
+URL, SHA-256 archivu i binary a očekávaný UCI název; `scripts/verify_engine_identity.py`
+ověřuje identitu před engine testy. Fast job: 521 testů, engine job: 18 testů.
+
+**Fáze 0 je uzavřená. Další v pořadí: fáze 1** — SQLite + `analysis_runs`,
+migrace a `policy_fingerprint` vs DB `analysis_run_id` (D02 externího auditu).
+Žádný frontend, dokud není source of truth v DB.
 
 ---
 

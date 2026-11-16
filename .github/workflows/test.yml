@@ -10,19 +10,15 @@ env:
   PYTHONIOENCODING: utf-8
 
 jobs:
-  test:
+  fast:
+    name: fast (no engine)
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.12"]
-
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.12"
 
       - name: Install uv
         run: pip install uv
@@ -47,8 +43,13 @@ jobs:
       - name: Type check (mypy)
         run: uv run python -m mypy src/ --ignore-missing-imports
 
-      - name: Run tests with coverage
-        run: uv run python -X utf8 -m pytest tests/ -v --tb=short --cov=src/ --cov-report=term --cov-report=xml
+      - name: Fast tests with coverage
+        # Explicit marker + --strict-markers: an unknown marker or an empty
+        # selection is a failure, never a silently green job.
+        run: >
+          uv run python -X utf8 -m pytest tests/
+          -m "not real_engine" --strict-markers -ra -v --tb=short
+          --cov=src/ --cov-report=term --cov-report=xml
 
       - name: Upload coverage report
         uses: codecov/codecov-action@v5
@@ -56,3 +57,59 @@ jobs:
         with:
           file: ./coverage.xml
           fail_ci_if_error: false
+
+  engine:
+    name: engine (pinned Stockfish 18)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Cache uv
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
+          restore-keys: |
+            uv-${{ runner.os }}-
+
+      - name: Sync dependencies
+        run: uv sync
+
+      - name: Read pinned engine identity
+        id: pin
+        run: |
+          {
+            echo "url=$(uv run python -c 'import json;print(json.load(open("config/engine_identity.json"))["linux_ci"]["url"])')"
+            echo "archive_sha=$(uv run python -c 'import json;print(json.load(open("config/engine_identity.json"))["linux_ci"]["archive_sha256"])')"
+            echo "binary=$(uv run python -c 'import json;print(json.load(open("config/engine_identity.json"))["linux_ci"]["binary_in_archive"])')"
+            echo "binary_sha=$(uv run python -c 'import json;print(json.load(open("config/engine_identity.json"))["linux_ci"]["binary_sha256"])')"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Install pinned Stockfish 18
+        run: |
+          set -euo pipefail
+          curl -fsSL -o "$RUNNER_TEMP/sf18.tar" "${{ steps.pin.outputs.url }}"
+          echo "${{ steps.pin.outputs.archive_sha }}  $RUNNER_TEMP/sf18.tar" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/sf18"
+          tar -xf "$RUNNER_TEMP/sf18.tar" -C "$RUNNER_TEMP/sf18"
+          BIN="$RUNNER_TEMP/sf18/${{ steps.pin.outputs.binary }}"
+          test -f "$BIN"
+          chmod +x "$BIN"
+          echo "${{ steps.pin.outputs.binary_sha }}  $BIN" | sha256sum -c -
+          echo "STOCKFISH_PATH=$BIN" >> "$GITHUB_ENV"
+
+      - name: Verify UCI name and binary hash
+        run: uv run python -X utf8 scripts/verify_engine_identity.py
+
+      - name: Real engine tests
+        # pytest exits 5 when -m real_engine selects nothing: no silent skip.
+        run: >
+          uv run python -X utf8 -m pytest tests/test_engine_client.py
+          -m real_engine --strict-markers -ra -v --tb=short
