@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+import re
 
 import pytest
 
@@ -125,6 +126,21 @@ def test_detailed_payload_validates_against_schema_12(monkeypatch):
     )
     schema = json.load(open(os.path.join(ROOT, "schemas/single_game_v1.2.json"), encoding="utf-8"))
     jsonschema.validate(result, schema)
+
+
+def test_detailed_payload_carries_run_identity_and_provenance(monkeypatch):
+    """P0-6: the detailed payload states what its numbers rest on."""
+    _install(monkeypatch)
+    result = asyncio.run(
+        cs.lichess_coaching_single_game(
+            "testgame", color="white", depth=14, output_format="detailed", use_llm=False
+        )
+    )
+    assert re.fullmatch(r"[0-9a-f]{16}", result["analysis"]["run_id"])
+    provenance = result["analysis"]["eval_provenance"]
+    assert provenance["moves_measured"] == 2
+    assert provenance["cp_loss_basis"]["unknown"] == 2
+    assert result["flagged_moves"][0]["cp_loss_basis"] == "unknown"
 
 
 def test_full_is_deprecated_alias_for_detailed(monkeypatch):

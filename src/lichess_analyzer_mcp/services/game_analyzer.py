@@ -725,6 +725,10 @@ def _run_analyze_pgn(
                 fen=fen_before,
                 was_in_check=was_in_check,
                 gives_check=gives_check,
+                # P0-6: the engine names the provenance; the analyzer stores it
+                # verbatim instead of re-deriving it later from partial data.
+                cp_loss_basis=eval_result.get("cp_loss_basis") or "",
+                eval_source=eval_result.get("eval_source") or "",
             )
             if classification == "blunder":
                 analysis.blunders.append(move_analysis)

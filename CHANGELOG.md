@@ -3,6 +3,43 @@
 Všechny změny formátu a pipeline. Verze odpovídají kontraktu compact JSON /
 single-game pipeline, ne balíčku `0.1.0` (ten zůstává beze změny).
 
+## [2.8] - 2026-11-16
+
+P0-6 / T-02 z originálního plánu refaktoru (§4 `docs/REFACTOR_PLAN_2026-11-11.md`):
+**provenance eval čísel**. Rozhodnutí D36 je zdokumentováno v §11 téhož plánu
+(spolu se stavem všech P0 položek). Kompakt 2.2 a cross-game kontrakty se
+nemění; detailed 1.2 dostává jen aditivní pole.
+
+### Added
+
+- **`analysis.run_id`** — 16 hex deterministický otisk politiky analýzy (depth,
+  mode, nodes cap, threads, detector verze, schema verze). Stejná politika dává
+  stejné ID; engine identita do něj nepatří, protože při cache hitu se engine
+  nespustí (patří do `analysis_runs`, fáze 1).
+- **`analysis.eval_provenance`** — počet měřených tahů, `anchor_coverage` a
+  rozdělení podle `cp_loss_basis` / `eval_source`. N-03 (97,8 % tahů bez D12
+  anchoru) je tak měřitelné **na úrovni jedné hry**, ne jen jako korpusové
+  tvrzení v dokumentaci.
+- **`flagged_moves[].cp_loss_basis` / `eval_source`** — `best_eval` jen při
+  přítomném a rekonstruujícím anchoru, jinak `unknown`; zdroj `stockfish` /
+  `cloud` / `unknown`. Basis se odvozuje z publikovaného anchoru, aby seděl
+  s `eval_provenance`; zdroj odvodit nelze, proto legacy cache dostane `null`,
+  ne odhad.
+- **`services/eval_provenance.py`** — čistý modul (bez engine/IO) se sdílenou
+  klasifikací; `engine_client` označuje zdroj už při měření, `MoveAnalysis` ho
+  ukládá do cache.
+
+### Záměrně nezměněno
+
+- Compact 2.2: P0-6 říká, že compact zachovává potlačení nekonzistentního eval
+  páru a explicitní provenance nese detailed. Žádný schema bump.
+- `cp_loss` se nepřepočítává a `best_eval` se nedoplňuje do starých cache;
+  chybějící data se označí, ne vyfabrikují (DATA-FABRICATION-001).
+
+### Verified
+
+`pytest` **505 passed**, `ruff` clean, mypy **71 souborů** clean.
+
 ## [2.7] - 2026-11-15
 
 Integrace třetího auditu (`WHIbVLXk`, Caro-Kann B12) + **compact 2.2**.

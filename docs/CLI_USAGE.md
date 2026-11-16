@@ -145,9 +145,12 @@ Výstupní JSON obsahuje `analysis.acpl`, `analysis.accuracy` (s
 `accuracy_warning`, když je ve hře mat-level výkyv), `game` (jména, ratingy,
 TC, datum, URL, zahájení), `flagged_moves` (včetně `fen_before`,
 `game_impact`, `mate_after`, `mate_missed`/`mate_via` a
-`pv_played`/`pv_played_unavailable`), `patterns`, `report`, `engine` (politika)
-a `timings` (včetně `llm_skipped` / `llm_skip_reason`). Od [2.7] nese
-`game_impact` i compact 2.2 (D35).
+`pv_played`/`pv_played_unavailable`, `cp_loss_basis`/`eval_source`), `patterns`,
+`report`, `engine` (politika) a `timings` (včetně `llm_skipped` /
+`llm_skip_reason`). Od [2.7] nese `game_impact` i compact 2.2 (D35). Od [2.8]
+nese detailed `analysis.run_id` (otisk politiky) a `analysis.eval_provenance`
+(počet měřených tahů, `anchor_coverage`, rozdělení podle basis/source); compact
+se tím nemění (P0-6).
 
 ## 2. Libovolný tool: `scripts/mcp_call.py`
 

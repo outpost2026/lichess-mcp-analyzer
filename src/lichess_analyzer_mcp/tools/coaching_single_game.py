@@ -20,6 +20,11 @@ from lichess_analyzer_mcp.services.coaching_base import (
     mcp_sample_fallback,
     safe_llm_call,
 )
+from lichess_analyzer_mcp.services.eval_provenance import (
+    cp_loss_basis as _cp_loss_basis,
+    provenance_summary as _provenance_summary,
+    run_id as _run_id,
+)
 from lichess_analyzer_mcp.services.game_impact import (
     GAME_IMPACT_DEAD_ZONE_CP as _GAME_IMPACT_DEAD_ZONE_CP,
     GAME_IMPACT_STATES,
@@ -142,6 +147,13 @@ def _flagged_moves(analysis: dict) -> list[dict]:
                 # (cp_loss = max(0, best_eval_mover_cp - eval_after_mover_cp)).
                 # null = not measured (legacy cache or remote cloud eval).
                 "best_eval_mover_cp": m.get("best_eval"),
+                # P0-6: what the loss was measured from and where the evals
+                # came from. The basis is derivable from the published anchor,
+                # so even a legacy cache gets a truthful value; the source is
+                # NOT derivable and stays null when it was never recorded.
+                "cp_loss_basis": m.get("cp_loss_basis")
+                or _cp_loss_basis(m.get("best_eval"), m.get("eval_after"), m.get("centipawn_loss")),
+                "eval_source": m.get("eval_source") or None,
                 "eval_before": m.get("eval_before"),
                 "eval_after": m.get("eval_after"),
                 # D15/T-18: did the game change, not only how much was lost.
@@ -656,6 +668,18 @@ async def build_response(
         "phase_stats": phase_stats,
         "segment_stats": analysis_obj.segment_stats,
         "chess_phase_stats": analysis_obj.chess_phase_stats,
+        # P0-6 / T-02: a payload must say what its numbers rest on. `run_id`
+        # identifies the policy; `eval_provenance` counts how many measured
+        # moves are actually reconstructible from the D12 anchor (N-03).
+        "run_id": _run_id(
+            depth=depth,
+            mode=mode,
+            nodes_cap=_node_cap(depth),
+            threads=ENGINE_THREADS,
+            detector_version=DETECTOR_VERSION,
+            schema_version=SCHEMA_VERSION,
+        ),
+        "eval_provenance": _provenance_summary(moves),
     }
 
     cache = {

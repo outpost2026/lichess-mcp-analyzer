@@ -81,7 +81,11 @@ after the move. Therefore:
   evals come from separate searches, so the subtraction is only an
   approximation (within the FIX-023 window it holds to ±50 cp). The exact
   anchor `best_eval_mover_cp` is published in the **detailed** payload; compact
-  2.2 does not carry it (size budget).
+  2.2 does not carry it (size budget). Since [2.8] the detailed payload also
+  carries `analysis.eval_provenance`: `anchor_coverage` tells you what share of
+  measured moves can actually be reconstructed from that anchor, and
+  `flagged_moves[].cp_loss_basis` says `unknown` when they cannot. Do not claim
+  "100 % consistent" for a game whose coverage is below 1.
 - a positive value always means "good for the mover", for both colours;
 - never compare `eval_before_mover_cp` of a White move with one of a Black
   move as if they shared a direction — they do not.

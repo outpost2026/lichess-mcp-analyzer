@@ -80,6 +80,10 @@ class MoveAnalysis:
     # a materialova faze pozice ("" = nevypoctena, napr. legacy cache).
     phase_method: str = PHASE_METHOD_DEFAULT
     chess_phase: str = ""
+    # P0-6: provenance evaluated at write time. "" = legacy cache, which never
+    # recorded it; the publisher maps "" to `unknown`, never to a guess.
+    cp_loss_basis: str = ""
+    eval_source: str = ""
 
     @property
     def segment(self) -> str:

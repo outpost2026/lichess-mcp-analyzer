@@ -447,6 +447,43 @@ Bez rozhodnutí D1-D6 nelze Fázi 0 dokončit; lze ale začít P0-1, P0-2 a P0-9
 
 ---
 
+## 11. Stav iterace (2026-11-16, po [2.8])
+
+Refaktor běží inkrementálně: každý krok je additivní, má kontraktní test a
+nemění behaviorální jádro, které funguje (engine analýza, deterministické
+reporty, obě perspektivy v CLI). Tabulka je stav **fáze 0** proti §4 — není to
+nový plán, jen průběžná evidence pro další iteraci.
+
+| ID | Stav | Evidence |
+|---|---|---|
+| P0-1 centrální board facts | **Hotovo** | `services/board_facts.py` (`king_capture_played`, `capture_checking_piece_possible`, `played_piece_type`, `chess_phase`); žádná duplicitní implementace |
+| P0-2 jediný per-blunder detektor | **Hotovo** | `game_analyzer._per_blunder_patterns` je jediná cesta; BFS i single-game čtou stejné predikáty |
+| P0-3 `phase` / `segment` / `chess_phase` | **Hotovo** | payload nese `phase_method`, `phase_stats` = `effective_phase`, vedle toho `segment_stats` a `chess_phase_stats` |
+| P0-4 dimenze `confidence` | **Nehotovo** | vyřešena jen jednotka (D26 `strength` 0–1, D27 normalizace podle `kind`); `detection_strength` / `evidence_support` / `behavioral_confidence` v kódu nejsou |
+| P0-5 `accuracy_method` | **Hotovo** | `analysis.accuracy_method` + compact `summary.acc_method` = `internal_cp_linear`; report nikdy netvrdí Lichess accuracy |
+| P0-6 eval provenance | **Hotovo v [2.8]** | `cp_loss_basis` / `eval_source` na flagu, `analysis.run_id` + `analysis.eval_provenance` v payloadu; compact nadále potlačuje nekonzistentní eval pár |
+| P0-7 `unclassified` | **Hotovo** | `pattern_status` + `why`, `patterns_meta.coverage`, top-level discovery feed |
+| P0-8 compact kontrakt | **Hotovo** | 2.2 (`game_impact` povinné), 2.1 soubor zmrazen jako historický snapshot |
+| P0-9 test split + pinned engine | **Nehotovo** | CI má jeden job `pytest tests/`; chybí fast/engine split, pinnutý build a jmenovaný reason pro případný ignore |
+
+**D36 — P0-6 / T-02 (provenance):** `cp_loss_basis` je `best_eval` jen tehdy,
+když je D12 anchor přítomen a triple do 1 cp rekonstruuje; jinak `unknown`
+(N-03: 97,8 % starého korpusu nemá anchor, cloud eval ho nemá nikdy).
+`eval_source` je `stockfish` / `cloud` / `unknown`; prázdný řetězec z legacy
+cache se mapuje na `unknown`, ne na `stockfish`. `run_id` je 16 hex znaků
+deterministický otisk *politiky* (depth, mode, nodes cap, threads, detector
+verze, schema verze). Engine identita se do něj záměrně nepočítá: při cache
+hitu se engine nespustí, takže by stejná konfigurace měla dvě různá ID —
+engine provenance patří do `analysis_runs` (fáze 1). Compact se nemění: podle
+P0-6 zachovává potlačení nekonzistentního eval páru, explicitní provenance
+nese detailed 1.2.
+
+**Další v pořadí:** P0-4 (tři dimenze confidence + `confidence_kind`, additivně
+do 1.2, bez změny `strength`), poté P0-9 (rozdělení CI jobů a pinnutý engine).
+Fáze 1 (SQLite + `analysis_runs`) následuje až po uzavření fáze 0.
+
+---
+
 ## Appendix A — Reprodukce
 
 ```powershell

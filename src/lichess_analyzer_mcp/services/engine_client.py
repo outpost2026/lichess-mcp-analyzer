@@ -8,6 +8,7 @@ import chess
 import chess.engine
 from typing import Optional
 from lichess_analyzer_mcp.config.depth import DEPTH_DEFAULTS, ENGINE_THREADS
+from lichess_analyzer_mcp.services.eval_provenance import cp_loss_basis
 
 _engine: Optional[chess.engine.SimpleEngine] = None
 _engine_hash_mb: Optional[int] = None
@@ -305,6 +306,9 @@ def evaluate_move(
             "best_eval": None,
             "centipawn_loss": None,
             "best_move_uci": None,
+            # P0-6: nothing was measured, so nothing may claim a provenance.
+            "eval_source": "unknown",
+            "cp_loss_basis": "unknown",
             "error": f"Move {move_uci} not legal in position {fen}",
         }
 
@@ -315,6 +319,17 @@ def evaluate_move(
 
         cloud_result = cloud_evaluate_move(fen, move_uci, depth)
         if cloud_result is not None:
+            # P0-6: the cloud answers with a loss but no anchor, so the basis
+            # stays `unknown`; `source` is normalised to the closed enum.
+            cloud_result.setdefault("eval_source", "cloud")
+            cloud_result.setdefault(
+                "cp_loss_basis",
+                cp_loss_basis(
+                    cloud_result.get("best_eval"),
+                    cloud_result.get("eval_after"),
+                    cloud_result.get("centipawn_loss"),
+                ),
+            )
             return cloud_result
 
     engine = get_engine()
@@ -363,6 +378,8 @@ def evaluate_move(
                 "best_eval": None,
                 "centipawn_loss": None,
                 "best_move_uci": None,
+                "eval_source": "unknown",
+                "cp_loss_basis": "unknown",
                 "error": res["error"],
             }
         eval_before, best_move, best_player, actual_player = res
@@ -383,6 +400,9 @@ def evaluate_move(
         "best_eval": best_player,
         "centipawn_loss": cp_loss,
         "best_move_uci": best_move.uci() if best_move else None,
+        # P0-6: name the provenance so a consumer never has to infer it.
+        "eval_source": "stockfish",
+        "cp_loss_basis": cp_loss_basis(best_player, actual_player, cp_loss),
     }
 
 

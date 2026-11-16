@@ -136,6 +136,36 @@
           "enum": ["contains_mate_level_outlier", null],
           "description": "D33: the linear accuracy score hides at least one mate-level swing (missed mate or forced mate after the move). null = the score describes every flagged move."
         },
+        "run_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{16}$",
+          "description": "P0-6: deterministic fingerprint of the analysis policy (depth, mode, node cap, threads, detector version, schema version). Engine identity is not folded in: a cache hit starts no engine. Identical policy -> identical id."
+        },
+        "eval_provenance": {
+          "type": "object",
+          "description": "P0-6 / T-02: per-payload provenance of the evaluation numbers. Counts only measured moves. N-03: the D12 anchor exists only on newer analyses; anchor_coverage says how much of THIS payload is reconstructible.",
+          "required": ["moves_measured", "anchor_coverage", "cp_loss_basis", "eval_source"],
+          "additionalProperties": false,
+          "properties": {
+            "moves_measured": { "type": "integer", "minimum": 0 },
+            "anchor_coverage": {
+              "type": ["number", "null"],
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Share of measured moves whose cp_loss is reconstructible from best_eval. null = no move was measured."
+            },
+            "cp_loss_basis": {
+              "type": "object",
+              "additionalProperties": { "type": "integer", "minimum": 1 },
+              "description": "Counts by basis: best_eval (anchor present and reconstructing) / unknown (legacy cache, cloud eval, non-reconstructing triple). Empty object when nothing was measured."
+            },
+            "eval_source": {
+              "type": "object",
+              "additionalProperties": { "type": "integer", "minimum": 1 },
+              "description": "Counts by source: stockfish / cloud / unknown. Empty object when nothing was measured."
+            }
+          }
+        },
         "internal_accuracy_score": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
         "moves_analyzed": { "type": "integer", "minimum": 0 },
         "moves_total": { "type": "integer", "minimum": 0 },
@@ -174,6 +204,16 @@
           "eval_before_mover_cp": { "type": ["number", "null"] },
           "eval_after_mover_cp": { "type": ["number", "null"] },
           "best_eval_mover_cp": { "type": ["number", "null"] },
+          "cp_loss_basis": {
+            "type": ["string", "null"],
+            "enum": ["best_eval", "unknown", null],
+            "description": "P0-6: what the published cp_loss was measured from. `best_eval` only when the D12 anchor is present and reconstructs within 1 cp; `unknown` without an anchor (legacy cache, cloud eval, non-reconstructing triple). Derived from the published anchor when the field was not recorded, so it always agrees with analysis.eval_provenance; null only in payloads that predate the field entirely."
+          },
+          "eval_source": {
+            "type": ["string", "null"],
+            "enum": ["stockfish", "cloud", "unknown", null],
+            "description": "P0-6: where the eval pair came from. null = the analyzer never recorded it (pre-P0-6 cache)."
+          },
           "game_impact": {
             "type": ["string", "null"],
             "enum": [
