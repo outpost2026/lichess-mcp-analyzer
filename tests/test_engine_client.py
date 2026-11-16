@@ -40,6 +40,18 @@ def _fresh_engine_state(request):
     yield
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _shutdown_engine_after_session():
+    """P0-9: close the shared engine before pytest exits.
+
+    A Stockfish child that inherits CI's stdout pipe keeps the step alive even
+    after pytest prints its summary (observed: engine job hung 21 min with
+    `18 passed` already logged). Relying on atexit alone is not enough.
+    """
+    yield
+    close_engine()
+
+
 class TestFindStockfish:
     def test_returns_string(self):
         path = _find_stockfish()

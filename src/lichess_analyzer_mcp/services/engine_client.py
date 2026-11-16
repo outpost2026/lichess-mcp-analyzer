@@ -3,7 +3,10 @@
 import os
 import atexit
 import logging
+import signal
+import subprocess
 import threading
+import time
 import chess
 import chess.engine
 from typing import Optional
@@ -553,6 +556,40 @@ def get_best_move(fen: str, depth: int = 0) -> dict:
         _analysis_lock.release()
 
 
+def _pid_alive(pid: int) -> bool:
+    if os.name == "nt":
+        try:
+            out = subprocess.run(
+                ["tasklist", "/FI", f"PID eq {pid}"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            return str(pid) in out.stdout
+        except Exception:  # noqa: S110 - best-effort liveness probe
+            return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def _force_kill(pid: int) -> None:
+    try:
+        if os.name == "nt":
+            subprocess.run(
+                ["taskkill", "/PID", str(pid), "/F"],
+                capture_output=True,
+                timeout=5,
+            )
+        else:
+            # SIGKILL does not exist on Windows (the nt branch above handles it).
+            os.kill(pid, getattr(signal, "SIGKILL", 9))
+    except Exception:  # noqa: S110 - best-effort cleanup
+        pass
+
+
 def close_engine():
     global _engine
     engine, _engine = _engine, None
@@ -561,14 +598,28 @@ def close_engine():
     # `quit()` waits for the UCI handshake; a wedged engine would block the
     # interpreter at exit (observed: process alive long after the report was
     # written). Give it 2 s, then terminate the process.
+    pid: int | None = None
+    try:
+        pid = int(engine.transport.get_pid())
+    except Exception:  # noqa: S110 - pid is optional
+        pass
     quitter = threading.Thread(target=_safe_quit, args=(engine,), daemon=True)
     quitter.start()
     quitter.join(2.0)
     if quitter.is_alive():
         try:
             engine.close()
-        except Exception:  # noqa: S110 — cleanup is best-effort
+        except Exception:  # noqa: S110 - cleanup is best-effort
             pass
+    # P0-9: GitHub Actions waits for inherited stdout/stderr pipes. A leftover
+    # Stockfish child keeps them open and the job hangs long after pytest has
+    # printed its summary. Force-kill after a short grace period.
+    if pid:
+        deadline = time.monotonic() + 2.0
+        while time.monotonic() < deadline and _pid_alive(pid):
+            time.sleep(0.05)
+        if _pid_alive(pid):
+            _force_kill(pid)
 
 
 def _safe_quit(engine):

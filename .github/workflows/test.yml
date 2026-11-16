@@ -61,6 +61,8 @@ jobs:
   engine:
     name: engine (pinned Stockfish 18)
     runs-on: ubuntu-latest
+    # A hung download must fail, not occupy a runner indefinitely.
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
 
@@ -84,18 +86,21 @@ jobs:
 
       - name: Read pinned engine identity
         id: pin
-        run: |
-          {
-            echo "url=$(uv run python -c 'import json;print(json.load(open("config/engine_identity.json"))["linux_ci"]["url"])')"
-            echo "archive_sha=$(uv run python -c 'import json;print(json.load(open("config/engine_identity.json"))["linux_ci"]["archive_sha256"])')"
-            echo "binary=$(uv run python -c 'import json;print(json.load(open("config/engine_identity.json"))["linux_ci"]["binary_in_archive"])')"
-            echo "binary_sha=$(uv run python -c 'import json;print(json.load(open("config/engine_identity.json"))["linux_ci"]["binary_sha256"])')"
-          } >> "$GITHUB_OUTPUT"
+        run: uv run python scripts/print_engine_pin.py --output "$GITHUB_OUTPUT"
+
+      - name: Cache Stockfish archive
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/sf18.tar
+          key: sf18-${{ steps.pin.outputs.archive_sha }}
 
       - name: Install pinned Stockfish 18
         run: |
           set -euo pipefail
-          curl -fsSL -o "$RUNNER_TEMP/sf18.tar" "${{ steps.pin.outputs.url }}"
+          if [ ! -f "$RUNNER_TEMP/sf18.tar" ]; then
+            curl -fsSL --connect-timeout 30 --max-time 600 --retry 2 \
+              -o "$RUNNER_TEMP/sf18.tar" "${{ steps.pin.outputs.url }}"
+          fi
           echo "${{ steps.pin.outputs.archive_sha }}  $RUNNER_TEMP/sf18.tar" | sha256sum -c -
           mkdir -p "$RUNNER_TEMP/sf18"
           tar -xf "$RUNNER_TEMP/sf18.tar" -C "$RUNNER_TEMP/sf18"

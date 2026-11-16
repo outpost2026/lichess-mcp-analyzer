@@ -24,9 +24,18 @@ a žádné tiché preskakování testů. Žádná změna payload schémat.
 - **`tests/test_engine_identity.py`** — 3 testy konfigurace a přesného
   porovnání identity.
 
+### Fixed
+
+- **Visící engine job**: první CI běh sice zapsal `18 passed`, ale `uv run`
+  nevrátil — Stockfish jako potomek držel zděděné stdout/stderr roury a runner
+  čekal 21 minut do zrušení. `close_engine()` nyní po 2 s quit handshakeu
+  a případném `close()` ověří PID a proces forcibly ukončí; v testech navíc
+  session fixture zavře engine ještě před koncem pytestu. Archiv se cachuje
+  podle hashu, `curl` má connect/max time a engine job má `timeout-minutes: 12`.
+
 ### Verified
 
-Lokálně: fast **521 passed**, real engine **18 passed / 11 deselected za 13,3 s**
+Lokálně: fast **521 passed**, real engine **18 passed / 11 deselected za 12,8 s**
 (s lokálním `sf_18` binary, který prošel verifikací), Ruff clean, mypy
 **73 souborů** clean. `pytest -m real_engine` vrací exit 5, pokud neexistuje žádný
 engine test — job tedy nemůže projít „prázdným výběrem“.
