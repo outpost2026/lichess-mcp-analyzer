@@ -39,6 +39,8 @@ PV_PLAYED_UNAVAILABLE_REASONS = (
     "no_engine_lines",
     "rank_not_in_engine_lines",
     "no_continuation",
+    # 2.7: engine never measured a rank (timeout / legacy cache).
+    "rank_unknown",
 )
 
 

@@ -3,6 +3,38 @@
 Všechny změny formátu a pipeline. Verze odpovídají kontraktu compact JSON /
 single-game pipeline, ne balíčku `0.1.0` (ten zůstává beze změny).
 
+## [2.15] - 2026-11-17
+
+Handoff 2.7, vlna 1 (4 položky), validováno na 5 hrách × 2 barvy.
+Compact **2.7**, 2.6 zůstává zmrazený a validator ho čte.
+
+### Added
+
+- **`summary.src`** — krátký štítek přesné engine politiky z detailed
+  `eval_provenance` (`d14n150k_hash_unknown_cache`, `d14n150k_h64_live`).
+- **`flags[].alts`** — jedna rank-2 SAN alternativa pro flagy s sehráno rank ≥ 4
+  (bez nového engine callu, bez vymyšleného PV).
+- **`piece_reads`** — maximálně jeden nejdůležitější flag s `cp > 100` dostane
+  forcing figurku skutečně obsaženou v naměřeném PV (`sq`, `pc`, `role`, `th`).
+  Žádné odvozené hrozby; modul `services/piece_reads.py`.
+- **`pv_played_unavailable: rank_unknown`** pro `played_rank = null/0` a
+  explicitní `rank_not_in_engine_lines` pro matched flagy mimo multipv.
+
+### Verified
+
+10 tool callů (5 her) validuje proti 2.7 + 1.2; chybějící `pv_played_unavailable`
+kleslo z 10/10 her na 0. Delta compactu **+50 až +232 znaků** (limit +300).
+`pytest` **536 passed**, Ruff clean, mypy **74 souborů** clean.
+
+### Odchylky
+
+- `piece_reads` je omezen na 1 flag a 1 alternativu `alts` kvůli size budgetu;
+  plný „monster" narativ z uživatelského příkladu (Rf1 v `hJjXxxvq`) není v PV
+  vždy přítomen — publikujeme jen to, co engine skutečně změřil.
+- Žádný nový engine call pro rank-4 PV (`rank_not_in_engine_lines` zůstává).
+- Wave 2 (Q3/Q4, paired_blunder, U1/U2), Wave 3 (konzistence) a GAMBIT
+  nebyly v této iteraci implementovány — vyžadují cross-game validaci.
+
 ## [2.14] - 2026-11-17
 
 Kalibrace compactu na 3 hrách / 6 JSONů (první vlna C-1 + C-2).

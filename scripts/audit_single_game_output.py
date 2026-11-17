@@ -16,7 +16,7 @@ import jsonschema
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 SCHEMAS = {
-    "compact": os.path.join(ROOT, "schemas/single_game_v2_compact_2.6.json"),
+    "compact": os.path.join(ROOT, "schemas/single_game_v2_compact_2.7.json"),
     "detailed": os.path.join(ROOT, "schemas/single_game_v1.2.json"),
 }
 MATE_IMPACTS = ("winning_to_mate", "equal_to_mate", "losing_to_mate")

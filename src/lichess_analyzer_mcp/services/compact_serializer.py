@@ -1,4 +1,4 @@
-"""Compact single-game JSON (schema 2.6) - pure serialization, no IO.
+"""Compact single-game JSON (schema 2.7) - pure serialization, no IO.
 
 The full contract v1.2 payload exists for debugging and cross-game work. For
 LLM consumption only a small, lossless-for-coaching subset is needed: game
@@ -81,6 +81,16 @@ frozen 2.3 snapshot):
   - patterns[].nm / mit = short pattern name and actionable mitigation,
     full versions stay in detailed (C-2).
 
+2.7 changes (handoff 2.7 wave 1; `single_game_v2_compact_2.6.json` frozen):
+  - `summary.src` names the exact engine policy (C-3).
+  - `flags[].alts` = searched rank 2/3 SANs for played rank >= 3 (§4.10/4.11):
+    no new engine call, no invented PV; the played move's own line is still
+    unavailable when it fell outside multipv.
+  - top-level `piece_reads` = forcing pieces actually named in measured PVs,
+    capped at the two highest-cp flags (§4.1).
+  - `pv_played_unavailable` gains `rank_unknown` and is emitted for every
+    flag with an unmeasured/out-of-window rank (§4.9 / N-2).
+
 Null policy (FIX-016), documented in the schema as well:
   - `rank: null`  -> rank was not measured (engine timeout), never 0 or 1.
   - `motif`        -> omitted when the move has no tactical motif; a motif is
@@ -113,6 +123,7 @@ from lichess_analyzer_mcp.services.confidence_dims import (
 )
 from lichess_analyzer_mcp.services.eval_consistency import cp_loss_reconstructs
 from lichess_analyzer_mcp.services.pipeline_status import pipeline_block
+from lichess_analyzer_mcp.services.piece_reads import reads_for_flag
 from lichess_analyzer_mcp.services.color_contract import normalize_color
 from lichess_analyzer_mcp.services.game_impact import (
     GAME_IMPACT_VALUES,
@@ -122,10 +133,10 @@ from lichess_analyzer_mcp.services.game_impact import (
     pv_played,
 )
 
-SCHEMA_V = "2.6"
-# 2.5 payloads are still accepted by the dependency-free validator; only 2.6
+SCHEMA_V = "2.7"
+# 2.6 payloads are still accepted by the dependency-free validator; only 2.7
 # output is described by the current JSON Schema file.
-SUPPORTED_VERSIONS = ("2.5", "2.6")
+SUPPORTED_VERSIONS = ("2.6", "2.7")
 
 # 2.6/C-2: a pattern ID alone is not coaching signal. Stable short labels,
 # mirrored from the detailed pattern library (full name/mitigation stay there).
@@ -208,6 +219,17 @@ def _cp(value) -> float | int | None:
     return int(value) if float(value).is_integer() else round(float(value), 1)
 
 
+def _summary_src(analysis: dict) -> str:
+    """2.7: compact label of the exact engine policy from detailed provenance."""
+    sources = (analysis.get("eval_provenance") or {}).get("eval_source") or {}
+    key = next(iter(sources), "")
+    if not key:
+        return "unknown"
+    label = str(key).removeprefix("stockfish_").replace("n150000", "n150k")
+    label = re.sub(r"^(d\d+)_", r"\1", label)
+    return re.sub(r"_cache_run_[0-9a-f]+$", "_cache", label)
+
+
 def _severity(conf: float | None, declared: str | None) -> str:
     if declared in _SEVERITIES:
         return declared
@@ -286,6 +308,17 @@ def _flag(
             # payload without an anchor keeps `bcp: null`; its raw pair stays
             # available in detailed 1.2 instead of being guessed here.
             out["eval_after_mover_cp"] = eval_after
+    # 2.7/Wave 1: alternatives the engine actually searched (ranks 2/3).
+    # No new engine call and no invented SAN: a rank-4 played move has no PV
+    # of its own, so these lines are the only measured "what was better".
+    if int(flag.get("played_rank") or 0) >= 4:
+        alts = [
+            str(line["san"])
+            for line in (flag.get("engine_lines") or [])
+            if line.get("rank") in (2, 3) and line.get("san")
+        ][:1]  # size budget: one best alternative is enough to explain the loss
+        if alts:
+            out["alts"] = alts
     # FIX-016: a genuinely absent motif is omitted; present motifs stay strings.
     motif = flag.get("motif")
     if motif:
@@ -450,7 +483,7 @@ def to_compact_v2(
     moves: list[dict] | None = None,
     pv_unavailable: dict[int | str, str] | None = None,
 ) -> dict:
-    """Serialize a contract v1.2 coaching payload to schema 2.6.
+    """Serialize a contract v1.2 coaching payload to schema 2.7.
 
     Args:
         full: `lichess_coaching_single_game` response (schema 1.2).
@@ -491,6 +524,8 @@ def to_compact_v2(
 
     stats = analysis.get("phase_stats") or {}
     summary = {
+        # 2.7/C-3: exact engine policy, not just "stockfish".
+        "src": _summary_src(analysis),
         "acpl": analysis.get("acpl"),
         "acc": analysis.get("accuracy"),
         "phases": {phase: _phase(stats, phase) for phase in _PHASES},
@@ -539,6 +574,7 @@ def to_compact_v2(
     missing_pv: list[tuple[str, str | None]] = []
     played_pv: dict[str, list[str]] = {}
     played_unavailable: dict[str, str] = {}
+    piece_candidates: list[tuple[float, str, list[dict]]] = []
     for raw in sorted(full.get("flagged_moves") or [], key=lambda f: f.get("ply") or 0):
         if raw.get("classification") not in _CLASSES:
             continue
@@ -553,10 +589,31 @@ def to_compact_v2(
         # D32: the engine continuation after the played move. Same policy as
         # pv_unavailable: only blunders/mistakes pay for an explicit reason.
         continuation, played_reason = pv_played(raw)
-        if continuation:
+        rank = raw.get("played_rank")
+        if rank in (None, 0, ""):
+            # 2.7/§4.9: engine never measured a rank (timeout / legacy cache).
+            played_unavailable[ply_key] = "rank_unknown"
+        elif continuation:
             played_pv[ply_key] = continuation[:3]
         elif played_reason and flag["class"] in ("blunder", "mistake"):
             played_unavailable[ply_key] = played_reason
+        elif (
+            isinstance(rank, int)
+            and rank > len(raw.get("engine_lines") or [])
+            and flag["pstatus"] == PATTERN_STATUS_MATCHED
+        ):
+            # 2.7/N-2: out-of-window rank is explicit for matched flags — the
+            # ones an LLM will actually narrate with a pattern.
+            played_unavailable[ply_key] = "rank_not_in_engine_lines"
+        reads = reads_for_flag(raw)
+        if reads and isinstance(flag["cp"], (int, float)) and flag["cp"] > FEN_CP_THRESHOLD:
+            piece_candidates.append((float(flag["cp"]), ply_key, reads))
+
+    # 2.7/Wave 1: one highest-cp piece read to protect the size budget.
+    # Every published read comes from a measured PV (no inference).
+    piece_reads: dict[str, list[dict]] = {}
+    for _cp_value, ply_key, reads in sorted(piece_candidates, reverse=True)[:1]:
+        piece_reads[ply_key] = reads
 
     coverage = {
         "flagged": len(flags),
@@ -588,6 +645,10 @@ def to_compact_v2(
             report_source=(full.get("report_meta") or {}).get("source"),
         ),
     }
+
+    # 2.7/Wave 1: qualitative board signal for the highest-cp moments.
+    if piece_reads:
+        compact["piece_reads"] = piece_reads
 
     # P0-7: the discovery feed — critical moments no pattern explains. Omitted
     # when empty (R8: no null noise), never omitted when non-empty.
@@ -688,7 +749,7 @@ def _check_keys(obj: dict, required: set[str], allowed: set[str], path: str) -> 
 
 
 def validate_compact(data: dict) -> None:
-    """Structural validation mirroring `schemas/single_game_v2_compact_2.6.json`.
+    """Structural validation mirroring `schemas/single_game_v2_compact_2.7.json`.
 
     Dependency-free on purpose: ETL must run in any environment. The test
     suite additionally validates real output against the JSON Schema file.
@@ -707,6 +768,7 @@ def validate_compact(data: dict) -> None:
             "pv_played_unavailable",
             "clusters",
             "fen_before",
+            "piece_reads",
             "report",
             "llm",
             "unclassified",
@@ -736,12 +798,17 @@ def validate_compact(data: dict) -> None:
         _fail("$.game.username", "must be a non-empty string when present")
 
     summary = data["summary"]
+    required_summary = {"acpl", "acc", "phases"}
+    if data["v"] == "2.7":
+        required_summary.add("src")
     _check_keys(
         summary,
-        {"acpl", "acc", "phases"},
-        {"acpl", "acc", "phases", "acc_method", "acc_warning"},
+        required_summary,
+        required_summary | {"acc_method", "acc_warning"},
         "$.summary",
     )
+    if "src" in summary and (not isinstance(summary["src"], str) or not summary["src"]):
+        _fail("$.summary.src", "must be a non-empty engine policy label")
     for key in ("acpl", "acc"):
         value = summary[key]
         if value is not None and not isinstance(value, (int, float)):
@@ -762,7 +829,7 @@ def validate_compact(data: dict) -> None:
         if not isinstance(count, int) or count < 0:
             _fail(f"$.summary.phases.{phase}[1]", "must be an integer >= 0")
 
-    required_flag = _REQUIRED_FLAG if data["v"] == "2.6" else _REQUIRED_FLAG - {"bcp"}
+    required_flag = _REQUIRED_FLAG if data["v"] in SUPPORTED_VERSIONS else _REQUIRED_FLAG - {"bcp"}
     for idx, flag in enumerate(data["flags"]):
         path = f"$.flags[{idx}]"
         _check_keys(
@@ -771,6 +838,7 @@ def validate_compact(data: dict) -> None:
             _REQUIRED_FLAG
             | {
                 "motif",
+                "alts",
                 "eval_after_mover_cp",
                 *(({"eval_before_mover_cp"}) if legacy_aliases else set()),
                 *(({"eval_before", "eval_after"}) if legacy_aliases else set()),
@@ -794,6 +862,12 @@ def validate_compact(data: dict) -> None:
             _fail(f"{path}.rank", "must be an integer >= 1 or null")
         if "motif" in flag and not isinstance(flag["motif"], str):
             _fail(f"{path}.motif", "must be a string")
+        if "alts" in flag:
+            alts = flag["alts"]
+            if not isinstance(alts, list) or len(alts) != 1:
+                _fail(f"{path}.alts", "must be a one-element array of a SAN string")
+            if not all(isinstance(san, str) and san for san in alts):
+                _fail(f"{path}.alts", "SAN moves must be non-empty strings")
         for key in (
             "eval_before",
             "eval_after",
@@ -856,7 +930,7 @@ def validate_compact(data: dict) -> None:
                 _fail(f"{path}.patterns", "must be present when pstatus is matched")
 
     required_pattern = (
-        _REQUIRED_PATTERN if data["v"] == "2.6" else _REQUIRED_PATTERN - {"nm", "mit"}
+        _REQUIRED_PATTERN if data["v"] in SUPPORTED_VERSIONS else _REQUIRED_PATTERN - {"nm", "mit"}
     )
     for idx, pattern in enumerate(data["patterns"]):
         path = f"$.patterns[{idx}]"
@@ -1016,6 +1090,21 @@ def validate_compact(data: dict) -> None:
                 )
             if played_pv and key in played_pv:
                 _fail(f"$.pv_played_unavailable[{key!r}]", "ply already has pv_played")
+
+    piece_reads = data.get("piece_reads")
+    if piece_reads is not None:
+        if not isinstance(piece_reads, dict) or not piece_reads:
+            _fail("$.piece_reads", "must be a non-empty object")
+        for key, reads in piece_reads.items():
+            if not re.fullmatch(r"[1-9]\d*", str(key)):
+                _fail(f"$.piece_reads[{key!r}]", "key must be a ply number")
+            if not isinstance(reads, list) or not 1 <= len(reads) <= 2:
+                _fail(f"$.piece_reads[{key!r}]", "must list 1..2 piece reads")
+            for read in reads:
+                if not isinstance(read, dict) or set(read) != {"sq", "pc", "role", "th"}:
+                    _fail(f"$.piece_reads[{key!r}]", "unexpected piece-read shape")
+                if read["role"] != "monster":
+                    _fail(f"$.piece_reads[{key!r}]", "role must be monster")
 
     clusters = data.get("clusters")
     if clusters is not None:

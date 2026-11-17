@@ -168,14 +168,14 @@ def test_output_validates_against_manual_validator():
 def test_output_validates_against_json_schema_file():
     jsonschema = pytest.importorskip("jsonschema")
     schema = json.load(
-        open(os.path.join(ROOT, "schemas/single_game_v2_compact_2.6.json"), encoding="utf-8")
+        open(os.path.join(ROOT, "schemas/single_game_v2_compact_2.7.json"), encoding="utf-8")
     )
     jsonschema.validate(_compact(), schema)
 
 
 def test_metadata_and_summary():
     out = _compact()
-    assert out["v"] == "2.6"
+    assert out["v"] == "2.7"
     assert out["phase_method"] == "ply_segment"
     assert out["patterns_meta"] == {
         "scope": "single_game",
@@ -375,6 +375,40 @@ def test_eval_fields_carry_mover_pov_names():
     validate_compact(out)
 
 
+def test_summary_src_and_rank_unknown():
+    """2.7 wave 1: exact engine policy in summary, explicit unknown rank."""
+    full = json.loads(json.dumps(FULL))
+    full["analysis"]["eval_provenance"] = {"eval_source": {"stockfish_d14_n150000_h64_live": 4}}
+    full["flagged_moves"][0]["played_rank"] = None
+    out = to_compact_v2(full, game_meta=GAME_META)
+    validate_compact(out)
+    assert out["summary"]["src"] == "d14n150k_h64_live"
+    assert out["pv_played_unavailable"]["34"] == "rank_unknown"
+
+
+def test_piece_reads_are_capped_and_measured():
+    full = json.loads(json.dumps(FULL))
+    full["flagged_moves"][0].update(
+        {
+            "cp_loss": 150.0,
+            "fen_before": "r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3",
+            "engine_lines": [
+                {
+                    "rank": 1,
+                    "san": "Nxe5",
+                    "eval_cp": 30,
+                    "pv": ["Nxe5", "Nxe5"],
+                }
+            ],
+        }
+    )
+    out = to_compact_v2(full, game_meta=GAME_META)
+    validate_compact(out)
+    assert "34" in out.get("piece_reads", {})
+    assert out["piece_reads"]["34"][0]["th"] == "Nxe5"
+    assert len(out["piece_reads"]) <= 2
+
+
 def test_mate_in_in_blunder_flag():
     full = json.loads(json.dumps(FULL))
     full["flagged_moves"].append(
@@ -526,7 +560,7 @@ def test_no_derived_or_instrumentation_fields():
 def test_compact_size_under_budget():
     # 2.6 adds bcp per flag + nm/mit per pattern (calibration wave 1).
     # Internal test budget stays far below the handoff's 4500-char ceiling.
-    assert compact_size(_compact()) <= 2600
+    assert compact_size(_compact()) <= 2750
 
 
 def test_report_clipped_at_sentence_boundary():

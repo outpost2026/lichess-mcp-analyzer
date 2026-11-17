@@ -12,12 +12,12 @@ regression `FVhqtv1S`; measured 4400 chars) versus 13–26 kB for schema 1.2.
 
 ## One game, both colours (D24)
 
-Compact 2.6 is single-perspective by contract, so a complete game is **two
+Compact 2.7 is single-perspective by contract, so a complete game is **two
 compact payloads in one file**, keyed by colour:
 
 ```json
-{"white": {"v": "2.6", "game": {"color": "white"}, …},
- "black": {"v": "2.6", "game": {"color": "black"}, …}}
+{"white": {"v": "2.7", "game": {"color": "white"}, …},
+ "black": {"v": "2.7", "game": {"color": "black"}, …}}
 ```
 
 This is the CLI default (`coach.py`, `coach_single.py` without `--color`).
@@ -33,6 +33,7 @@ artifact.
 |---|---|
 | `game` | id, username (omitted for anonymous games), color (`white` or `black` only — the side analysed), result, opening (ECO + name), tc, date, depth |
 | `summary.acpl` / `summary.acc` | centipawn loss = lower is better; `acc` is the **internal** score 0–100 (`internal_cp_linear`), not Lichess accuracy (P1) |
+| `summary.src` | 2.7: exact engine policy label (e.g. `d14n150k_h64_live`), from detailed `eval_provenance`. Reproduction signal for an LLM that must not assume depth 14 was used |
 | `summary.acc_method` | how `acc` was computed: `internal_cp_linear` = `mean(max(0, 100 - 0.15*cp_loss))`; omitted only for payloads that predate the field |
 | `summary.acc_warning` | `contains_mate_level_outlier` when at least one flag is mate-level (a missed mate or a forced mate after the move). The score itself is unchanged; never quote `acc` without this qualifier when it is present (D33) |
 | `summary.phases` | `[acpl, flagged_count]` for opening / middlegame / endgame, grouped by `effective_phase` — the same phase the detectors used (`phase_method`), not the raw ply segment (P1) |
@@ -43,24 +44,26 @@ artifact.
 | `flags[].motif` | tactical tag when present (e.g. `discovered_check_capture`, `check`, `capture`) |
 | `flags[].bcp` / `eval_after_mover_cp` | the D12 anchor and post-move eval, both **mover POV**; `cp == bcp - eval_after_mover_cp` whenever both are present. `bcp` is mandatory but nullable; `eval_after_mover_cp` appears only inside the FIX-015 window and only when the arithmetic holds |
 | `flags[].eval_before_mover_cp` / `eval_before` / `eval_after` | **removed** (non-anchor before-eval in 2.6, aliases in 2.5); raw values remain in detailed 1.2 |
+| `flags[].alts` | 2.7: one rank-2 SAN alternative for flags whose played rank >= 4, from the same engine search. Not the opponent's actual reply |
+| `piece_reads` | 2.7: ply -> forcing piece seen in the measured PV (`sq`, `pc`, `role=monster`, `th` = threat SAN). At most one per game, only for `cp > 100`; never an inferred threat |
 | `flags[].mate_in` | blunder only: forced mate in N moves from the best line (FIX-027); positive = for the player, negative = against |
 | `flags[].game_impact` | **mandatory** since 2.2: did the game change, from the mover's POV. 9 sign transitions (`winning_to_winning` … `losing_to_losing`) with a ±100 cp dead zone, plus 3 mate transitions (`*_to_mate`). `null` = evals not measured. A 9000 cp loss with `winning_to_winning` is a missed conversion, not a catastrophe (D29) |
 | `flags[].mate_missed` / `mate_via` | the best line mates for the mover in N moves and the played move does not; `mate_via` is the mating SAN. Present together, omitted otherwise. This is why `cp_loss` can be ~9000 while `game_impact` stays `winning_to_winning` (D31) |
-| `flags[].mate_after` | 2.6: mandatory, nullable. `for` = the mover mates after the played move, `against` = the mover is mated. Non-null **exactly** when `game_impact` ends in `_to_mate`. Without it a `losing_to_mate` flag is ambiguous — always quote it with the impact |
+| `flags[].mate_after` | 2.7: mandatory, nullable. `for` = the mover mates after the played move, `against` = the mover is mated. Non-null **exactly** when `game_impact` ends in `_to_mate`. Without it a `losing_to_mate` flag is ambiguous — always quote it with the impact |
 | `flags[].patterns` | pattern ids whose evidence includes this ply; omitted when none |
 | `flags[].pstatus` | `matched` or `unclassified` — every flag states whether a pattern covers it (P0-7) |
 | `flags[].why` | reason code, present **only** when `pstatus == "unclassified"` (P0-7) |
-| `patterns[]` | behavioural layer: id, short `nm`/`mit` (name and ≤50-char mitigation, 2.6/C-2), **ordinal `strength`** 0-1 (emitted as `conf`), frequency, severity, affected plies, and `support` (0-1 or null). Full name/mitigation stay in detailed. `conf` is not a probability (P1) and is **0-1**; the detailed payload's `confidence` is also **0-1** (same number, D26) - only cross-game artifacts use 0-100, so never mix the two families |
+| `patterns[]` | behavioural layer: id, short `nm`/`mit` (name and ≤50-char mitigation, 2.7/C-2), **ordinal `strength`** 0-1 (emitted as `conf`), frequency, severity, affected plies, and `support` (0-1 or null). Full name/mitigation stay in detailed. `conf` is not a probability (P1) and is **0-1**; the detailed payload's `confidence` is also **0-1** (same number, D26) - only cross-game artifacts use 0-100, so never mix the two families |
 | `patterns[].support` | 2.3/P0-4: measured share of flagged moves in this game covered by that pattern (`flagged_moves_in_game` basis, denominator in detailed `evidence_support_n_units`). Null = no measured move. This is **evidence support**, not detector strength |
 | `confidence_dims` | 2.3/P0-4: mandatory. `kinds` = `detection_strength`, `evidence_support`, `behavioral_confidence`; `published_kind = detection_strength` names what `conf` means; `behavioral_confidence = null` with `behavioral_confidence_reason = not_calibrated`. Never present a pattern `conf` as a calibrated probability |
-| `pipeline` | 2.6: mandatory. `analysis` = `complete`/`partial`/`failed`, `coaching` = `llm`/`deterministic_fallback`/`data_only`/`failed`, `llm_requested` = false when the caller deliberately ran offline. Do **not** read `status=degraded` as "analysis failed" while `pipeline.analysis=complete` |
+| `pipeline` | 2.7: mandatory. `analysis` = `complete`/`partial`/`failed`, `coaching` = `llm`/`deterministic_fallback`/`data_only`/`failed`, `llm_requested` = false when the caller deliberately ran offline. Do **not** read `status=degraded` as "analysis failed" while `pipeline.analysis=complete` |
 | `phase_method` | which phase source the detectors used: `ply_segment`, `material`, or `mixed` (P0-3). `summary.phases` follows this source; the detailed payload additionally publishes `segment_stats` and `chess_phase_stats` so the difference is auditable (P1) |
 | `patterns_meta` | mandatory: `scope`, `cross_game_suppressed`, `reason`, `coverage {flagged, matched, unclassified}`; an empty `patterns` list always has a reason |
 | `unclassified` | discovery feed: `{ply, class, cp, why}` for flagged moves without a pattern |
 | `pv` | `ply -> [SAN, SAN, SAN]` best line (max 3 moves) |
 | `pv_unavailable` | `ply -> reason` when a blunder/mistake has no PV (explicit gap). This **is** the truncation signal: there is no separate `pv_truncated` flag |
 | `pv_played` | `ply -> [SAN, …]` (max 3): the engine continuation **after the played move**, from the same multipv search as `pv`. It is a line, not the opponent's actual reply — never narrate it as "what was played next" (D32) |
-| `pv_played_unavailable` | `ply -> reason` (`rank_not_in_engine_lines`, `no_continuation`, `no_engine_lines`) when a blunder/mistake has no played-move continuation (D32) |
+| `pv_played_unavailable` | `ply -> reason` (`rank_not_in_engine_lines`, `rank_unknown`, `no_continuation`, `no_engine_lines`) when the played-move continuation is unavailable (D32, 2.7) |
 | `clusters` | runs of >= 3 consecutive flagged own moves (time-pressure signal), each with `from`, `to`, `count`, `total_cp` and `plies` — the exact moves in the run (D32) |
 | `fen_before` | `ply -> FEN`, only for `cp > 100` (reproducible drill positions). Detailed 1.2 carries `flagged_moves[].fen_before` for **every** flag, so a narrative that needs the position of a small inaccuracy must use the detailed payload |
 | `report` | short deterministic summary, ≤900 chars, never truncated mid-structure |
@@ -68,11 +71,11 @@ artifact.
 
 ### Perspective and eval POV
 
-Compact 2.6 is **single-perspective**: every `flags[]` entry, `summary.acpl`,
+Compact 2.7 is **single-perspective**: every `flags[]` entry, `summary.acpl`,
 `summary.phases`, `patterns[]` and `clusters` describe the moves of the colour
 in `game.color` (always `white` or `black`). Opponent moves are not part of the
 payload. A full-game view is a different artifact (`game_full` 1.0, implemented
-2026-11-14 - see `GAME_FULL_1.0.md`), not an extension of compact 2.6.
+2026-11-14 - see `GAME_FULL_1.0.md`), not an extension of compact 2.7.
 
 **Eval POV:** `bcp` and `eval_after_mover_cp` are both from the **mover's**
 point of view — the player who made the flagged move. `eval_after_mover_cp`
@@ -91,7 +94,7 @@ Therefore:
 - never compare `bcp` of a White move with one of a Black move as if they
   shared a direction — they do not.
 
-The legacy aliases `eval_before` / `eval_after` were removed in 2.5, and the non-anchor `eval_before_mover_cp` in 2.6 (P1-2/C-1);
+The legacy aliases `eval_before` / `eval_after` were removed in 2.5, and the non-anchor `eval_before_mover_cp` in 2.7 (P1-2/C-1);
 the validator still reads 2.4 files that contain them. A White-POV timeline is
 a different artifact (`game_full` 1.0, Tier 3 in
 `AUDIT_INTEGRATION_2026-11-13.md`).
@@ -153,7 +156,7 @@ Verified on live tool outputs (4 games × 2 colours, 2026-11-16). These are
 intentional compatibility surfaces, not independent measurements:
 
 - **Same value, two names.** Detailed 1.2 still mirrors `eval_before`/
-  `eval_after` to `*_mover_cp`; compact 2.6 replaces the non-anchor before-eval
+  `eval_after` to `*_mover_cp`; compact 2.7 replaces the non-anchor before-eval
   with `bcp`. `accuracy` mirrors
   `internal_accuracy_score`; `strength` = `confidence` = `detection_strength`
   = compact `conf`; `segment` = `phase`; compact `acc_warning` = detailed
@@ -178,7 +181,7 @@ intentional compatibility surfaces, not independent measurements:
 
 ## What the agent must do
 
-1. Validate the JSON (schema 2.6) before using it.
+1. Validate the JSON (schema 2.7) before using it.
 2. Pick the weakest phase from `summary.phases`: highest ACPL, tie-break by
    flagged count. A phase with `flagged == 0` **and** ACPL `0.0` (or `null`) is
    clean — it is never the weakest phase. If every phase is clean, say
@@ -217,7 +220,7 @@ intentional compatibility surfaces, not independent measurements:
 System:
 
 ```text
-You are a chess coach. You receive one compact JSON analysis (schema 2.6) of a
+You are a chess coach. You receive one compact JSON analysis (schema 2.7) of a
 game played by the user. Base every statement on the JSON fields. Never invent
 moves, evaluations, FENs or variations. If a value is null or a key is absent,
 say it was not measured instead of guessing. The user's side is game.color.
@@ -255,7 +258,7 @@ JSON:
 
 Input (`Sl1s8KmU`, White, 0-1, rapid 600+0, depth 14). The example is a
 historical 2.0 payload and is intentionally limited to the core keys; a current
-2.6 payload additionally carries per-flag `pstatus`/`why`/`game_impact`,
+2.7 payload additionally carries per-flag `pstatus`/`why`/`game_impact`,
 top-level `phase_method` and mandatory `patterns_meta`, plus `username`,
 `bcp/eval_after_mover_cp`, per-flag `patterns`, `mate_missed`/`mate_via`,
 `pv_unavailable`, `pv_played`/`pv_played_unavailable`, `clusters[].plies`,
@@ -353,7 +356,7 @@ above 0.5, so they justify targeted capture/check discipline work.
 .\.venv\Scripts\python.exe -X utf8 scripts\mcp_call.py lichess_coaching_single_game --args '{"game_id":"Sl1s8KmU","username":"systeq","output_format":"compact"}'
 ```
 
-`output_format` accepts `compact` (default, schema 2.6), `detailed` (schema
+`output_format` accepts `compact` (default, schema 2.7), `detailed` (schema
 1.2) and `both` → `{"compact": …, "detailed": …}`. `full` remains a deprecated
 alias for `detailed` for one release cycle and logs a warning.
 
