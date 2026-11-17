@@ -1,3 +1,7 @@
+> **Historický krok (compact 2.5).** Navazují `CALIBRATION_2_6_2026-11-17.md`
+> a `HANDOFF_2_7_WAVE1_VALIDATION.md`; aktuální stav viz
+> `docs/SESSION_HANDOFF_2026-11-17.md`.
+
 # Handoff 2.5 — verifikace P0/P1 (2026-11-17)
 
 Zdroj: externí handoff „Schema 2.4 → 2.5“. Ověřeno proti kódu a **čerstvým

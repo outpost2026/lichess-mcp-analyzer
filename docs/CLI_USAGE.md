@@ -152,7 +152,7 @@ nese detailed `analysis.run_id` (otisk politiky) a `analysis.eval_provenance`
 (počet měřených tahů, `anchor_coverage`, rozdělení podle basis/source). Od [2.9]
 nese detailed `analysis.confidence_dimensions` a každý pattern tři dimenze
 (`detection_strength`, `evidence_support`, `behavioral_confidence` = `null`
-s důvodem); compact 2.3 přidal `patterns[].support` a `confidence_dims` (P0-4).
+s důvodem); compact 2.3 přidal `patterns[].support` a `confidence_dims` (P0-4); 2.6 přidal `bcp`/`nm`/`mit`, 2.7 `summary.src`, `alts`, `piece_reads` a `rank_unknown`.
 Od [2.11] nese compact 2.7 `flags[].mate_after` (směr matu u `*_to_mate`) a
 `pipeline` (`analysis` / `coaching` / `llm_requested`) — stejný blok má i
 detailed 1.2, takže `--no-llm` už nečte jako selhanou analýzu.

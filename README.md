@@ -4,6 +4,8 @@
 
 **MCP server pro analýzu šachových partií, detekci vzorových chyb (pattern library jako kompresní model dle T. Mikolova) a spaced repetition trénink (SM-2-like; FSRS zatím neimplementován).**
 
+> **Nová session:** začni v `docs/SESSION_HANDOFF_2026-11-17.md` (current stav, příkazy, otevřené položky).
+
 Verze: `0.1.0` | Stav (2026-11-17): **single-game pipeline [2.15]** (compact 2.7 default, detailed 1.2) | Testy: **536 fast** (bez `test_engine_client.py`) / 18 real-engine (pinnutý Stockfish 18) | Nástrojů: **18** | Schémata: compact 2.7 / detailed 1.2 / cross-game 1.4 / game_full 1.0
 
 
@@ -401,7 +403,7 @@ lichess-analyzer-mcp/
 │   ├── pgn_to_compact.py        ← Deprecated shim nad coach.py
 │   ├── setup_stockfish.ps1      ← Automatické stažení Stockfish
 │   └── ...                      ← 20+ pomocných scriptů
-├── tests/                       ← 521 fast + 18 real-engine (2026-11-16; marker real_engine)
+├── tests/                       ← 536 fast + 18 real-engine (2026-11-17; marker real_engine)
 │   ├── test_services.py         ← modely, komprese, validace
 │   ├── test_prompt_contract.py  ← schema a mapování promptů
 │   ├── test_engine_client.py    ← Stockfish (sdílený engine; real-engine = marker real_engine)
@@ -512,7 +514,7 @@ lichess-analyzer-mcp/
 - **`tests/test_engine_client.py`** býval maskován dvakrát (lokálně
   `--ignore`, v CI za RED mypy gate). Od 2026-11-11 je rozdělen markerem
   `real_engine`: default `pytest` = 254 fast testů (historické číslo k 11. 11.;
-  aktuálně 521), `pytest -m real_engine` = 15 testů proti skutečnému Stockfish
+  aktuálně 536), `pytest -m real_engine` = 15 testů proti skutečnému Stockfish
   (dnes 18 selected / 11 deselected v samostatném CI jobu s pinnutým SF 18). Stale expectation `top_move == "f2c2"`
   (závislá na buildu a `multipv`; Stockfish 18 v `multipv=1` dává `b1h7`)
   nahrazeny invariantami: hloubka ≥ 12 + Qh4 není #1.

@@ -1,3 +1,6 @@
+> **Historický snapshot (2026-11-16, compact 2.4).** Current contract je
+> compact **2.7**; viz `docs/SESSION_HANDOFF_2026-11-17.md`.
+
 # Verifikace generálního code review 3. LLM (2026-11-16)
 
 Vstup: `lichess_opencode_handoff_2026-11-16.md` (1205 řádků, auditní HEAD

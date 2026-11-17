@@ -507,6 +507,23 @@ ověřuje identitu před engine testy. Fast job: 521 testů, engine job: 18 test
 migrace a `policy_fingerprint` vs DB `analysis_run_id` (D02 externího auditu).
 Žádný frontend, dokud není source of truth v DB.
 
+### 11.1 Stav 2026-11-17 po [2.15]
+
+Fáze 0 zůstává uzavřená; další iterace byly **kalibrace compact kontraktu**, ne
+nová fáze plánu:
+
+- 2.13: cluster C, U/V, anchor alignment, eval-source config, acc_warning.
+- 2.14: `bcp` aritmetika + `nm`/`mit` (kalibrace 3 her).
+- 2.15: `summary.src`, `alts`, `piece_reads`, `rank_unknown` (handoff 2.7 vlna 1,
+  validace 5 her). Aktuální kontrakt: **compact 2.7 / detailed 1.2 / detector
+  `DBCL-20261117-dev`**.
+
+Otevřené položky z handoffu 2.7: vlna 2 (Q3/Q4, paired_blunder, U1/U2 —
+vyžaduje cross-game validaci na ≥3 hrách), vlna 3 (konzistence `username`,
+`llm.status`, `ph`), GAMBIT vektor a samotná fáze 1 (SQLite).
+
+Předávací artifact pro novou session: `docs/SESSION_HANDOFF_2026-11-17.md`.
+
 ---
 
 ## Appendix A — Reprodukce

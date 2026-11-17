@@ -419,3 +419,19 @@ Select-String -Path src\lichess_analyzer_mcp\services\pattern_detector.py -Patte
 # 6. prompt
 Select-String -Path src\lichess_analyzer_mcp\services\prompt_builder.py -Pattern 'MUSÍ být klasifikován|Time trouble'
 ```
+
+---
+
+## 14. Rozhodnutí D38–D40 (2026-11-17, compact 2.5 → 2.7)
+
+§12.3 zůstává historickým záznamem rozhodnutí D31–D35 u compactu 2.2.
+Následující rozhodnutí se vztahují k aktuálnímu kontraktu compact **2.7**
+(detailed 1.2 zůstává beze změny).
+
+| ID | Rozhodnutí | Dopad |
+|---|---|---|
+| **D38** | P0-3 zasahuje do zdroje `best_eval`, ne do vzorce: `engine_lines[0].eval_cp` se zarovná na D12 anchor; pokud je anchor == sehráno, `cp_loss = 0`. | Vzorec `cp = best_eval − eval_after` zůstává invariantem; starý BUG-3 (D30) je tak vyřešen bez změny aritmetiky. |
+| **D39** | Nové pattern ID **U** (unseen-threat quiet blunder) a **V** (wrong check response), protože Q1/Q2 jsou obsazené (D13). `DETECTOR_VERSION = DBCL-20261117-dev`. | D4 podmínka splněna: měřitelná pravidla + testy + cross-game detektory. |
+| **D40** | Compact verze jsou samostatné artefakty: 2.2 → 2.3 → 2.4 → 2.5 → 2.6 → 2.7. Aliasy `eval_before`/`eval_after` odstraněny v 2.5, ne-anchor `eval_before_mover_cp` v 2.6; 2.6 přidalo `bcp`/`nm`/`mit`, 2.7 `summary.src`/`alts`/`piece_reads`/`rank_unknown`. | Validator čte předchozí verzi backwards, nové payloady vždy validují proti nejnovějšímu souboru. Žádná tichá změna schématu. |
+
+Souhrn aktuálního stavu a předávací artifact: `docs/SESSION_HANDOFF_2026-11-17.md`.

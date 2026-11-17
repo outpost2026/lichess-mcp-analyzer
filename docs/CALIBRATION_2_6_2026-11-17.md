@@ -1,3 +1,6 @@
+> **Historický krok (compact 2.6).** Navazuje `docs/HANDOFF_2_7_WAVE1_VALIDATION.md`;
+> aktuální stav viz `docs/SESSION_HANDOFF_2026-11-17.md`.
+
 # Kalibrace compact 2.6 — první vlna C-1 + C-2 (2026-11-17)
 
 Vstup: 3 hry × 2 barvy (`RhkEoVUT`, `WxfSvX4y`, `0yeUi5EO`), 6 tool callů

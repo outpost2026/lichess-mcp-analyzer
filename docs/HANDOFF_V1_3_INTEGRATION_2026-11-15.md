@@ -1,3 +1,6 @@
+> **Historický snapshot (2026-11-15).** Aktuální stav viz
+> `docs/SESSION_HANDOFF_2026-11-17.md`.
+
 ---
 title: Integrace handoffu v1.2 -> v1.3 (11 her) do projektu refaktoru
 date: 2026-11-15

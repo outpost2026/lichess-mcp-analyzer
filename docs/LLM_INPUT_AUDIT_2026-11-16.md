@@ -1,3 +1,6 @@
+> **Historický snapshot (2026-11-16, compact 2.4).** Current contract je
+> compact **2.7**; viz `docs/SESSION_HANDOFF_2026-11-17.md`.
+
 # LLM input audit — reálné výstupy `lichess_coaching_single_game` (2026-11-16)
 
 Cíl: ověřit, zda současný JSON výstup obstojí jako **vstupní soubor pro plnohodnotnou

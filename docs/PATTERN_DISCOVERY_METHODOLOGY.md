@@ -623,7 +623,7 @@ Tato roadmapa (P1–P8) je **cross-game discovery track**. Single-game větev m�
 - `docs/PLAN_SINGLE_GAME_CALIBRATION_2026-11-07.md` — zmražený kontrakt detailed 1.2 (single-game).
 - `docs/REFACTOR_PLAN_2026-11-11.md` — D1-D6, Phase 0 kritéria, §355 mechanismus; pro single-game roadmapu **historický**, aktuální pořadí řídí `AUDIT_INTEGRATION_2026-11-13.md`.
 - `docs/MIKOLOV_KOMPRESE_V_PATTERN_ARCHITEKTURE.md` — kompresní rámec (v1.0; viz korekce §11.1).
-- `docs/COMPACT_JSON_FOR_LLM.md` — compact 2.2 kontrakt.
+- `docs/COMPACT_JSON_FOR_LLM.md` — compact 2.7 kontrakt.
 - `docs/DEEP_DIVE_SINGLE_GAME_PATTERNS_2026-08-02.md` — single-game pattern surface.
 - `docs/CROSS_REPO_TRANSFER_MAP.md` — přenositelné kontrakty z `ML_Ops_edukace` a `mcp-retrieval` (abstention, data identity, drift guard, RRF, kompresní měření).
 - `src/lichess_analyzer_mcp/services/pattern_detector.py` — `per_move_patterns`, `scan_single_game`, cross-game detektory.

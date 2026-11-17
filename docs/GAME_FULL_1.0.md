@@ -107,7 +107,7 @@ souboru a determinismu merge).
 
 ## 6. Co tento artefakt NEDĚLÁ
 
-- **Není to náhrada compact 2.2 ani detailed 1.2.** Ty zůstávají
+- **Není to náhrada compact 2.7 ani detailed 1.2.** Ty zůstávají
   jednoperspektivní a jejich kontrakty se nemění.
 - **Nemá `interaction` events.** T3.3 by vyžadoval měřenou definici interakce
   (tah soupeře, který vytvoří hrozbu, a hráč ji neřeší) a kalibraci FP. Bez

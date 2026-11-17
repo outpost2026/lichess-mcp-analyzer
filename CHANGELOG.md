@@ -3,6 +3,22 @@
 Všechny změny formátu a pipeline. Verze odpovídají kontraktu compact JSON /
 single-game pipeline, ne balíčku `0.1.0` (ten zůstává beze změny).
 
+## [2.16] - 2026-11-17
+
+Konsolidace pro předání do nové session. Žádná změna payloadu ani detekce.
+
+- Nový předávací artifact `docs/SESSION_HANDOFF_2026-11-17.md`: current
+  kontrakty, příkazy, validační vzorek, rozhodnutí, otevřené položky,
+  artifact index a pravidla.
+- `docs/REFACTOR_PLAN_2026-11-11.md` §11.1 doplněn o stav po [2.15].
+- `docs/AUDIT_INTEGRATION_2026-11-13.md` §14 obsahuje rozhodnutí D38–D40.
+- Historické audity (`LLM_INPUT_AUDIT`, `CODE_REVIEW_...`, `HANDOFF_V1_3`,
+  `HANDOFF_2_5`, `CALIBRATION_2_6`) mají banner s odkazem na current handoff.
+- Aktuální dokumenty (`GAME_FULL_1.0`, `PATTERN_DISCOVERY_METHODOLOGY`,
+  `CLI_USAGE`, `COMPACT_JSON_FOR_LLM`) aktualizovány na compact 2.7.
+
+Gates beze změny: pytest **536 passed**, Ruff clean, mypy 74 souborů.
+
 ## [2.15] - 2026-11-17
 
 Handoff 2.7, vlna 1 (4 položky), validováno na 5 hrách × 2 barvy.
