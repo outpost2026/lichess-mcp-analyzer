@@ -168,14 +168,14 @@ def test_output_validates_against_manual_validator():
 def test_output_validates_against_json_schema_file():
     jsonschema = pytest.importorskip("jsonschema")
     schema = json.load(
-        open(os.path.join(ROOT, "schemas/single_game_v2_compact_2.5.json"), encoding="utf-8")
+        open(os.path.join(ROOT, "schemas/single_game_v2_compact_2.6.json"), encoding="utf-8")
     )
     jsonschema.validate(_compact(), schema)
 
 
 def test_metadata_and_summary():
     out = _compact()
-    assert out["v"] == "2.5"
+    assert out["v"] == "2.6"
     assert out["phase_method"] == "ply_segment"
     assert out["patterns_meta"] == {
         "scope": "single_game",
@@ -248,6 +248,7 @@ def test_all_flags_preserved_in_ply_order():
         "why": "quiet_positional",
         "game_impact": "winning_to_winning",
         "mate_after": None,
+        "bcp": None,
     }
     assert by_ply[40]["pstatus"] == "matched"
     assert "why" not in by_ply[40]
@@ -271,7 +272,16 @@ def test_fen_only_above_100cp():
 def test_patterns_preserved():
     out = _compact()
     assert out["patterns"] == [
-        {"id": "T", "conf": 0.16, "freq": 1, "sev": "medium", "plie": [40], "support": None}
+        {
+            "id": "T",
+            "nm": "tactical_shaped_error",
+            "mit": "Over dopad taktického tahu",
+            "conf": 0.16,
+            "freq": 1,
+            "sev": "medium",
+            "plie": [40],
+            "support": None,
+        }
     ]
     assert out["confidence_dims"]["published_kind"] == "detection_strength"
     assert out["confidence_dims"]["behavioral_confidence"] is None
@@ -313,6 +323,7 @@ def test_eval_fields_follow_fix015_window():
             "cp_loss": 9473.0,
             "eval_before": 9997,
             "eval_after": 525,
+            "best_eval": 9998,
             "engine_lines": [],
             "played_rank": None,
         }
@@ -326,19 +337,20 @@ def test_eval_fields_follow_fix015_window():
             "cp_loss": 250.0,
             "eval_before": 727,
             "eval_after": 477,
+            "best_eval": 727,
         }
     )
     out = to_compact_v2(full, game_meta=GAME_META, pv_unavailable={75: "engine_timeout"})
     validate_compact(out)
     by_ply = {f["ply"]: f for f in out["flags"]}
-    assert by_ply[75]["eval_before_mover_cp"] == 9997
+    assert by_ply[75]["bcp"] == 9998
     assert by_ply[75]["eval_after_mover_cp"] == 525
-    assert by_ply[91]["eval_before_mover_cp"] == 727  # cp > 200
-    assert "eval_before_mover_cp" not in by_ply[34]  # inaccuracy at 84 cp
+    assert by_ply[91]["bcp"] == 727  # cp > 200
+    assert by_ply[34]["bcp"] is None  # inaccuracy at 84 cp, anchor not measured
 
 
 def test_eval_fields_carry_mover_pov_names():
-    """D9/P1-2: only the POV-named keys remain in compact 2.5."""
+    """2.6/C-1: the anchor `bcp` replaces the non-anchor before-eval."""
     full = json.loads(json.dumps(FULL))
     full["flagged_moves"].append(
         {
@@ -349,14 +361,16 @@ def test_eval_fields_carry_mover_pov_names():
             "cp_loss": 9473.0,
             "eval_before": 9997,
             "eval_after": 525,
+            "best_eval": 9998,
             "engine_lines": [],
             "played_rank": None,
         }
     )
     out = to_compact_v2(full, game_meta=GAME_META)
     flag = next(f for f in out["flags"] if f["ply"] == 75)
-    assert flag["eval_before_mover_cp"] == 9997
+    assert flag["bcp"] == 9998
     assert flag["eval_after_mover_cp"] == 525
+    assert "eval_before_mover_cp" not in flag
     assert "eval_before" not in flag and "eval_after" not in flag
     validate_compact(out)
 
@@ -406,8 +420,8 @@ def test_mate_in_in_blunder_flag():
     assert "mate_in" not in {f["ply"]: f for f in ordinary["flags"]}[75]
 
 
-def test_inconsistent_eval_pair_is_omitted():
-    """FIX-023: 638 -> 682 while cp_loss is 237 is not narratable."""
+def test_anchor_based_eval_pair_is_consistent():
+    """2.6/C-1: bcp - eval_after reproduces cp even when the old before-eval did not."""
     full = json.loads(json.dumps(FULL))
     full["flagged_moves"].append(
         {
@@ -418,6 +432,7 @@ def test_inconsistent_eval_pair_is_omitted():
             "cp_loss": 237.0,
             "eval_before": 638,
             "eval_after": 682,
+            "best_eval": 919,
             "engine_lines": [],
             "played_rank": None,
         }
@@ -431,6 +446,7 @@ def test_inconsistent_eval_pair_is_omitted():
             "cp_loss": 237.0,
             "eval_before": 682,
             "eval_after": 445,
+            "best_eval": 682,
             "engine_lines": [],
             "played_rank": None,
         }
@@ -439,9 +455,9 @@ def test_inconsistent_eval_pair_is_omitted():
     validate_compact(out)
     by_ply = {f["ply"]: f for f in out["flags"]}
     assert "eval_before_mover_cp" not in by_ply[89]
-    assert "eval_after_mover_cp" not in by_ply[89]
-    # A consistent pair is still published.
-    assert by_ply[93]["eval_before_mover_cp"] == 682
+    assert by_ply[89]["bcp"] == 919
+    assert by_ply[89]["eval_after_mover_cp"] == 682  # 919 - 682 = 237
+    assert by_ply[93]["bcp"] == 682
     assert by_ply[93]["eval_after_mover_cp"] == 445
 
 
@@ -508,7 +524,9 @@ def test_no_derived_or_instrumentation_fields():
 
 
 def test_compact_size_under_budget():
-    assert compact_size(_compact()) <= 2500
+    # 2.6 adds bcp per flag + nm/mit per pattern (calibration wave 1).
+    # Internal test budget stays far below the handoff's 4500-char ceiling.
+    assert compact_size(_compact()) <= 2600
 
 
 def test_report_clipped_at_sentence_boundary():

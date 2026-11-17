@@ -3,6 +3,33 @@
 Všechny změny formátu a pipeline. Verze odpovídají kontraktu compact JSON /
 single-game pipeline, ne balíčku `0.1.0` (ten zůstává beze změny).
 
+## [2.14] - 2026-11-17
+
+Kalibrace compactu na 3 hrách / 6 JSONů (první vlna C-1 + C-2).
+Compact **2.6**, 2.5 zůstává zmrazený a validator ho čte.
+
+### Added / Fixed
+
+- **C-1 aritmetika**: `flags[].bcp` = D12 anchor `best_eval_mover_cp`.
+  Ne-anchor `eval_before_mover_cp` odstraněn; `cp == bcp − eval_after_mover_cp`
+  platí 7/7 flagů v kalibračním vzorku (dříve mezera 1–28 cp u 10 flagů).
+- **C-2 koučinkový signál**: `patterns[].nm` (krátký název) a `mit`
+  (mitigace ≤50 znaků) — žádné holé IDs. Plné znění zůstává v detailed 1.2.
+- Validator kontroluje `bcp` aritmetiku a délku `mit`; 2.5 payloady
+  (bez `bcp`/`nm`/`mit`) jsou stále přijímány.
+
+### Nezměněno / odloženo
+
+C-3 (`src` v summary), C-4 (`ph`), C-5 (`pv_played` konzistence), C-6/C-7
+(`username`, `llm.status`) a C-8 jdou v další vlně. N-1/N-2/N-4 zůstávají
+zdokumentovány jako nálezy kalibrace.
+
+### Verified
+
+6 tool callů (`use_llm=false`) validuje proti 2.6 + 1.2; delta compactu
++74 až +177 znaků (limit +200). `pytest` **531 passed**, Ruff clean,
+mypy **73 souborů** clean.
+
 ## [2.13] - 2026-11-17
 
 Handoff „Schema 2.4 → 2.5“: P0 blokéry pro plnohodnotný LLM koučink.

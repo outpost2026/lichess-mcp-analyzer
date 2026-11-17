@@ -1,4 +1,4 @@
-"""Compact single-game JSON (schema 2.5) - pure serialization, no IO.
+"""Compact single-game JSON (schema 2.6) - pure serialization, no IO.
 
 The full contract v1.2 payload exists for debugging and cross-game work. For
 LLM consumption only a small, lossless-for-coaching subset is needed: game
@@ -74,6 +74,13 @@ frozen 2.3 snapshot):
   - `summary.acc_warning` may be `contains_mate_level_outlier`,
     `contains_blunder` or `contains_mistake` (P1-1).
 
+2.6 changes (calibration wave 1, 2026-11-17; 2.5 frozen):
+  - flags[].bcp = the D12 best-eval anchor; the non-anchor
+    `eval_before_mover_cp` is gone, so `cp == bcp - eval_after_mover_cp`
+    is directly checkable (C-1).
+  - patterns[].nm / mit = short pattern name and actionable mitigation,
+    full versions stay in detailed (C-2).
+
 Null policy (FIX-016), documented in the schema as well:
   - `rank: null`  -> rank was not measured (engine timeout), never 0 or 1.
   - `motif`        -> omitted when the move has no tactical motif; a motif is
@@ -104,7 +111,7 @@ from lichess_analyzer_mcp.services.confidence_dims import (
     SUPPORT_BASIS_SINGLE_GAME,
     dimensions_block,
 )
-from lichess_analyzer_mcp.services.eval_consistency import eval_invariant_holds
+from lichess_analyzer_mcp.services.eval_consistency import cp_loss_reconstructs
 from lichess_analyzer_mcp.services.pipeline_status import pipeline_block
 from lichess_analyzer_mcp.services.color_contract import normalize_color
 from lichess_analyzer_mcp.services.game_impact import (
@@ -115,10 +122,63 @@ from lichess_analyzer_mcp.services.game_impact import (
     pv_played,
 )
 
-SCHEMA_V = "2.5"
-# 2.4 payloads are still accepted by the dependency-free validator (aliases
-# allowed); the JSON Schema file for 2.5 only describes newly emitted output.
-SUPPORTED_VERSIONS = ("2.4", "2.5")
+SCHEMA_V = "2.6"
+# 2.5 payloads are still accepted by the dependency-free validator; only 2.6
+# output is described by the current JSON Schema file.
+SUPPORTED_VERSIONS = ("2.5", "2.6")
+
+# 2.6/C-2: a pattern ID alone is not coaching signal. Stable short labels,
+# mirrored from the detailed pattern library (full name/mitigation stay there).
+_PATTERN_SHORT_NAMES = {
+    "A": "anonymous_effect",
+    "B": "automatic_grab",
+    "C": "attention_tunneling",
+    "G": "color_modulator",
+    "I": "bait_trap",
+    "I2": "gift_exploitation",
+    "J": "check_block",
+    "N": "xray_pin_violation",
+    "O": "stagnation_panic",
+    "P": "visual_misrecognition",
+    "Q": "active_defense",
+    "Q1": "desperate_gambit",
+    "Q2": "win_despite_blunder",
+    "R": "endgame_relaxation",
+    "S": "capture_aversion",
+    "T": "tactical_shaped_error",
+    "U": "unseen_threat",
+    "V": "wrong_check_response",
+}
+_PATTERN_SHORT_MITIGATIONS = {
+    "U": "Zkontroluj hrozby pred tichym tahem",
+    "V": "V sachu vyber obranu podle motoru",
+    "C": "U 3+ chyb udelaj pauzu",
+    "B": "Pred braním zkontroluj protihru",
+    "J": "V sachu nejdriv kralske tahy",
+    "R": "V koncovce zkontroluj protihru",
+    "T": "Over dopad taktického tahu",
+}
+
+
+def _short_pattern_name(pid: str, full_name: str) -> str:
+    if pid in _PATTERN_SHORT_NAMES:
+        return _PATTERN_SHORT_NAMES[pid]
+    slug = re.sub(r"[^a-z0-9]+", "_", (full_name or pid).lower()).strip("_")
+    return slug[:24] or pid
+
+
+def _short_mitigation(pid: str, text: str) -> str:
+    if pid in _PATTERN_SHORT_MITIGATIONS:
+        return _PATTERN_SHORT_MITIGATIONS[pid]
+    clean = " ".join((text or "").split())
+    if not clean:
+        return "Prozkoumej engine radu pro tento tah"
+    if len(clean) <= 50:
+        return clean
+    cut = clean[:50].rsplit(" ", 1)[0]
+    return cut or clean[:50]
+
+
 MAX_REPORT_CHARS = 900
 FEN_CP_THRESHOLD = 100
 EVAL_CP_THRESHOLD = 200
@@ -211,21 +271,20 @@ def _flag(
     # Prefer the detailed flag's measured value; fall back to the same pure
     # classifier for legacy payloads that predate the field.
     out["mate_after"] = flag.get("mate_after") or _mate_after
-    # FIX-015: an LLM cannot narrate a swing it cannot see.
-    # FIX-023: ... and it must not narrate a contradiction: when the eval pair
-    # disagrees with cp_loss, omit both fields (raw values stay in detailed).
+    # 2.6/C-1: publish the D12 anchor `bcp` instead of the non-anchor
+    # `eval_before_mover_cp`. `cp = bcp - eval_after_mover_cp` is then
+    # arithmetically checkable by the LLM; a legacy payload without an anchor
+    # keeps the old pair so no measured value is silently dropped.
+    bcp = _cp(flag.get("best_eval_mover_cp", flag.get("best_eval")))
+    out["bcp"] = bcp
     if isinstance(cp, (int, float)) and (
         cp > EVAL_CP_THRESHOLD or out["class"] in ("blunder", "mistake")
     ):
-        eval_before = _cp(flag.get("eval_before_mover_cp", flag.get("eval_before")))
         eval_after = _cp(flag.get("eval_after_mover_cp", flag.get("eval_after")))
-        if (
-            eval_before is not None
-            and eval_after is not None
-            and eval_invariant_holds(eval_before, eval_after, cp)
-        ):
-            # 2.5/P1-2: only the POV-named authoritative keys remain.
-            out["eval_before_mover_cp"] = eval_before
+        if bcp is not None and eval_after is not None and cp_loss_reconstructs(bcp, eval_after, cp):
+            # 2.6: the anchor is the only published "before" value. A legacy
+            # payload without an anchor keeps `bcp: null`; its raw pair stays
+            # available in detailed 1.2 instead of being guessed here.
             out["eval_after_mover_cp"] = eval_after
     # FIX-016: a genuinely absent motif is omitted; present motifs stay strings.
     motif = flag.get("motif")
@@ -391,7 +450,7 @@ def to_compact_v2(
     moves: list[dict] | None = None,
     pv_unavailable: dict[int | str, str] | None = None,
 ) -> dict:
-    """Serialize a contract v1.2 coaching payload to schema 2.5.
+    """Serialize a contract v1.2 coaching payload to schema 2.6.
 
     Args:
         full: `lichess_coaching_single_game` response (schema 1.2).
@@ -455,6 +514,10 @@ def to_compact_v2(
         patterns.append(
             {
                 "id": pattern_id,
+                # 2.6/C-2: an ID alone is not coaching signal. Full name and
+                # mitigation remain in detailed 1.2; these are bounded views.
+                "nm": _short_pattern_name(pattern_id, str(pattern.get("pattern_name") or "")),
+                "mit": _short_mitigation(pattern_id, str(pattern.get("mitigation") or "")),
                 "conf": pattern.get("strength", pattern.get("confidence")),
                 "freq": int(pattern.get("frequency") or 1),
                 "sev": _severity(
@@ -592,8 +655,9 @@ _REQUIRED_FLAG = {
     "pstatus",
     "game_impact",
     "mate_after",
+    "bcp",
 }
-_REQUIRED_PATTERN = {"id", "conf", "freq", "sev", "plie", "support"}
+_REQUIRED_PATTERN = {"id", "nm", "mit", "conf", "freq", "sev", "plie", "support"}
 _REQUIRED_PATTERNS_META = {"scope", "cross_game_suppressed", "reason", "coverage"}
 _REQUIRED_CONFIDENCE_DIMS = {
     "kinds",
@@ -624,7 +688,7 @@ def _check_keys(obj: dict, required: set[str], allowed: set[str], path: str) -> 
 
 
 def validate_compact(data: dict) -> None:
-    """Structural validation mirroring `schemas/single_game_v2_compact_2.5.json`.
+    """Structural validation mirroring `schemas/single_game_v2_compact_2.6.json`.
 
     Dependency-free on purpose: ETL must run in any environment. The test
     suite additionally validates real output against the JSON Schema file.
@@ -651,7 +715,8 @@ def validate_compact(data: dict) -> None:
     )
     if data["v"] not in SUPPORTED_VERSIONS:
         _fail("$.v", f"must be one of {SUPPORTED_VERSIONS}")
-    legacy_aliases = data["v"] == "2.4"
+    # 2.5 payloads may still carry the non-anchor eval_before_mover_cp.
+    legacy_aliases = data["v"] == "2.5"
     if data["phase_method"] not in _PHASE_METHODS:
         _fail("$.phase_method", f"must be one of {_PHASE_METHODS}")
 
@@ -697,16 +762,17 @@ def validate_compact(data: dict) -> None:
         if not isinstance(count, int) or count < 0:
             _fail(f"$.summary.phases.{phase}[1]", "must be an integer >= 0")
 
+    required_flag = _REQUIRED_FLAG if data["v"] == "2.6" else _REQUIRED_FLAG - {"bcp"}
     for idx, flag in enumerate(data["flags"]):
         path = f"$.flags[{idx}]"
         _check_keys(
             flag,
-            _REQUIRED_FLAG,
+            required_flag,
             _REQUIRED_FLAG
             | {
                 "motif",
-                "eval_before_mover_cp",
                 "eval_after_mover_cp",
+                *(({"eval_before_mover_cp"}) if legacy_aliases else set()),
                 *(({"eval_before", "eval_after"}) if legacy_aliases else set()),
                 "patterns",
                 "mate_in",
@@ -736,6 +802,14 @@ def validate_compact(data: dict) -> None:
         ):
             if key in flag and not isinstance(flag[key], (int, float)):
                 _fail(f"{path}.{key}", "must be a number")
+        if "bcp" in flag and flag["bcp"] is not None and not isinstance(flag["bcp"], (int, float)):
+            _fail(f"{path}.bcp", "must be a number or null")
+        if isinstance(flag.get("bcp"), (int, float)) and isinstance(
+            flag.get("eval_after_mover_cp"), (int, float)
+        ):
+            expected_loss = float(flag["bcp"]) - float(flag["eval_after_mover_cp"])
+            if abs(expected_loss - float(flag["cp"])) > 1:
+                _fail(f"{path}.bcp", "cp must equal bcp - eval_after_mover_cp")
         if "mate_in" in flag:
             if not isinstance(flag["mate_in"], int) or flag["mate_in"] == 0:
                 _fail(f"{path}.mate_in", "must be a non-zero integer")
@@ -781,11 +855,19 @@ def validate_compact(data: dict) -> None:
             if "patterns" not in flag:
                 _fail(f"{path}.patterns", "must be present when pstatus is matched")
 
+    required_pattern = (
+        _REQUIRED_PATTERN if data["v"] == "2.6" else _REQUIRED_PATTERN - {"nm", "mit"}
+    )
     for idx, pattern in enumerate(data["patterns"]):
         path = f"$.patterns[{idx}]"
-        _check_keys(pattern, _REQUIRED_PATTERN, _REQUIRED_PATTERN, path)
+        _check_keys(pattern, required_pattern, _REQUIRED_PATTERN, path)
         if not isinstance(pattern["id"], str) or not pattern["id"]:
             _fail(f"{path}.id", "must be a non-empty string")
+        for key in ("nm", "mit"):
+            if key in pattern and (not isinstance(pattern[key], str) or not pattern[key]):
+                _fail(f"{path}.{key}", "must be a non-empty string")
+        if isinstance(pattern.get("mit"), str) and len(pattern["mit"]) > 50:
+            _fail(f"{path}.mit", "must be at most 50 characters")
         if not isinstance(pattern["conf"], (int, float)) or not 0 <= pattern["conf"] <= 1:
             _fail(f"{path}.conf", "must be a number 0..1")
         if not isinstance(pattern["freq"], int) or pattern["freq"] < 1:

@@ -113,7 +113,7 @@ def _fmt_loss(move: dict) -> str:
 
 
 # ── D15 / T-18 / D29: game_impact ───────────────────────────────────────────
-# The classification lives in `services/game_impact.py`, because compact 2.5
+# The classification lives in `services/game_impact.py`, because compact 2.6
 # publishes the same labels and must not re-implement the thresholds. The
 # module-level aliases keep the historical private names importable.
 GAME_IMPACT_DEAD_ZONE_CP = _GAME_IMPACT_DEAD_ZONE_CP
@@ -806,7 +806,7 @@ async def build_response(
         },
     }
 
-    # FIX-017: compact 2.5 is the default; schema 1.2 is opt-in as "detailed".
+    # FIX-017: compact 2.6 is the default; schema 1.2 is opt-in as "detailed".
     if output_format in ("compact", "both"):
         from lichess_analyzer_mcp.services.compact_serializer import (
             to_compact_v2,
