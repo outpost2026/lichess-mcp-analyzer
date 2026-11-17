@@ -82,7 +82,7 @@ def test_default_is_compact_v2(monkeypatch):
     result = asyncio.run(
         cs.lichess_coaching_single_game("testgame", color="white", depth=14, use_llm=False)
     )
-    assert result["v"] == "2.4"
+    assert result["v"] == "2.5"
     assert result["game"]["id"] == "testgame"
     assert result["flags"][0]["ply"] == 3
 
@@ -166,7 +166,7 @@ def test_compact_output_is_schema_22(monkeypatch):
             "testgame", color="white", depth=14, output_format="compact", use_llm=False
         )
     )
-    assert result["v"] == "2.4"
+    assert result["v"] == "2.5"
     assert result["game"]["id"] == "testgame"
     assert result["flags"][0]["ply"] == 3
     assert result["flags"][0]["rank"] == 4
@@ -183,7 +183,7 @@ def test_both_returns_compact_and_detailed(monkeypatch):
         )
     )
     assert set(result) == {"compact", "detailed"}
-    assert result["compact"]["v"] == "2.4"
+    assert result["compact"]["v"] == "2.5"
     assert result["detailed"]["schema_version"] == "1.2"
 
 

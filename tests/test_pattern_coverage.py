@@ -27,7 +27,7 @@ from lichess_analyzer_mcp.services.pattern_detector import (
 )
 
 START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
-KNOWN_PATTERNS = {"B", "J", "R", "S", "C", "T"}
+KNOWN_PATTERNS = {"B", "J", "R", "S", "C", "T", "U", "V"}
 
 
 def _move(
@@ -279,13 +279,14 @@ def test_coverage_accounts_for_every_flagged_move():
     unclassified = [
         ply for ply, cov in coverage.items() if cov["pattern_status"] == PATTERN_STATUS_UNCLASSIFIED
     ]
-    assert matched == [27, 29]
-    assert unclassified == [25, 31]
-    assert coverage[25]["unclassified_reason"] == UNCLASSIFIED_QUIET_BLUNDER
+    # 25 is now covered by the measured quiet-blunder pattern U (P0-2).
+    assert matched == [25, 27, 29]
+    assert unclassified == [31]
+    assert coverage[25]["unclassified_reason"] is None  # matched by U
     assert coverage[31]["unclassified_reason"] == UNCLASSIFIED_EVIDENCE_GAP
-    assert coverage[25]["pattern_ids"] == []
-    assert coverage[27]["pattern_ids"] == ["B"]
-    assert coverage[29]["pattern_ids"] == ["T"]
+    assert set(coverage[25]["pattern_ids"]) == {"U", "C"}  # quiet blunder in a 3-flag run
+    assert "B" in coverage[27]["pattern_ids"]
+    assert "T" in coverage[29]["pattern_ids"]
     # The aggregated list and the coverage map cannot disagree.
     for pattern in patterns:
         for evidence in pattern["evidence"]:
@@ -297,7 +298,8 @@ def test_detect_single_game_is_a_thin_wrapper_over_scan():
     assert detect_single_game(analysis) == scan_single_game(analysis)[0]
 
 
-def test_unclassified_moves_never_invent_a_new_pattern():
+def test_quiet_blunder_gets_a_measured_pattern_but_evidence_gap_stays_unclassified():
+    """P0-2: cp 543 without SAN is still an evidence gap; with SAN it is U."""
     analysis = _analysis(
         [
             _move(25, "Bf4", 543.0),
@@ -306,8 +308,9 @@ def test_unclassified_moves_never_invent_a_new_pattern():
         ]
     )
     patterns, coverage = scan_single_game(analysis)
-    assert patterns == []
-    assert {cov["pattern_status"] for cov in coverage.values()} == {PATTERN_STATUS_UNCLASSIFIED}
+    assert [p["pattern_id"] for p in patterns] == ["U"]
+    assert coverage[25]["pattern_status"] == PATTERN_STATUS_MATCHED
+    assert coverage[31]["pattern_status"] == PATTERN_STATUS_UNCLASSIFIED
     assert all(pid in KNOWN_PATTERNS for pattern in patterns for pid in [pattern["pattern_id"]])
 
 

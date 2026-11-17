@@ -282,7 +282,9 @@ def test_accuracy_warning_names_the_mate_level_outlier():
         }
     )
     assert _accuracy_warning(missed) == "contains_mate_level_outlier"
-    ordinary = _flagged_moves({"moves": [_raw_move(eval_before=200, eval_after=120)]})
+    ordinary = _flagged_moves(
+        {"moves": [_raw_move(eval_before=200, eval_after=120, centipawn_loss=80.0)]}
+    )
     assert _accuracy_warning(ordinary) is None
     # A forced mate after the move is the other mate-level shape.
     mated = _flagged_moves({"moves": [_raw_move(eval_before=-548, eval_after=-9999)]})

@@ -390,6 +390,53 @@ def _engine_is_dead(result: dict | None) -> bool:
     return any(marker in text for marker in _DEAD_ENGINE_MARKERS)
 
 
+def _align_engine_lines_with_anchor(
+    lines: list[dict],
+    *,
+    best_move_san: str,
+    best_eval_mover_cp: float | None,
+) -> list[dict]:
+    """P0-3: publish the D12 anchor on the engine line of the same move.
+
+    `best_eval` comes from `evaluate_move` (pre-move best-move search) while
+    `engine_lines` come from a separate multipv search of the same position.
+    Two searches can disagree by tens of centipawns even for the same SAN.
+    Publish the anchor value on that line so `best_eval_mover_cp` and
+    `engine_lines[0].eval_cp` cannot silently contradict each other. Other
+    lines keep their own measured multipv value; no PV is invented.
+    """
+    if not lines or not best_move_san or best_eval_mover_cp is None:
+        return lines
+    for index, line in enumerate(lines):
+        if line.get("san") == best_move_san:
+            line["eval_cp"] = best_eval_mover_cp
+            if index == 0:
+                return lines
+            # The anchor move was searched at a lower multipv rank. Put it at
+            # rank 1 so `engine_lines[0].eval_cp` is always the cp_loss anchor;
+            # the remaining lines keep their own measured order and values.
+            anchor = lines.pop(index)
+            lines.insert(0, anchor)
+            for rank, entry in enumerate(lines, start=1):
+                entry["rank"] = rank
+            return lines
+    # The anchor move fell outside the multipv window: publish it explicitly
+    # as rank 1 and shift the searched lines, never guess a PV for it.
+    lines.insert(
+        0,
+        {
+            "rank": 1,
+            "san": best_move_san,
+            "eval_cp": best_eval_mover_cp,
+            "mate_in": None,
+            "pv": [best_move_san],
+        },
+    )
+    for rank, line in enumerate(lines, start=1):
+        line["rank"] = rank
+    return lines
+
+
 def _engine_lines_to_dicts(lines: list[dict]) -> list[dict]:
     """Normalize raw engine lines into the contract shape."""
     out = []
@@ -561,6 +608,10 @@ def _run_analyze_pgn(
     analysis = GameAnalysis(game=game_summary)
     analysis.mode = mode
     analysis.deadline_s = round(total_s, 3)
+    # P0-4: persist the producing engine policy with the cache so a later hit
+    # can name `stockfish_d14_n150000_h512_cache_run_...` instead of `unknown`.
+    analysis.nodes_cap = nodes
+    analysis.engine_hash_mb = engine_client.get_current_hash()
     board = game_node.board()
     player_side = chess.WHITE if player_color == "white" else chess.BLACK
 
@@ -667,7 +718,6 @@ def _run_analyze_pgn(
                 continue
 
             cp_loss = float(eval_result["centipawn_loss"])
-            classification = _classify_move(cp_loss)
             phase = _detect_segment(ply)
             was_in_check = board.is_check()
             gives_check = board.gives_check(move)
@@ -679,6 +729,31 @@ def _run_analyze_pgn(
             eval_before_val = eval_result.get("eval_before", 0) if eval_result else 0
             eval_after_val = eval_result.get("eval_after", 0) if eval_result else 0
             best_eval_val = eval_result.get("best_eval") if eval_result else None
+            # P0-3: the anchor move is known from `evaluate_move`. Board is
+            # still pre-move here, so SAN conversion is exact and never guessed.
+            anchor_san = ""
+            best_uci = eval_result.get("best_move_uci") if eval_result else None
+            if best_uci:
+                try:
+                    anchor_san = board.san(chess.Move.from_uci(best_uci))
+                except Exception:  # noqa: S110 - invalid UCI stays unmeasured
+                    anchor_san = ""
+            if anchor_san and anchor_san == board.san(move):
+                # Two independent searches can rate the SAME move differently.
+                # If the played move is the anchor, a non-zero loss would say
+                # "you blundered by playing the engine's best move" — a logical
+                # contradiction (QxL4Tr8u black 58). Keep the formula, fix the
+                # anchor: loss 0, best_eval == eval_after.
+                if cp_loss > 0:
+                    _logger.warning(
+                        "ANOMALY_CP_SAME_MOVE_AS_BEST ply=%s san=%s cp_loss=%.1f",
+                        ply,
+                        anchor_san,
+                        cp_loss,
+                    )
+                    cp_loss = 0.0
+                    best_eval_val = eval_after_val
+            classification = _classify_move(cp_loss)
             # FIX-023: a large divergence would make the compact eval pair
             # contradict cp_loss ("eval rose while the move lost 237 cp").
             if not eval_invariant_holds(eval_before_val, eval_after_val, cp_loss):
@@ -790,7 +865,11 @@ def _run_analyze_pgn(
                             }
                         )
 
-                move_analysis.engine_lines = _engine_lines_to_dicts(engine_lines_raw)
+                move_analysis.engine_lines = _align_engine_lines_with_anchor(
+                    _engine_lines_to_dicts(engine_lines_raw),
+                    best_move_san=anchor_san,
+                    best_eval_mover_cp=best_eval_val,
+                )
                 played_move_rank = 0
                 for entry in move_analysis.engine_lines:
                     if entry["san"] == move_analysis.move_san:
@@ -799,7 +878,11 @@ def _run_analyze_pgn(
                 if played_move_rank == 0 and move_analysis.engine_lines:
                     played_move_rank = len(move_analysis.engine_lines) + 1
                 move_analysis.played_rank = played_move_rank
-                if move_analysis.engine_lines and not move_analysis.best_move_san:
+                # P0-3: `best_move_san` must name the move the cp_loss anchor
+                # was measured from, not a possibly different multipv winner.
+                if anchor_san:
+                    move_analysis.best_move_san = anchor_san
+                elif move_analysis.engine_lines and not move_analysis.best_move_san:
                     move_analysis.best_move_san = move_analysis.engine_lines[0]["san"]
 
                 if move_analysis.engine_lines:

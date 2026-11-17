@@ -123,7 +123,9 @@ def test_deadline_marks_moves_unanalyzed_instead_of_zero(monkeypatch):
             "eval_before": 20,
             "eval_after": 10,
             "centipawn_loss": 10.0,
-            "best_move_uci": "e2e4",
+            # P0-3 zeroes a loss when the anchor IS the played move; keep the
+            # fixture's "one measured move with 10 cp" intent intact.
+            "best_move_uci": "z9z9",  # invalid -> no anchor SAN in this synthetic fixture
         }
 
     monkeypatch.setattr(engine_client, "evaluate_move", slow_evaluate)

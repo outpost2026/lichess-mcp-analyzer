@@ -8,6 +8,7 @@ implying the invariant holds everywhere.
 import re
 
 from lichess_analyzer_mcp.services.eval_provenance import (
+    configured_eval_source,
     cp_loss_basis,
     normalize_eval_source,
     provenance_summary,
@@ -151,7 +152,33 @@ def test_flagged_moves_publish_provenance_and_never_guess_the_source():
     # to derive it — the aggregate and the flag must never disagree.
     legacy = _flagged_moves({"moves": [_raw_move()]})[0]
     assert legacy["cp_loss_basis"] == "best_eval"
-    assert legacy["eval_source"] is None
+    # P0-4: without configuration the honest label is `unknown`, not a guess.
+    assert legacy["eval_source"] == "unknown"
 
     unanchored = _flagged_moves({"moves": [_raw_move(best_eval=None)]})[0]
     assert unanchored["cp_loss_basis"] == "unknown"
+
+
+# --- P0-4: exact engine policy in the source label --------------------------
+
+
+def test_eval_provenance_contains_config():
+    assert (
+        configured_eval_source("stockfish", depth=14, nodes_cap=150000, hash_mb=512)
+        == "stockfish_d14_n150000_h512_live"
+    )
+    assert (
+        configured_eval_source(
+            "stockfish",
+            depth=14,
+            nodes_cap=150000,
+            hash_mb=512,
+            cache_hit=True,
+            run_id="6d1af88445f154ad",
+        )
+        == "stockfish_d14_n150000_h512_cache_run_6d1af88445f154ad"
+    )
+    assert (
+        configured_eval_source("stockfish", depth=14, nodes_cap=150000, cache_hit=True)
+        == "stockfish_d14_n150000_hash_unknown_cache"
+    )

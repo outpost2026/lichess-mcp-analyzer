@@ -2,7 +2,8 @@ from dataclasses import dataclass, field, asdict
 from typing import Optional
 
 
-DETECTOR_VERSION = "DBCL-20261113-dev"
+# 2026-11-17: cluster-based C, quiet-blunder U and check-response V patterns.
+DETECTOR_VERSION = "DBCL-20261117-dev"
 
 
 @dataclass

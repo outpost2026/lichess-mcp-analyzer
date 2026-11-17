@@ -1,4 +1,4 @@
-"""Schema 2.4 compact serializer — unit tests (no engine, no network)."""
+"""Schema 2.5 compact serializer - unit tests (no engine, no network)."""
 
 import json
 import os
@@ -168,14 +168,14 @@ def test_output_validates_against_manual_validator():
 def test_output_validates_against_json_schema_file():
     jsonschema = pytest.importorskip("jsonschema")
     schema = json.load(
-        open(os.path.join(ROOT, "schemas/single_game_v2_compact_2.4.json"), encoding="utf-8")
+        open(os.path.join(ROOT, "schemas/single_game_v2_compact_2.5.json"), encoding="utf-8")
     )
     jsonschema.validate(_compact(), schema)
 
 
 def test_metadata_and_summary():
     out = _compact()
-    assert out["v"] == "2.4"
+    assert out["v"] == "2.5"
     assert out["phase_method"] == "ply_segment"
     assert out["patterns_meta"] == {
         "scope": "single_game",
@@ -331,14 +331,14 @@ def test_eval_fields_follow_fix015_window():
     out = to_compact_v2(full, game_meta=GAME_META, pv_unavailable={75: "engine_timeout"})
     validate_compact(out)
     by_ply = {f["ply"]: f for f in out["flags"]}
-    assert by_ply[75]["eval_before"] == 9997
-    assert by_ply[75]["eval_after"] == 525
-    assert by_ply[91]["eval_before"] == 727  # cp > 200, inaccuracy still counts
-    assert "eval_before" not in by_ply[34]  # inaccuracy at 84 cp
+    assert by_ply[75]["eval_before_mover_cp"] == 9997
+    assert by_ply[75]["eval_after_mover_cp"] == 525
+    assert by_ply[91]["eval_before_mover_cp"] == 727  # cp > 200
+    assert "eval_before_mover_cp" not in by_ply[34]  # inaccuracy at 84 cp
 
 
 def test_eval_fields_carry_mover_pov_names():
-    """D9/T2.1: canonical keys name the POV; legacy keys stay one release."""
+    """D9/P1-2: only the POV-named keys remain in compact 2.5."""
     full = json.loads(json.dumps(FULL))
     full["flagged_moves"].append(
         {
@@ -355,8 +355,9 @@ def test_eval_fields_carry_mover_pov_names():
     )
     out = to_compact_v2(full, game_meta=GAME_META)
     flag = next(f for f in out["flags"] if f["ply"] == 75)
-    assert flag["eval_before_mover_cp"] == flag["eval_before"] == 9997
-    assert flag["eval_after_mover_cp"] == flag["eval_after"] == 525
+    assert flag["eval_before_mover_cp"] == 9997
+    assert flag["eval_after_mover_cp"] == 525
+    assert "eval_before" not in flag and "eval_after" not in flag
     validate_compact(out)
 
 
@@ -437,11 +438,11 @@ def test_inconsistent_eval_pair_is_omitted():
     out = to_compact_v2(full, game_meta=GAME_META, pv_unavailable={89: "engine_timeout"})
     validate_compact(out)
     by_ply = {f["ply"]: f for f in out["flags"]}
-    assert "eval_before" not in by_ply[89]
-    assert "eval_after" not in by_ply[89]
+    assert "eval_before_mover_cp" not in by_ply[89]
+    assert "eval_after_mover_cp" not in by_ply[89]
     # A consistent pair is still published.
-    assert by_ply[93]["eval_before"] == 682
-    assert by_ply[93]["eval_after"] == 445
+    assert by_ply[93]["eval_before_mover_cp"] == 682
+    assert by_ply[93]["eval_after_mover_cp"] == 445
 
 
 def test_blunder_pv_fallback():

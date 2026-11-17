@@ -616,6 +616,65 @@ class PatternDetector:
             )
         return None
 
+    def _detect_u(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch | None:
+        """P0-2: cross-game projection of the quiet-blunder event rule."""
+        affected = []
+        for analysis in analyses:
+            for m in analysis.moves:
+                if (
+                    m.classification in ("blunder", "mistake")
+                    and bool(m.move_san)
+                    and not m.motif_type
+                    and not m.is_tactical_motif
+                    and not m.was_in_check
+                    and m.centipawn_loss >= 100
+                ):
+                    affected.append(analysis.game.id)
+                    break
+        if not affected:
+            return None
+        return PatternMatch(
+            pattern_id="U",
+            pattern_name="Unseen threat quiet blunder",
+            strength=min(len(set(affected)) / max(len(analyses), 1) * 0.8, 0.85),
+            evidence=[
+                {
+                    "affected_games": list(set(affected)),
+                    "condition": "quiet mistake/blunder cp>=100",
+                }
+            ],
+            game_ids=list(set(affected)),
+            frequency=len(set(affected)),
+            severity="high",
+        )
+
+    def _detect_v(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch | None:
+        """P1-4: cross-game projection of the wrong-check-response rule."""
+        affected = []
+        for analysis in analyses:
+            for m in analysis.moves:
+                if (
+                    m.was_in_check
+                    and bool(m.move_san)
+                    and m.centipawn_loss > 100
+                    and not m.motif_type
+                ):
+                    affected.append(analysis.game.id)
+                    break
+        if not affected:
+            return None
+        return PatternMatch(
+            pattern_id="V",
+            pattern_name="Wrong check response",
+            strength=min(len(set(affected)) / max(len(analyses), 1) * 0.8, 0.85),
+            evidence=[
+                {"affected_games": list(set(affected)), "condition": "in_check cp>100 no motif"}
+            ],
+            game_ids=list(set(affected)),
+            frequency=len(set(affected)),
+            severity="high",
+        )
+
     def _detect_s(self, analyses: list[GameAnalysis], metadata: dict) -> PatternMatch | None:
         affected = []
         for analysis in analyses:
@@ -786,6 +845,45 @@ def per_move_patterns(
                 "pattern_name": "Attention tunneling",
                 "strength": min(cp / 500, 0.8),
                 "detail": f"consecutive error after ply={prev_move.ply} cp_loss={cp:.0f}",
+            }
+        )
+
+    # U — unseen-threat quiet blunder (P0-2). `why=quiet_blunder` was only a
+    # category, so the most costly mistakes had no actionable pattern.
+    # Mechanism: quiet move, no motif, class mistake/blunder, cp >= 100.
+    # Not in check (V owns check responses) and no tactical motif (T owns those).
+    if (
+        move.classification in ("mistake", "blunder")
+        and bool(move.move_san)  # no SAN = evidence gap, never a pattern (D4)
+        and "x" not in move.move_san  # quiet = not a capture
+        and "+" not in move.move_san
+        and "#" not in move.move_san
+        and not move.gives_check
+        and not move.motif_type
+        and not move.is_tactical_motif
+        and not move.was_in_check
+        and cp >= 100
+    ):
+        out.append(
+            {
+                "pattern_id": "U",
+                "pattern_name": "unseen_threat_quiet_blunder",
+                "strength": min(cp / 1000, 1.0),
+                "severity": "critical" if cp > 500 else "high",
+                "detail": f"quiet {move.classification} cp_loss={cp:.0f}",
+            }
+        )
+
+    # V — wrong check response (P1-4): the move was played in check, lost more
+    # than 100 cp and has no proven tactical motif.
+    if move.was_in_check and bool(move.move_san) and cp > 100 and not move.motif_type:
+        out.append(
+            {
+                "pattern_id": "V",
+                "pattern_name": "wrong_check_response",
+                "strength": min(cp / 1000, 1.0),
+                "severity": "critical" if cp > 500 else "high",
+                "detail": f"in check cp_loss={cp:.0f} san={move.move_san}",
             }
         )
 
@@ -974,7 +1072,7 @@ def scan_single_game(analysis: GameAnalysis) -> tuple[list[dict], dict[int, dict
                     # publishing 0-100 here was a regression, not an upgrade.
                     "confidence": 0.0,
                     "frequency": 0,
-                    "severity": pdef.severity if pdef else "medium",
+                    "severity": cand.get("severity") or (pdef.severity if pdef else "medium"),
                     "scope": "single_game",
                     "evidence": [],
                     "affected_games": [analysis.game.id] if analysis.game.id else [],
@@ -990,6 +1088,10 @@ def scan_single_game(analysis: GameAnalysis) -> tuple[list[dict], dict[int, dict
                 aggregated[pid] = entry
             entry["frequency"] += 1
             entry["strength"] = round(max(entry["strength"], cand["strength"]), 2)
+            # P0-2: severity comes from the strongest occurrence, not the
+            # first one (a 226 cp mistake must not pin a later 9148 cp blunder).
+            if cand.get("severity") == "critical":
+                entry["severity"] = "critical"
             # D26: one unit per artifact. Detailed single-game = 0-1 (frozen
             # schema 1.2); cross-game (`schemas.py`) stays 0-100.
             entry["confidence"] = entry["strength"]
@@ -1002,6 +1104,78 @@ def scan_single_game(analysis: GameAnalysis) -> tuple[list[dict], dict[int, dict
                     "detail": cand["detail"],
                 }
             )
+
+    # P0-1: a run of >= 3 flagged own moves (plies step by 2) is a stronger
+    # attention-tunnelling signal than the pair-based rule in
+    # `per_move_patterns`. Reuse the same pattern ID instead of inventing a new
+    # one; the detector version is bumped because classification changes.
+    flagged_moves = [
+        m
+        for m in analysis.moves
+        if m.analyzed
+        and m.move_san  # evidence gap is not a pattern occurrence (D4)
+        and m.centipawn_loss is not None
+        and m.classification in ("blunder", "mistake", "inaccuracy")
+    ]
+    runs: list[list] = []
+    current: list = []
+    for move in flagged_moves:
+        if current and move.ply == current[-1].ply + 2:
+            current.append(move)
+        else:
+            if len(current) >= 3:
+                runs.append(current)
+            current = [move]
+    if len(current) >= 3:
+        runs.append(current)
+    for run in runs:
+        total_cp = sum(float(m.centipawn_loss) for m in run)
+        strength = min(total_cp / 1000, 1.0)
+        severity = "high" if total_cp > 500 else "medium"
+        entry = aggregated.get("C")
+        if entry is None:
+            pdef = library.get("C")
+            entry = {
+                "pattern_id": "C",
+                "pattern_name": "Attention tunneling",
+                "strength": 0.0,
+                "confidence": 0.0,
+                "frequency": 0,
+                "severity": severity,
+                "scope": "single_game",
+                "evidence": [],
+                "affected_games": [analysis.game.id] if analysis.game.id else [],
+                "mitigation": pdef.mitigation if pdef else "Review every move in the run.",
+            }
+            aggregated["C"] = entry
+        existing_plies = {e.get("ply") for e in entry["evidence"]}
+        for move in run:
+            if move.ply in existing_plies:
+                continue
+            entry["evidence"].append(
+                {
+                    "ply": move.ply,
+                    "san": move.move_san,
+                    "cp_loss": round(float(move.centipawn_loss), 1),
+                    "phase": effective_phase(move),
+                    "detail": f"cluster run plies {run[0].ply}-{run[-1].ply} total_cp={total_cp:.0f}",
+                }
+            )
+        entry["frequency"] = len(entry["evidence"])
+        entry["strength"] = max(entry["strength"], strength)
+        entry["confidence"] = entry["strength"]
+        if total_cp > 500:
+            entry["severity"] = "high"
+        # Keep the coverage map in sync with the aggregated pattern list:
+        # a cluster-only match must not leave its plies labelled unclassified.
+        for move in run:
+            cov = coverage.get(move.ply)
+            if cov is None:
+                continue
+            cov["pattern_status"] = PATTERN_STATUS_MATCHED
+            cov["unclassified_reason"] = None
+            if "C" not in cov["pattern_ids"]:
+                cov["pattern_ids"].append("C")
 
     # P0-4: attach the dimensions after aggregation, when strength and the
     # number of measured flagged moves are final. `behavioral_confidence`

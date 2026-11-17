@@ -3,6 +3,50 @@
 Všechny změny formátu a pipeline. Verze odpovídají kontraktu compact JSON /
 single-game pipeline, ne balíčku `0.1.0` (ten zůstává beze změny).
 
+## [2.13] - 2026-11-17
+
+Handoff „Schema 2.4 → 2.5“: P0 blokéry pro plnohodnotný LLM koučink.
+Detailní verifikace s důkazy z 8 cold re-runů:
+`docs/HANDOFF_2_5_VERIFICATION_2026-11-17.md`. Nový detector
+`DBCL-20261117-dev`. Compact **2.5** (2.4 zůstává zmrazený a validator ho
+čte), detailed 1.2 beze změny kontraktu.
+
+### Fixed (P0)
+
+- **P0-3** `engine_lines[0].eval_cp` je D12 anchor (přesun ranku, když anchor
+  byl níž); `best_move_san` pojmenuje tah, ze kterého se měřil `cp_loss`.
+  Když anchor == sehráno, `cp_loss = 0` a `best_eval = eval_after`. Vzorec
+  `best_eval − eval_after` se nemění. 60/61 flagů má gap ≤ 10 cp.
+- **P0-1** Pattern C se nyní emituje i pro celý cluster 3+ flagů
+  (`strength = min(total_cp/1000,1)`, `severity high` nad 500).
+- **P0-2** Nový pattern **U** (unseen-threat quiet blunder) místo kolizního
+  Q1; `severity critical` nad 500 cp. Cross-game detektor `_detect_u`.
+- **P0-4** `eval_source` nese přesnou politiku (`stockfish_d14_n150000_h128_live`
+  apod.); `hash_mb` se při cache hitu načítá z metadat cache, už ne `null`.
+
+### Fixed (P1)
+
+- **P1-1** `acc_warning` rozlišuje `contains_blunder` / `contains_mistake`
+  (kromě existujícího mate outlieru).
+- **P1-2** Compact 2.5 odstraňuje aliasy `eval_before`/`eval_after`; validator
+  přijímá i 2.4 payloady. Nový `schemas/single_game_v2_compact_2.5.json`.
+- **P1-4** Nový pattern **V** (wrong check response) + cross-game detektor.
+- **P1-6** Negative cache: HTTP 410 → 24 h, 402 → 1 h, 5xx → 60 s.
+
+### Odchylky
+
+- P1-3 `internal_accuracy_score` ponechán v detailed 1.2 (odstranění by
+  vyžadovalo detailed 1.3, handoff povoluje jen bump compactu).
+- P0-4 hash je existující adaptivní `h128`/`h256`, ne pevné `h512`.
+- P0-3 jediný flag bez `best_move_uci` (`zOk3TnoC` white 41) nelze zarovnat;
+  hodnoty zůstávají měřené, ne odhadnuté.
+- P2-2 (medián ACPL) odložen jako report-only polish.
+
+### Verified
+
+`pytest` **531 passed**, Ruff clean, mypy **73 souborů** clean. 8 payloadů
+validuje proti 2.5 + 1.2; maximální nárůst compactu +90 B (limit +200 B).
+
 ## [2.12] - 2026-11-16
 
 P0-9: **fáze 0 uzavřena**. Rozdělení CI na `fast` a `engine`, pinnutý Stockfish

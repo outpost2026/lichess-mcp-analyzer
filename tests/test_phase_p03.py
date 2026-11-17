@@ -228,11 +228,13 @@ class TestRDetectorBothModes:
 
     def test_r_fires_default_mode_segment_endgame(self):
         move = _move(phase="endgame", chess_phase="middlegame")
-        assert _r_ids(move) == ["R"]
+        # U also fires on this quiet blunder fixture (P0-2); R must remain.
+        assert "R" in _r_ids(move)
 
     def test_r_fires_material_mode(self):
         move = _move(phase="middlegame", chess_phase="endgame", phase_method=PHASE_METHOD_MATERIAL)
-        assert _r_ids(move) == ["R"]
+        # U also fires on this quiet blunder fixture (P0-2); R must remain.
+        assert "R" in _r_ids(move)
 
     def test_r_not_fired_when_material_says_not_endgame(self):
         move = _move(phase="endgame", chess_phase="middlegame", phase_method=PHASE_METHOD_MATERIAL)

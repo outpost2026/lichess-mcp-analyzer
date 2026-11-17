@@ -12,8 +12,21 @@ import time
 
 HARD_TTL_S = 600.0
 SOFT_TTL_S = 60.0
+# P1-6: 410 Gone means the endpoint was permanently removed — retrying every
+# minute is pure waste. 402 means credits are exhausted; retrying within the
+# hour cannot succeed without a human/top-up either.
+PERMANENT_TTL_S = 86400.0
+PAYMENT_TTL_S = 3600.0
 
-_HARD_STATUSES = {401, 402, 403, 404}
+_HARD_STATUSES = {401, 403, 404}
+_PERMANENT_STATUSES = {410}
+_PAYMENT_STATUSES = {402}
+
+_STATUS_TTL = {
+    **{code: HARD_TTL_S for code in _HARD_STATUSES},
+    **{code: PERMANENT_TTL_S for code in _PERMANENT_STATUSES},
+    **{code: PAYMENT_TTL_S for code in _PAYMENT_STATUSES},
+}
 
 _lock = threading.Lock()
 _state: dict[str, dict] = {}
@@ -45,7 +58,7 @@ def record_result(
         if http_status is not None and 200 <= http_status < 300:
             _state.pop(provider_name, None)
             return
-        ttl = HARD_TTL_S if http_status in _HARD_STATUSES else SOFT_TTL_S
+        ttl = _STATUS_TTL.get(http_status, SOFT_TTL_S) if http_status else SOFT_TTL_S
         _state[provider_name] = {
             "until": _now() + ttl,
             "http_status": http_status,

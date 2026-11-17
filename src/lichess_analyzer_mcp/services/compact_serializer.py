@@ -1,4 +1,4 @@
-"""Compact single-game JSON (schema 2.4) — pure serialization, no IO.
+"""Compact single-game JSON (schema 2.5) - pure serialization, no IO.
 
 The full contract v1.2 payload exists for debugging and cross-game work. For
 LLM consumption only a small, lossless-for-coaching subset is needed: game
@@ -67,6 +67,13 @@ frozen 2.3 snapshot):
     derived by the shared `services/pipeline_status` module. `status=degraded`
     with `use_llm=false` is offline ETL, not a failed analysis.
 
+2.5 changes (handoff 2026-11-17; `single_game_v2_compact_2.4.json` frozen):
+  - REMOVED the deprecated `eval_before`/`eval_after` aliases; the POV-named
+    `eval_before_mover_cp`/`eval_after_mover_cp` are now the only eval keys.
+    The validator still accepts 2.4 payloads with the aliases.
+  - `summary.acc_warning` may be `contains_mate_level_outlier`,
+    `contains_blunder` or `contains_mistake` (P1-1).
+
 Null policy (FIX-016), documented in the schema as well:
   - `rank: null`  -> rank was not measured (engine timeout), never 0 or 1.
   - `motif`        -> omitted when the move has no tactical motif; a motif is
@@ -108,11 +115,18 @@ from lichess_analyzer_mcp.services.game_impact import (
     pv_played,
 )
 
-SCHEMA_V = "2.4"
+SCHEMA_V = "2.5"
+# 2.4 payloads are still accepted by the dependency-free validator (aliases
+# allowed); the JSON Schema file for 2.5 only describes newly emitted output.
+SUPPORTED_VERSIONS = ("2.4", "2.5")
 MAX_REPORT_CHARS = 900
 FEN_CP_THRESHOLD = 100
 EVAL_CP_THRESHOLD = 200
-ACCURACY_WARNINGS = ("contains_mate_level_outlier",)
+ACCURACY_WARNINGS = (
+    "contains_mate_level_outlier",
+    "contains_blunder",
+    "contains_mistake",
+)
 PV_UNAVAILABLE_REASONS = (
     "engine_timeout",
     "engine_error",
@@ -203,18 +217,16 @@ def _flag(
     if isinstance(cp, (int, float)) and (
         cp > EVAL_CP_THRESHOLD or out["class"] in ("blunder", "mistake")
     ):
-        eval_before = _cp(flag.get("eval_before"))
-        eval_after = _cp(flag.get("eval_after"))
+        eval_before = _cp(flag.get("eval_before_mover_cp", flag.get("eval_before")))
+        eval_after = _cp(flag.get("eval_after_mover_cp", flag.get("eval_after")))
         if (
             eval_before is not None
             and eval_after is not None
             and eval_invariant_holds(eval_before, eval_after, cp)
         ):
+            # 2.5/P1-2: only the POV-named authoritative keys remain.
             out["eval_before_mover_cp"] = eval_before
             out["eval_after_mover_cp"] = eval_after
-            # Deprecated aliases, kept for one release (D9/T2.1).
-            out["eval_before"] = eval_before
-            out["eval_after"] = eval_after
     # FIX-016: a genuinely absent motif is omitted; present motifs stay strings.
     motif = flag.get("motif")
     if motif:
@@ -379,7 +391,7 @@ def to_compact_v2(
     moves: list[dict] | None = None,
     pv_unavailable: dict[int | str, str] | None = None,
 ) -> dict:
-    """Serialize a contract v1.2 coaching payload to schema 2.4.
+    """Serialize a contract v1.2 coaching payload to schema 2.5.
 
     Args:
         full: `lichess_coaching_single_game` response (schema 1.2).
@@ -612,7 +624,7 @@ def _check_keys(obj: dict, required: set[str], allowed: set[str], path: str) -> 
 
 
 def validate_compact(data: dict) -> None:
-    """Structural validation mirroring `schemas/single_game_v2_compact_2.4.json`.
+    """Structural validation mirroring `schemas/single_game_v2_compact_2.5.json`.
 
     Dependency-free on purpose: ETL must run in any environment. The test
     suite additionally validates real output against the JSON Schema file.
@@ -637,8 +649,9 @@ def validate_compact(data: dict) -> None:
         },
         "$",
     )
-    if data["v"] != SCHEMA_V:
-        _fail("$.v", f"must be {SCHEMA_V!r}")
+    if data["v"] not in SUPPORTED_VERSIONS:
+        _fail("$.v", f"must be one of {SUPPORTED_VERSIONS}")
+    legacy_aliases = data["v"] == "2.4"
     if data["phase_method"] not in _PHASE_METHODS:
         _fail("$.phase_method", f"must be one of {_PHASE_METHODS}")
 
@@ -692,10 +705,9 @@ def validate_compact(data: dict) -> None:
             _REQUIRED_FLAG
             | {
                 "motif",
-                "eval_before",
-                "eval_after",
                 "eval_before_mover_cp",
                 "eval_after_mover_cp",
+                *(({"eval_before", "eval_after"}) if legacy_aliases else set()),
                 "patterns",
                 "mate_in",
                 "mate_missed",

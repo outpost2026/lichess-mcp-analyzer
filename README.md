@@ -4,7 +4,7 @@
 
 **MCP server pro analýzu šachových partií, detekci vzorových chyb (pattern library jako kompresní model dle T. Mikolova) a spaced repetition trénink (SM-2-like; FSRS zatím neimplementován).**
 
-Verze: `0.1.0` | Stav (2026-11-16): **single-game pipeline [2.12]** (compact 2.4 default, detailed 1.2) | Testy (ověřeno 2026-11-16): **521 fast** (bez `test_engine_client.py`) / **532 v CI fast jobu** (vč. 11 mock engine testů) + **18 real-engine** (pinnutý Stockfish 18) | Nástrojů: **18** | Schémata: compact 2.4 / detailed 1.2 / cross-game 1.4 / game_full 1.0
+Verze: `0.1.0` | Stav (2026-11-17): **single-game pipeline [2.13]** (compact 2.5 default, detailed 1.2) | Testy: **530 fast** (bez `test_engine_client.py`) / 18 real-engine (pinnutý Stockfish 18) | Nástrojů: **18** | Schémata: compact 2.5 / detailed 1.2 / cross-game 1.4 / game_full 1.0
 
 
 ## Proč?
@@ -106,10 +106,11 @@ Pattern O byl původně pojmenován "Repetition avoidance greed", ale kód detek
 | `lichess_persist_report` | Generuje a ukládá report na disk (docs / KB) |
 | `lichess_workspace_info` | Vrátí kontext pracovního prostoru |
 
-### Compact JSON 2.4
-Compact 2.4 je **výchozí** výstup `lichess_coaching_single_game` i
-`scripts/coach.py` (schema 2.4, obvykle 1,2-5,5 kB). Obsahuje mj. `eval_before/
-eval_after` pro velké chyby, patterny u konkrétního flagu, `pv_unavailable` pro
+### Compact JSON 2.5
+Compact 2.5 je **výchozí** výstup `lichess_coaching_single_game` i
+`scripts/coach.py` (schema 2.5, obvykle 1,2-6,6 kB). Obsahuje mj.
+`eval_before_mover_cp`/`eval_after_mover_cp` pro velké chyby (aliasy
+`eval_before`/`eval_after` byly v 2.5 odstraněny), patterny u konkrétního flagu, `pv_unavailable` pro
 explicitní chybějící PV a `clusters` pro série chyb. Nově (P0-7/P0-8): každý
 flag nese `pstatus` (`matched`/`unclassified`) a při absenci patternu `why`;
 `patterns_meta` je povinné s `coverage {flagged, matched, unclassified}`;
@@ -120,7 +121,10 @@ explicitní (`mate_missed`/`mate_via`), sehráno tah má engine pokračování
 a `summary.acc_warning` kvalifikuje lineární accuracy. Od [2.9] (P0-4) nese
 `patterns[].support` (měřené pokrytí flagovaných tahů) a `confidence_dims`:
 `conf` je ordinální detection strength, nikoli pravděpodobnost; behavioral
-confidence je `null` s důvodem `not_calibrated`.
+confidence je `null` s důvodem `not_calibrated`. Od [2.13] detektor
+(`DBCL-20261117-dev`) přidává pattern C pro celé clustery (3+ flagů), U pro
+tiché blundery a V pro špatné odpovědi v šachu; `acc_warning` rozlišuje
+`contains_blunder` / `contains_mistake`.
 Plná schema 1.2 je opt-in (`--format detailed`) pro debugging a cross-game.
 Formát, null/omission politika, prompt šablona a příklady:
 `docs/COMPACT_JSON_FOR_LLM.md`.
@@ -373,7 +377,7 @@ lichess-analyzer-mcp/
 │       │   ├── engine_client.py     ← Stockfish UCI wrapper (depth limit, PV SAN fix)
 │       │   ├── game_analyzer.py     ← per-move eval + BlunderFactSheet + per-blunder patterns
 │       │   ├── pv_recovery.py       ← retry PV pro blundery/mistaky bez engine_lines (FIX-014)
-│       │   ├── compact_serializer.py ← schema 2.4 (default) + validace + null politika
+│       │   ├── compact_serializer.py ← schema 2.5 (default) + validace + null politika
 │       │   ├── game_llm_cache.py    ← per-game LLM cache
 │       │   ├── llm_client.py        ← multi-provider LLM cascade
 │       │   ├── narrative_validator.py ← LLM hallucination guard (5 claims)
@@ -390,7 +394,7 @@ lichess-analyzer-mcp/
 │       │   └── schemas.py       ← KB schema definitions
 │       └── patterns/
 ├── scripts/
-│   ├── coach.py                 ← Jednotný CLI: hra / PGN / batch, compact 2.4 default
+│   ├── coach.py                 ← Jednotný CLI: hra / PGN / batch, compact 2.5 default
 │   ├── run_pipeline.py          ← CLI batch pipeline
 │   ├── coach_single.py          ← Starší CLI single-game (deprecated)
 │   ├── mcp_call.py              ← CLI runner pro všech 18 MCP toolů
@@ -409,7 +413,7 @@ lichess-analyzer-mcp/
 │   ├── test_depth_policy.py     ← depth a časová politika
 │   ├── test_determinism.py      ← determinismus výstupů
 │   ├── test_deterministic_report.py ← deterministický report, slabé/čisté fáze
-│   ├── test_compact_serializer.py ← schema 2.4, null politika, eval okno, PV fallback, mate_in
+│   ├── test_compact_serializer.py ← schema 2.5, null politika, eval okno, PV fallback, mate_in
 │   ├── test_compact_tool.py     ← default compact, detailed, full alias, both
 │   ├── test_coach_cli.py        ← jednotný CLI (argumenty, exit kódy, agregace)
 │   ├── test_single_game_contract.py ← kontrakt 1.2 single-game
@@ -428,7 +432,7 @@ lichess-analyzer-mcp/
 │   ├── 02_DBCL_meta_evaluation.md ← 3-kanál noise framework
 │   ├── MIKOLOV_KOMPRESE_V_PATTERN_ARCHITEKTURE.md ← Lossy Compression Principle formalizace
 │   ├── CLI_USAGE.md             ← Spouštění bez MCP klienta (PowerShell příklady)
-│   ├── COMPACT_JSON_FOR_LLM.md  ← Schema 2.4: formát + prompt pro LLM agenta
+│   ├── COMPACT_JSON_FOR_LLM.md  ← Schema 2.5: formát + prompt pro LLM agenta
 │   └── coaching_reports/        ← Generované tréninkové reporty
 ├── data/
 │   ├── game_cache/              ← Cache analýz (JSON, Stockfish + LLM)
@@ -563,7 +567,7 @@ lichess-analyzer-mcp/
   cache (259 her po dedupu, 2137 flagged tahů): matched 375 (17,5 %),
   unclassified 1762 (82,5 %); z toho `quiet_positional` 1523, `forcing_move_unexplained`
   148, `capture_unexplained` 91. Bludery: 124/220 matched (56,4 %).
-- **Compact 2.4 má `patterns_meta` povinné** včetně `coverage`; prázdný
+- **Compact 2.5 má `patterns_meta` povinné** včetně `coverage`; prázdný
   `patterns` list tak má vždy důvod. Detailed 1.2 nese `patterns_meta.coverage`
   + histogram `unclassified_reasons` a top-level `unclassified`.
 - **MCP server může servírovat starý kód** po změně — po nasazení v4

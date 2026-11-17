@@ -22,6 +22,7 @@ from lichess_analyzer_mcp.services.coaching_base import (
 )
 from lichess_analyzer_mcp.services.confidence_dims import dimensions_block
 from lichess_analyzer_mcp.services.eval_provenance import (
+    configured_eval_source as _configured_eval_source,
     cp_loss_basis as _cp_loss_basis,
     provenance_summary as _provenance_summary,
     run_id as _run_id,
@@ -112,7 +113,7 @@ def _fmt_loss(move: dict) -> str:
 
 
 # ── D15 / T-18 / D29: game_impact ───────────────────────────────────────────
-# The classification lives in `services/game_impact.py`, because compact 2.4
+# The classification lives in `services/game_impact.py`, because compact 2.5
 # publishes the same labels and must not re-implement the thresholds. The
 # module-level aliases keep the historical private names importable.
 GAME_IMPACT_DEAD_ZONE_CP = _GAME_IMPACT_DEAD_ZONE_CP
@@ -122,7 +123,14 @@ _game_impact = _game_impact_impl
 _impact_state = _impact_state_impl
 
 
-def _flagged_moves(analysis: dict) -> list[dict]:
+def _flagged_moves(
+    analysis: dict,
+    *,
+    depth: int | None = None,
+    nodes_cap: int = 0,
+    cache_hit: bool = False,
+    run_id: str | None = None,
+) -> list[dict]:
     out = []
     for m in analysis.get("moves", []):
         if m.get("classification") not in _FLAGGED:
@@ -155,7 +163,14 @@ def _flagged_moves(analysis: dict) -> list[dict]:
                 # NOT derivable and stays null when it was never recorded.
                 "cp_loss_basis": m.get("cp_loss_basis")
                 or _cp_loss_basis(m.get("best_eval"), m.get("eval_after"), m.get("centipawn_loss")),
-                "eval_source": m.get("eval_source") or None,
+                "eval_source": _configured_eval_source(
+                    m.get("eval_source"),
+                    depth=depth,
+                    nodes_cap=nodes_cap,
+                    hash_mb=analysis.get("engine_hash_mb"),
+                    cache_hit=cache_hit,
+                    run_id=run_id,
+                ),
                 "eval_before": m.get("eval_before"),
                 "eval_after": m.get("eval_after"),
                 # D15/T-18: did the game change, not only how much was lost.
@@ -191,15 +206,23 @@ def _flagged_moves(analysis: dict) -> list[dict]:
 
 
 ACCURACY_WARNING_MATE_OUTLIER = "contains_mate_level_outlier"
+# P1-1: a linear score also hides ordinary blunders/mistakes. Ordered by
+# severity so the strongest present signal wins; mate stays first (D33).
+ACCURACY_WARNING_BLUNDER = "contains_blunder"
+ACCURACY_WARNING_MISTAKE = "contains_mistake"
+_ACCURACY_WARNINGS = (
+    ACCURACY_WARNING_MATE_OUTLIER,
+    ACCURACY_WARNING_BLUNDER,
+    ACCURACY_WARNING_MISTAKE,
+)
 
 
 def _accuracy_warning(flagged: list[dict]) -> str | None:
-    """D33: a linear accuracy score hides a mate-level outlier.
+    """D33/P1-1: name the largest error class the linear `accuracy` hides.
 
-    `accuracy` is `mean(max(0, 100 - 0.15*cp_loss))`; one missed mate in 35
-    moves barely moves it, so a player with 2 blunders can read 92.8 %. The
-    warning names the shape and never re-scores the game: the caller decides
-    how to present it.
+    `accuracy = mean(max(0, 100 - 0.15*cp_loss))`; one 9148 cp blunder barely
+    moves it, so `97.3` must never be quoted without a warning. The score is
+    not re-scaled — only the severity label is added.
     """
     for flag in flagged:
         if flag.get("mate_missed"):
@@ -207,6 +230,18 @@ def _accuracy_warning(flagged: list[dict]) -> str | None:
         after = flag.get("eval_after_mover_cp")
         if isinstance(after, (int, float)) and abs(float(after)) >= MATE_CP_THRESHOLD:
             return ACCURACY_WARNING_MATE_OUTLIER
+    for flag in flagged:
+        cp = flag.get("cp_loss")
+        if not isinstance(cp, (int, float)):
+            continue
+        if cp > 5000:
+            return ACCURACY_WARNING_MATE_OUTLIER
+        if cp > 300:
+            return ACCURACY_WARNING_BLUNDER
+    if any(
+        isinstance(flag.get("cp_loss"), (int, float)) and flag["cp_loss"] > 150 for flag in flagged
+    ):
+        return ACCURACY_WARNING_MISTAKE
     return None
 
 
@@ -492,8 +527,23 @@ async def build_response(
     if not analysis.get("moves"):
         raise ValueError("analysis produced no moves")
 
+    # P0-4: one policy id for the per-flag source labels and the aggregate.
+    policy_id = _run_id(
+        depth=depth,
+        mode=mode,
+        nodes_cap=_node_cap(depth),
+        threads=ENGINE_THREADS,
+        detector_version=DETECTOR_VERSION,
+        schema_version=SCHEMA_VERSION,
+    )
     patterns, coverage = scan_single_game(analysis_obj)
-    flagged = _flagged_moves(analysis)
+    flagged = _flagged_moves(
+        analysis,
+        depth=depth,
+        nodes_cap=_node_cap(depth),
+        cache_hit=bool(getattr(analysis_obj, "_cache_hit", False)),
+        run_id=policy_id,
+    )
     _annotate_coverage(flagged, coverage)
     unclassified = _unclassified_items(flagged)
     coverage_counts, unclassified_reasons = _coverage_summary(flagged)
@@ -673,15 +723,15 @@ async def build_response(
         # P0-6 / T-02: a payload must say what its numbers rest on. `run_id`
         # identifies the policy; `eval_provenance` counts how many measured
         # moves are actually reconstructible from the D12 anchor (N-03).
-        "run_id": _run_id(
+        "run_id": policy_id,
+        "eval_provenance": _provenance_summary(
+            moves,
             depth=depth,
-            mode=mode,
             nodes_cap=_node_cap(depth),
-            threads=ENGINE_THREADS,
-            detector_version=DETECTOR_VERSION,
-            schema_version=SCHEMA_VERSION,
+            hash_mb=analysis.get("engine_hash_mb"),
+            cache_hit=cache_hit,
+            run_id=policy_id,
         ),
-        "eval_provenance": _provenance_summary(moves),
         # P0-4: name the dimension behind `confidence` before an LLM reads an
         # ordinal detector weight as a probability.
         "confidence_dimensions": dimensions_block(len(patterns)),
@@ -719,7 +769,11 @@ async def build_response(
         "errors": errors,
         "unanalyzed_plies": unanalyzed,
         "timings": timings,
-        "engine": _engine_block(depth, None if cache_hit else engine_client.get_current_hash()),
+        "engine": _engine_block(
+            depth,
+            analysis.get("engine_hash_mb")
+            or (None if cache_hit else engine_client.get_current_hash()),
+        ),
         "cache": cache,
         "analysis": analysis_block,
         "flagged_moves": flagged,
@@ -752,7 +806,7 @@ async def build_response(
         },
     }
 
-    # FIX-017: compact 2.4 is the default; schema 1.2 is opt-in as "detailed".
+    # FIX-017: compact 2.5 is the default; schema 1.2 is opt-in as "detailed".
     if output_format in ("compact", "both"):
         from lichess_analyzer_mcp.services.compact_serializer import (
             to_compact_v2,
@@ -810,7 +864,7 @@ async def lichess_coaching_single_game(
         color: 'white' or 'black'; fallback when no username or detection fails
         depth: Stockfish analysis depth (8-24, 0=auto)
         mode: Budget profile — 'fast' (60 s hard deadline) or 'deep' (120 s)
-        output_format: 'compact' (schema 2.4, default), 'detailed' (contract
+        output_format: 'compact' (schema 2.5, default), 'detailed' (contract
             v1.2) or 'both' -> {"compact": ..., "detailed": ...}.
             'full' is a deprecated alias for 'detailed'.
         use_llm: False skips every LLM provider (deterministic report only)

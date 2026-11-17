@@ -58,13 +58,55 @@ def normalize_eval_source(value) -> str:
     return "unknown"
 
 
-def provenance_summary(moves) -> dict:
+def configured_eval_source(
+    source,
+    *,
+    depth: int | None = None,
+    nodes_cap: int = 0,
+    hash_mb: int | None = None,
+    cache_hit: bool = False,
+    run_id: str | None = None,
+) -> str:
+    """P0-4: name the exact engine configuration, not just 'stockfish'.
+
+    `stockfish` alone cannot answer a month later whether the number came from
+    d14/n150000/h512 live, from a cache produced by another policy, or from a
+    legacy cache with no hash metadata. The string is a label, never a guess:
+    an unmeasured hash stays `hash_unknown`.
+    """
+    base = normalize_eval_source(source)
+    if base != "stockfish":
+        return base
+    # No configuration supplied (unit tests, legacy payloads): keep the
+    # historical short label instead of inventing a d_unknown/n0 string.
+    if depth is None and not nodes_cap and hash_mb is None and not cache_hit:
+        return base
+    parts = [f"d{depth}" if depth else "d_unknown"]
+    parts.append(f"n{nodes_cap}" if nodes_cap else "n0")
+    parts.append(f"h{hash_mb}" if hash_mb else "hash_unknown")
+    if cache_hit:
+        parts.append(f"cache_run_{run_id}" if run_id else "cache")
+    else:
+        parts.append("live")
+    return "stockfish_" + "_".join(parts)
+
+
+def provenance_summary(
+    moves,
+    *,
+    depth: int | None = None,
+    nodes_cap: int = 0,
+    hash_mb: int | None = None,
+    cache_hit: bool = False,
+    run_id: str | None = None,
+) -> dict:
     """Count the provenance of one payload's measured moves.
 
     Only measured moves are counted (analyzed and `cp_loss` numeric): an
     unanalyzed ply has no evaluation to attribute. `anchor_coverage` is the
     share of measured moves whose loss is reconstructible from the anchor -
-    the per-game version of the N-03 corpus number.
+    the per-game version of the N-03 corpus number. Since P0-4 the source
+    histogram names the exact engine policy instead of only 'stockfish'.
     """
     basis = dict.fromkeys(CP_LOSS_BASIS_VALUES, 0)
     source = dict.fromkeys(EVAL_SOURCE_VALUES, 0)
@@ -83,7 +125,14 @@ def provenance_summary(moves) -> dict:
             move.get("best_eval"), move.get("eval_after"), cp_loss
         )
         basis[basis_value] = basis.get(basis_value, 0) + 1
-        source_value = normalize_eval_source(move.get("eval_source"))
+        source_value = configured_eval_source(
+            move.get("eval_source"),
+            depth=depth,
+            nodes_cap=nodes_cap,
+            hash_mb=hash_mb,
+            cache_hit=cache_hit,
+            run_id=run_id,
+        )
         source[source_value] = source.get(source_value, 0) + 1
         if basis_value == "best_eval":
             anchored += 1

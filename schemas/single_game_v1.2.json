@@ -146,8 +146,8 @@
         "accuracy_method": { "type": "string" },
         "accuracy_warning": {
           "type": ["string", "null"],
-          "enum": ["contains_mate_level_outlier", null],
-          "description": "D33: the linear accuracy score hides at least one mate-level swing (missed mate or forced mate after the move). null = the score describes every flagged move."
+          "enum": ["contains_mate_level_outlier", "contains_blunder", "contains_mistake", null],
+          "description": "D33/P1-1: the strongest error class hidden by the linear accuracy score. null = no mistake above 150 cp."
         },
         "run_id": {
           "type": "string",
@@ -247,8 +247,7 @@
           },
           "eval_source": {
             "type": ["string", "null"],
-            "enum": ["stockfish", "cloud", "unknown", null],
-            "description": "P0-6: where the eval pair came from. null = the analyzer never recorded it (pre-P0-6 cache)."
+            "description": "P0-6/P0-4: exact engine policy that measured the eval pair, e.g. stockfish_d14_n150000_h512_live or stockfish_d14_n150000_h512_cache_run_6d1af884; `hash_unknown` when the legacy cache has no hash metadata. `cloud`/`unknown`/null are legacy or non-engine values."
           },
           "game_impact": {
             "type": ["string", "null"],

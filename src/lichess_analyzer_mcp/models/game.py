@@ -188,6 +188,11 @@ class GameAnalysis:
     deadline_s: float = 0.0
     deadline_hit: bool = False
     mode: str = "fast"
+    # P0-4: engine configuration that produced the evaluations. Persisted so a
+    # cache hit can report the producing hash instead of a null placeholder.
+    engine_hash_mb: int | None = None
+    nodes_cap: int = 0
+    policy_run_id: str = ""
     # Runtime-only cache provenance; intentionally not serialized by to_dict().
     _cache_hit: bool = False
     _cache_layer: str = "none"
@@ -218,6 +223,9 @@ class GameAnalysis:
             "deadline_s": self.deadline_s,
             "deadline_hit": self.deadline_hit,
             "mode": self.mode,
+            "engine_hash_mb": self.engine_hash_mb,
+            "nodes_cap": self.nodes_cap,
+            "policy_run_id": self.policy_run_id,
         }
 
     def auto_annotate(self) -> None:

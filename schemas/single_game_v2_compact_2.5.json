@@ -1,0 +1,405 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lichess-analyzer-mcp/schemas/single_game_v2_compact_2.5.json",
+  "title": "single_game_v2_compact_2.5",
+  "description": "Compact single-game output for LLM self-coaching, schema 2.5. Breaking over 2.4 (aliases removed), otherwise additive over 2.3 (schemas/single_game_v2_compact_2.3.json is the frozen 2.3 snapshot): a `*_to_mate` game_impact now carries its `mate_after` direction, and a top-level `pipeline` block separates analysis completeness from coaching source, so `use_llm=false` cannot read as 'analysis failed'. 2.3 split confidence into three named dimensions (P0-4). `conf` is and remains the ordinal detection_strength; patterns[].support is the measured share of flagged moves covered, and top-level confidence_dims explains that behavioral_confidence is null with a reason because no mechanism calibration exists yet. 2.2 also added mandatory game_impact, mate_missed/mate_via, pv_played/pv_played_unavailable, clusters[].plies and summary.acc_warning. Derived from contract v1.2; instrumentation and derivable fields are omitted. Null means 'not measured' - it is never replaced by a guessed number. Null policy per field: summary.acpl / summary.phases[*][0] are null when the phase had no measured move; flags[].rank is null when the engine did not measure the played-move rank; flags[].game_impact is null when the evals were not measured; flags[].motif is omitted when the move has no tactical motif (a present motif is always a string); eval_before_mover_cp/eval_after_mover_cp are omitted outside the FIX-015 window (cp > 200 or class blunder/mistake) or when the evaluation was not measured. The deprecated eval_before/eval_after aliases were removed in 2.5; the POV-named keys are authoritative. Unavailable PV for a blunder/mistake is published in pv_unavailable instead of being silently omitted. P0-7: every flagged move is either covered by a pattern (pstatus=matched, patterns present) or states why no pattern covers it (pstatus=unclassified, why present). The reason is a measured shape of the move, not a claimed mechanism. D9: flags[].eval_before_mover_cp / eval_after_mover_cp are the canonical POV-named keys (2.5 removed the deprecated aliases). 2.5 also widens summary.acc_warning to contains_blunder/contains_mistake and names the exact engine policy in detailed eval_source.",
+  "type": "object",
+  "required": [
+    "v",
+    "game",
+    "summary",
+    "phase_method",
+    "flags",
+    "patterns",
+    "patterns_meta",
+    "confidence_dims",
+    "pipeline"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "v": { "const": "2.5" },
+    "game": {
+      "type": "object",
+      "required": ["id", "color", "result", "opening", "depth"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "username": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Player whose side is analysed. Omitted for anonymous games / when unknown."
+        },
+        "color": { "enum": ["white", "black"] },
+        "result": { "type": "string", "pattern": "^(1-0|0-1|1/2-1/2|\\*)$" },
+        "opening": { "type": "string" },
+        "tc": { "type": "string" },
+        "date": { "type": "string" },
+        "depth": { "type": "integer", "minimum": 8, "maximum": 24 }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["acpl", "acc", "phases"],
+      "additionalProperties": false,
+      "properties": {
+        "acpl": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "description": "Mean centipawn loss. Null when no move was measured."
+        },
+        "acc": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Internal accuracy score 0-100 (see acc_method). Null when no move was measured."
+        },
+        "acc_method": {
+          "enum": ["internal_cp_linear"],
+          "description": "P1: how acc was computed. internal_cp_linear = mean(max(0, 100 - 0.15*cp_loss)); NOT Lichess accuracy."
+        },
+        "acc_warning": {
+          "enum": ["contains_mate_level_outlier", "contains_blunder", "contains_mistake"],
+          "description": "D33: the linear score hides at least one mate-level swing (a missed mate or a forced mate after the move). The score is still correct for the other moves; it must not be presented as 'you played well' on its own."
+        },
+        "phases": {
+          "type": "object",
+          "required": ["opening", "middlegame", "endgame"],
+          "additionalProperties": false,
+          "properties": {
+            "opening": { "$ref": "#/$defs/phase" },
+            "middlegame": { "$ref": "#/$defs/phase" },
+            "endgame": { "$ref": "#/$defs/phase" }
+          }
+        }
+      }
+    },
+    "phase_method": {
+      "enum": ["ply_segment", "material", "mixed"],
+      "description": "P0-3: which phase source the detectors used. 'mixed' means the moves came from caches with different phase methods."
+    },
+    "flags": {
+      "type": "array",
+      "description": "One entry per flagged move (blunder, mistake, inaccuracy), ordered by ply ascending.",
+      "items": {
+        "type": "object",
+        "required": [
+          "ply",
+          "move",
+          "class",
+          "cp",
+          "best",
+          "rank",
+          "pstatus",
+          "game_impact",
+          "mate_after"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "ply": { "type": "integer", "minimum": 1 },
+          "move": { "type": "string", "description": "SAN of the move played" },
+          "class": { "enum": ["blunder", "mistake", "inaccuracy"] },
+          "cp": { "type": "number", "description": "centipawn loss vs best" },
+          "best": { "type": "string", "description": "SAN of the engine best move" },
+          "rank": {
+            "type": ["integer", "null"],
+            "minimum": 1,
+            "description": "Played move rank among engine candidates; null when not measured (engine timeout). Never 0."
+          },
+          "game_impact": {
+            "type": ["string", "null"],
+            "enum": [
+              "winning_to_winning",
+              "winning_to_equal",
+              "winning_to_losing",
+              "winning_to_mate",
+              "equal_to_winning",
+              "equal_to_equal",
+              "equal_to_losing",
+              "equal_to_mate",
+              "losing_to_winning",
+              "losing_to_equal",
+              "losing_to_losing",
+              "losing_to_mate",
+              null
+            ],
+            "description": "D29/2.2: did the game change, from the mover's point of view. Nine sign transitions with a documented +/-100 cp dead zone, plus three mate transitions; a forced mate is never reported as losing_to_losing. Null = eval not measured."
+          },
+          "pstatus": {
+            "enum": ["matched", "unclassified"],
+            "description": "P0-7: 'matched' = at least one pattern covers this ply (patterns present); 'unclassified' = no pattern covers it (why present)."
+          },
+          "why": {
+            "enum": [
+              "evidence_gap",
+              "quiet_positional",
+              "quiet_blunder",
+              "check_escape",
+              "forcing_move_unexplained",
+              "capture_unexplained",
+              "mechanism_not_identified",
+              "not_classified"
+            ],
+            "description": "P0-7: measured reason the detector is silent. 'evidence_gap' = no engine line/best move/rank. 'quiet_positional' = no capture, no check, not in check. 'quiet_blunder' = same quiet shape but cp_loss > 200 (D13). 'check_escape' = non-capturing king move out of check (D14). 'forcing_move_unexplained' = check given or faced without a pattern. 'capture_unexplained' = capture below the B threshold. 'mechanism_not_identified' = explicit fallback. 'not_classified' = source payload predates P0-7. Never a claimed mechanism."
+          },
+          "motif": {
+            "type": "string",
+            "description": "Tactical motif tag, e.g. discovered_check_capture. Omitted when the move has no tactical motif; null is not used here."
+          },
+          "eval_before_mover_cp": {
+            "type": "number",
+            "description": "D9: engine eval in centipawns from the point of view of the player who made the flagged move, before the move. The `eval_before` alias was removed in 2.5."
+          },
+          "eval_after_mover_cp": {
+            "type": "number",
+            "description": "D9: engine eval in centipawns from the point of view of the player who made the flagged move, after the move. The sign is not flipped; eval_after is not the opponent's POV."
+          },
+          "patterns": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "minLength": 1 },
+            "description": "Behavioural pattern ids whose evidence includes this ply (CAND-E). Present iff pstatus=matched."
+          },
+          "mate_in": {
+            "type": "integer",
+            "description": "FIX-027: forced mate in N moves from the engine's best line. Positive = mate for the player, negative = mate against the player. Only emitted for blunders whose best line is mate; eval_cp stays null in that case."
+          },
+          "mate_missed": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "D31/2.2: the engine's best line mates for the mover in N moves and the played move does not reach a forced mate. Explains why cp_loss can be ~9000 while game_impact says winning_to_winning."
+          },
+          "mate_via": {
+            "type": "string",
+            "minLength": 1,
+            "description": "D31/2.2: SAN of the mating move the engine found. Present iff mate_missed is present and the best line names it."
+          },
+          "mate_after": {
+            "type": ["string", "null"],
+            "enum": ["for", "against", null],
+            "description": "2.4: direction of a forced mate AFTER the played move. `for` = mover mates, `against` = mover is mated. Mandatory and non-null exactly when game_impact ends in `_to_mate`; null otherwise. Without it an LLM cannot tell who was mated."
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": { "pstatus": { "const": "unclassified" } },
+              "required": ["pstatus"]
+            },
+            "then": {
+              "required": ["why"],
+              "not": { "required": ["patterns"] }
+            },
+            "else": {
+              "required": ["patterns"],
+              "not": { "required": ["why"] }
+            }
+          },
+          {
+            "if": { "required": ["mate_via"] },
+            "then": { "required": ["mate_missed"] }
+          },
+          {
+            "if": {
+              "properties": { "game_impact": { "pattern": "_to_mate$" } },
+              "required": ["game_impact"]
+            },
+            "then": { "properties": { "mate_after": { "enum": ["for", "against"] } } }
+          }
+        ]
+      }
+    },
+    "patterns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "conf", "freq", "sev", "plie", "support"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "conf": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "P0-4: ordinal detection_strength, NOT a probability. See confidence_dims."
+          },
+          "freq": { "type": "integer", "minimum": 1 },
+          "sev": { "enum": ["low", "medium", "high", "critical"] },
+          "plie": { "type": "array", "items": { "type": "integer" } },
+          "support": {
+            "type": ["number", "null"],
+            "minimum": 0,
+            "maximum": 1,
+            "description": "P0-4/2.3: measured share of flagged moves in this game covered by the pattern (evidence_support). Basis and denominator are in confidence_dims. null = no measured move to divide by (legacy payload)."
+          }
+        }
+      }
+    },
+    "patterns_meta": {
+      "type": "object",
+      "description": "P0-8: mandatory. An empty `patterns` list always has a reason, and coverage proves every flag is accounted for.",
+      "required": ["scope", "cross_game_suppressed", "reason", "coverage"],
+      "additionalProperties": false,
+      "properties": {
+        "scope": { "const": "single_game" },
+        "cross_game_suppressed": { "const": true },
+        "reason": { "type": "string", "minLength": 1 },
+        "detector_version": { "type": "string" },
+        "coverage": {
+          "type": "object",
+          "required": ["flagged", "matched", "unclassified"],
+          "additionalProperties": false,
+          "properties": {
+            "flagged": { "type": "integer", "minimum": 0 },
+            "matched": { "type": "integer", "minimum": 0 },
+            "unclassified": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "confidence_dims": {
+      "type": "object",
+      "description": "P0-4/2.3: mandatory. Names which confidence dimension is published so an LLM never reads an ordinal detector weight as a probability.",
+      "required": [
+        "kinds",
+        "published_kind",
+        "support_basis",
+        "behavioral_confidence",
+        "behavioral_confidence_reason",
+        "n_patterns"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kinds": {
+          "type": "array",
+          "items": { "enum": ["detection_strength", "evidence_support", "behavioral_confidence"] }
+        },
+        "published_kind": { "const": "detection_strength" },
+        "support_basis": { "const": "flagged_moves_in_game" },
+        "behavioral_confidence": { "const": null },
+        "behavioral_confidence_reason": { "const": "not_calibrated" },
+        "n_patterns": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "pipeline": {
+      "type": "object",
+      "description": "2.4: mandatory. Separates analysis completeness from coaching source. Without it, `status=degraded` with `use_llm=false` reads as 'the analysis failed' even when every measured ply is present.",
+      "required": ["analysis", "coaching", "llm_requested"],
+      "additionalProperties": false,
+      "properties": {
+        "analysis": { "enum": ["complete", "partial", "failed"] },
+        "coaching": {
+          "enum": ["llm", "deterministic_fallback", "data_only", "failed"],
+          "description": "Source of the published report: provider/MCP output, deterministic fallback, raw data dump, or a pipeline error."
+        },
+        "llm_requested": {
+          "type": "boolean",
+          "description": "False means the caller deliberately disabled LLM providers (offline ETL), not that every provider failed."
+        }
+      }
+    },
+    "unclassified": {
+      "type": "array",
+      "description": "P0-7 discovery feed: critical moments no pattern explains, ordered by ply. Omitted when empty; when present it lists exactly the flags with pstatus=unclassified.",
+      "items": {
+        "type": "object",
+        "required": ["ply", "class", "cp", "why"],
+        "additionalProperties": false,
+        "properties": {
+          "ply": { "type": "integer", "minimum": 1 },
+          "class": { "enum": ["blunder", "mistake", "inaccuracy"] },
+          "cp": { "type": "number" },
+          "why": {
+            "enum": [
+              "evidence_gap",
+              "quiet_positional",
+              "quiet_blunder",
+              "check_escape",
+              "forcing_move_unexplained",
+              "capture_unexplained",
+              "mechanism_not_identified",
+              "not_classified"
+            ]
+          }
+        }
+      }
+    },
+    "pv": {
+      "type": "object",
+      "description": "Optional. Map ply (string) -> principal variation SAN moves, max 3. Only for flagged plies with measured engine lines. A ply absent here but present in pv_unavailable has no PV for the stated reason.",
+      "additionalProperties": { "type": "array", "items": { "type": "string" }, "minItems": 1, "maxItems": 3 }
+    },
+    "pv_unavailable": {
+      "type": "object",
+      "description": "Optional. Map ply (string) -> reason why no PV exists for a blunder/mistake. Makes a data gap explicit (FIX-014).",
+      "additionalProperties": {
+        "enum": ["engine_timeout", "engine_error", "no_engine_lines", "engine_lines_empty", "retry_budget_exhausted", "no_fen"]
+      }
+    },
+    "pv_played": {
+      "type": "object",
+      "description": "D32/2.2: optional. Map ply (string) -> engine continuation AFTER the played move (max 3 SAN), taken from the same multipv search as `pv`. This is an engine line, not the opponent's actual reply, and it must never be narrated as one.",
+      "additionalProperties": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1, "maxItems": 3 }
+    },
+    "pv_played_unavailable": {
+      "type": "object",
+      "description": "D32/2.2: optional. Map ply (string) -> reason why no played-move continuation exists for a blunder/mistake. 'rank_not_in_engine_lines' = the played move was outside the multipv window; 'no_continuation' = the line stopped at the played move; 'no_engine_lines' = nothing was measured.",
+      "additionalProperties": {
+        "enum": ["no_engine_lines", "rank_not_in_engine_lines", "no_continuation"]
+      }
+    },
+    "clusters": {
+      "type": "array",
+      "description": "Optional. Runs of >= 3 flagged moves on consecutive own moves (plies step by 2), i.e. a likely time-pressure / attention cluster (CAND-F).",
+      "items": {
+        "type": "object",
+        "required": ["from", "to", "count", "total_cp", "plies"],
+        "additionalProperties": false,
+        "properties": {
+          "from": { "type": "integer", "minimum": 1 },
+          "to": { "type": "integer", "minimum": 1 },
+          "count": { "type": "integer", "minimum": 3 },
+          "total_cp": { "type": "number" },
+          "plies": {
+            "type": "array",
+            "minItems": 3,
+            "items": { "type": "integer", "minimum": 1 },
+            "description": "D32/2.2: the plies the run contains, ascending; length equals count, first equals from, last equals to."
+          }
+        }
+      }
+    },
+    "fen_before": {
+      "type": "object",
+      "description": "Optional. Map ply (string) -> FEN before the flagged move. Only for cp_loss > 100.",
+      "additionalProperties": { "type": "string" }
+    },
+    "report": {
+      "type": ["string", "null"],
+      "maxLength": 900,
+      "description": "Optional short deterministic summary. Never truncated mid-structure. Capped at 900 chars to keep the compact budget."
+    },
+    "llm": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["status", "provider"],
+      "properties": {
+        "status": { "enum": ["ok", "degraded", "failed"] },
+        "provider": { "type": "string" },
+        "reason": { "type": ["string", "null"] }
+      }
+    }
+  },
+  "$defs": {
+    "phase": {
+      "type": "array",
+      "description": "[acpl, flagged_count]; acpl is null when the phase had no measured moves.",
+      "minItems": 2,
+      "maxItems": 2,
+      "prefixItems": [
+        { "type": ["number", "null"], "minimum": 0 },
+        { "type": "integer", "minimum": 0 }
+      ],
+      "items": false
+    }
+  }
+}
