@@ -8,6 +8,21 @@ single-game pipeline, ne balíčku `0.1.0` (ten zůstává beze změny).
 > svůj obsah v git historii a unikátní fakta v `docs/01_EVIDENCE_DIGEST.md`.
 > Historické záznamy se mají číst jako dobové, nikoli jako živé odkazy.
 
+## [D23] - 2026-11-18
+
+Položka #6 roadmapy (T-16 / D23 `%clk`). Žádná změna schémat 2.8 / 1.2.
+
+- `services/game_analyzer.py:parse_clock_data()` parsuje `[%clk H:MM:SS]`
+  komentáře z PGN na `ply -> zbývající čas`; bez měření vrací
+  `{"status":"clock_data_unavailable"}` (nikdy odhad z time controlu).
+- `coaching_base.collect_single_game()` vkládá clock data do **interního**
+  coaching výsledku (ne do serializovaného detailed payloadu).
+- `prompt_builder` šablona 1 a deterministický report nyní obsahují
+  `Časová data (PGN %clk)` / `clock_data_unavailable` — LLM může mluvit o time
+  trouble jen z parsovaných dat (pravidlo 7 promptu).
+- 4 nové testy (`tests/test_clock_parser.py`); gates: pytest 563 passed,
+  Ruff clean, mypy 0/74.
+
 ## [2.8] - 2026-11-18
 
 Additive contract iteration over frozen 2.7 (author-approved bump). **No change

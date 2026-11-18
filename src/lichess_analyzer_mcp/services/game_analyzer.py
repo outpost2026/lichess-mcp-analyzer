@@ -86,6 +86,37 @@ def _ply_count_from_pgn(pgn: str) -> int:
         return 30
 
 
+def parse_clock_data(pgn: str) -> dict:
+    """D23/T-16: parse Lichess `[%clk H:MM:SS]` comments from a PGN.
+
+    Returns `{"status": "ok", "plies": {ply: remaining_clock}}` when at least
+    one clock was measured, otherwise `{"status": "clock_data_unavailable"}`.
+    No wall-clock guessing: time trouble may only be claimed from these values.
+    """
+    plies: dict[int, str] = {}
+    try:
+        import chess.pgn
+        import io
+
+        game = chess.pgn.read_game(io.StringIO(pgn))
+        if game is None:
+            return {"status": "clock_data_unavailable"}
+        node = game
+        ply = 0
+        while node.variations:
+            child = node.variation(0)
+            ply += 1
+            match = re.search(r"\[%clk\s+(\d{1,2}:\d{2}(?::\d{2})?)\]", child.comment or "")
+            if match:
+                plies[ply] = match.group(1)
+            node = child  # type: ignore[assignment]
+    except Exception:
+        return {"status": "clock_data_unavailable"}
+    if not plies:
+        return {"status": "clock_data_unavailable"}
+    return {"status": "ok", "plies": plies}
+
+
 def _sanitize_id(raw: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_-]", "", raw)
 

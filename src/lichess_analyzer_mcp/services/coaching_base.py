@@ -120,9 +120,18 @@ def collect_single_game(
         deadline_s=deadline_s,
         mode=mode,
     )
+    analysis_dict = analysis.to_dict() if analysis else {}
+    # D23/T-16: clock facts come from PGN comments only. This lives in the
+    # internal coaching result, not in the serialized detailed 1.2 payload.
+    try:
+        from lichess_analyzer_mcp.services.game_analyzer import parse_clock_data
+
+        analysis_dict["clock_data"] = parse_clock_data(pgn)
+    except Exception:
+        analysis_dict["clock_data"] = {"status": "clock_data_unavailable"}
     result = {
         "game_id": game_id,
-        "analysis": analysis.to_dict() if analysis else {},
+        "analysis": analysis_dict,
         "depth": depth,
         "color": color,
         "timings": {"io_s": round(io_s, 3)},

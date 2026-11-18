@@ -10,6 +10,7 @@ PROMPT_TEMPLATES: dict[int, str] = {
 K DISPOZICI:
 - Výsledek: {result}, barva: {color}, zahájení: {opening}
 - Time control: {time_control}, Rating: {player_rating} vs {opponent_rating}
+- Časová data (PGN %clk): {clock_data}
 - Celková ACPL: {acpl}
 - Počet chyb: {blunders_count} blunderů, {mistakes_count} chyb, {inaccuracies_count} nepřesností
 - Blundry (s detaily): {blunders_list}

@@ -150,6 +150,9 @@ def generate_ide_report(prompt: str, system_prompt: str = "") -> tuple[str, dict
         lines.append(f"- Blunderů: {blunder_count} — detaily v datech níže.")
     else:
         lines.append("- Žádný blunder — chyby jsou nepřesnosti/mistakes, viz ACPL per fáze.")
+    clock_m = re.search(r"Časová data[^\n]*: ([^\n]+)", prompt, re.I)
+    if clock_m:
+        lines.append(f"- Časová data: {clock_m.group(1).strip()}")
     if phase_line:
         # FIX-021: the phase breakdown already separates weak phases from clean
         # ones ("... | čisté fáze: opening"). A clean phase must never be

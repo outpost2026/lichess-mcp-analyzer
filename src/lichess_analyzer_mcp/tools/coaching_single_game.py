@@ -581,6 +581,17 @@ async def build_response(
     inacc_list = _move_lines(analysis.get("inaccuracies", []))
     bfs_raw = analysis.get("blunder_fact_sheets", [])
 
+    clock_data = analysis.get("clock_data") or {"status": "clock_data_unavailable"}
+    if clock_data.get("status") == "ok":
+        clock_plies = clock_data.get("plies") or {}
+        clock_text = "; ".join(
+            f"ply {ply} {value}" for ply, value in sorted(clock_plies.items())[:12]
+        )
+        if len(clock_plies) > 12:
+            clock_text += f"; +{len(clock_plies) - 12} dalších"
+    else:
+        clock_text = "clock_data_unavailable"
+
     prompt_data = {
         "game_id": game_id,
         "color": detected_color,
@@ -599,6 +610,7 @@ async def build_response(
         "unclassified_json": json.dumps(unclassified, ensure_ascii=False, indent=2),
         "bfs_json": json.dumps(bfs_raw, ensure_ascii=False, indent=2)[:2000],
         "time_control": game_info.get("time_control", "?"),
+        "clock_data": clock_text,
         "player_rating": game_info.get("player_rating", "?"),
         "opponent_rating": game_info.get("opponent_rating", "?"),
     }
