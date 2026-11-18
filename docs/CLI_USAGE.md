@@ -34,7 +34,7 @@ Ověření, že server i tools jsou dostupné:
 ## 1. Jednotný CLI: `scripts/coach.py`
 
 Jeden vstupní bod pro všechny reálné workflow. **Výchozí výstup je compact
-JSON 2.1** (schema `schemas/single_game_v2_compact.json`); detailed 1.2 je
+JSON 2.7** (schema `schemas/single_game_v2_compact_2.7.json`); detailed 1.2 je
 opt-in přes `--format detailed`. **Výchozí rozsah jsou obě barvy** (D24):
 jedna hra = jeden JSON s oběma perspektivami, klíčovaný `{"white": …, "black": …}`.
 
@@ -147,7 +147,7 @@ TC, datum, URL, zahájení), `flagged_moves` (včetně `fen_before`,
 `game_impact`, `mate_after`, `mate_missed`/`mate_via` a
 `pv_played`/`pv_played_unavailable`, `cp_loss_basis`/`eval_source`), `patterns`,
 `report`, `engine` (politika) a `timings` (včetně `llm_skipped` /
-`llm_skip_reason`). Od [2.7] nese `game_impact` i compact 2.7 (D35). Od [2.8]
+`llm_skip_reason`). Od [2.2] nese `game_impact` i compact (D35). Od [2.8]
 nese detailed `analysis.run_id` (otisk politiky) a `analysis.eval_provenance`
 (počet měřených tahů, `anchor_coverage`, rozdělení podle basis/source). Od [2.9]
 nese detailed `analysis.confidence_dimensions` a každý pattern tři dimenze
@@ -249,7 +249,7 @@ Poznámky k jednotlivým toolům:
 - `lichess_import_pgn` s dlouhým PGN: použij `ConvertTo-Json -Compress` jako
   v příkladu výše, ať zůstane platný JSON.
 
-## 3. Kompaktní JSON 2.4 (ETL bez LLM)
+## 3. Kompaktní JSON (ETL bez LLM) — odkaz na kontrakt
 
 Compact 2.7 je **výchozí** výstup `coach.py`. Sekce výše pokrývá všechny
 případy; zde jen minimální příklady a rozdíly.
@@ -269,11 +269,11 @@ případy; zde jen minimální příklady a rozdíly.
 `--game-id`, `--pgn-file`, `--color`, `--depth`, `--nodes-cap`, `--mode`,
 `--out`, `--no-cache` zůstávají. Nové skripty piš proti `coach.py`.
 
-Výstup se validuje proti `schemas/single_game_v2_compact.json`. Detaily,
-null/omission politika a prompt pro LLM: `docs/COMPACT_JSON_FOR_LLM.md`.
+Výstup se validuje proti `schemas/single_game_v2_compact_2.7.json`. Detaily,
+null/omission politika a prompt pro LLM: `docs/COMPACT_JSON_FOR_LLM.md` (kanonický runtime kontrakt).
 
 MCP tool `lichess_coaching_single_game` umí totéž přes `output_format`:
-`compact` (výchozí, 2.1), `detailed` (kontrakt 1.2), `both`;
+`compact` (výchozí, 2.7), `detailed` (kontrakt 1.2), `both`;
 `full` je deprecated alias pro `detailed`.
 
 ## 4. Determinismus a cache

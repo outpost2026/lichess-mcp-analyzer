@@ -1,8 +1,8 @@
-# Compact JSON 2.3 - guide for an LLM agent
+# Compact JSON 2.7 - guide for an LLM agent
 
 Compact JSON is the hand-off format between this pipeline and an LLM. It is
 produced **offline** (no LLM at ETL time) and contains only what a coaching
-answer needs. Schema: `schemas/single_game_v2_compact.json`.
+answer needs. Schema: `schemas/single_game_v2_compact_2.7.json` (2.6 is still read for backward compatibility).
 
 It is the **default** output. Schema 1.2 (detailed) is opt-in via
 `--format detailed` and exists for debugging and cross-game work.
@@ -94,7 +94,7 @@ Therefore:
 - never compare `bcp` of a White move with one of a Black move as if they
   shared a direction — they do not.
 
-The legacy aliases `eval_before` / `eval_after` were removed in 2.5, and the non-anchor `eval_before_mover_cp` in 2.7 (P1-2/C-1);
+The legacy aliases `eval_before` / `eval_after` were removed in 2.5, and the non-anchor `eval_before_mover_cp` in 2.6 (P1-2/C-1; see SESSION_HANDOFF §2 and CHANGELOG [2.14]);
 the validator still reads 2.4 files that contain them. A White-POV timeline is
 a different artifact (`game_full` 1.0, Tier 3 in
 `AUDIT_INTEGRATION_2026-11-13.md`).

@@ -18,12 +18,12 @@ změny_1_7: Tier 3 hotov — `game_full` 1.0 implementován (`services/timeline.
 
 1. Pattern není „zajímavý tah“. Pattern je **podmínka na pozici a rozhodnutí**, která má (a) měřený support, (b) měřený kontrast proti dobrým tahům, (c) stabilitu, (d) deterministickou detekci a (e) kalibrovanou sílu. Bez (b) se jedná o popis, ne o pattern.
 2. Discovery není hledání nových ID. Discovery je **falsifikační loop**: kandidát → měření na pojmenovaných univerzech (§2.1) → FP strop → taxonomie → implementační gate → monitoring. Většina kandidátů má skončit zamítnuta; to je úspěch procesu, ne selhání.
-3. Současný systém má **15 definic v baseline knihovně** (A, B, C, G, I, I2, J, N, O, P, Q, Q1, Q2, R, S) a **6 per-move eventů** (B, C, J, R, S, T); B/C/J/R/S jsou sdílené, T je pouze per-move. Z 15 definic má **14 automatický detektor**; `I` (bait trap) je záměrně `manual_only` koncept a v runtime se nevydává. Per-move eventy nejsou patterny v cross-game smyslu: nemají jmenovatel ani kontrast.
+3. Současný systém má **17 definic v baseline knihovně** (A, B, C, G, I, I2, J, N, O, P, Q, Q1, Q2, R, S, U, V) a **8 per-move eventů** (B, C, J, R, S, T, U, V); B/C/J/R/S jsou sdílené, T/U/V jsou per-move. Z 17 definic má **16 automatických detektorů**; `I` (bait trap) je záměrně `manual_only` koncept a v runtime se nevydává. U/V byly přidány, protože Q1/Q2 jsou obsazené (D13, viz `SESSION_HANDOFF_2026-11-17.md` §1–2). Per-move eventy nejsou patterny v cross-game smyslu: nemají jmenovatel ani kontrast.
 4. Měřené pokrytí na cache (259 dedup her, 2137 flagged tahů): **375 matched (17,5 %), 1762 unclassified (82,5 %)**. To není bug, to je kalibrovaná hranice znalosti. Nízké pokrytí je cenou za to, že si systém nevymýšlí mechanismus.
 5. Originalita je **v kombinaci kontraktů**, ne v algoritmech. Jednotlivé komponenty (frekvence, lift, MDL, conformance, motif discovery) mají prior art. Kombinace „explicitní unclassified + FP strop na dobrých tazích + dual single/cross-game kontrakt + deterministická evidence chain“ v publikovaných chess nástrojích doložena není (P~0,75; absence důkazu, ne důkaz absence).
 6. Efektivita: **vysoká explanační, nízká discovery výtěžnost, neprokázaná diskriminační validita**. `compressibility_validator` je od 2026-11-13 **coverage validator** (`coverage_score`, `support`), ne MDL; `confidence` je jen alias `strength` a nikde se nečte jako pravděpodobnost. Skutečná dvoučlenná MDL je od 2026-11-13 implementovaná v měřicí vrstvě (§11.1); kalibrace zůstává P2.
 7. Stabilita je od 2026-11-13 **měřená, ne tvrzená**: split-half s deterministickým hashem a časový drift na chronologických polovinách (§5.5). `unstable` je příznak k prošetření, ne verdikt; když není co testovat, je `null`, nikdy `false`.
-8. Hranice produktu je od 2026-11-13 explicitní: **single-game vrstva vydává eventy jedné perspektivy** (detailed 1.2 / compact 2.1), **cross-game vrstva vydává patterny** (schema 1.4). Celopartiová timeline a dva pohledy jsou nový artefakt `game_full` 1.0, ne rozšíření 1.2/2.1 (§1.1.1, §11.7, §12.2).
+8. Hranice produktu je od 2026-11-13 explicitní: **single-game vrstva vydává eventy jedné perspektivy** (detailed 1.2 / compact 2.7), **cross-game vrstva vydává patterny** (schema 1.4). Celopartiová timeline a dva pohledy jsou nový artefakt `game_full` 1.0, ne rozšíření 1.2/2.7 (§1.1.1, §11.7, §12.2).
 
 ---
 
@@ -48,7 +48,7 @@ Audit 2026-11-13 ukázal, že „pattern“ a „celá partie“ nejsou totéž.
 | **Player Behavior Analysis** | které chyby a mechanismy se u hráče opakují napříč hrami | pattern (E2–E3) | cross-game schema 1.4 | jedna barva hráče |
 | **Full Game Dynamics** | jak se v jedné partii vyvíjela interakce obou hráčů | event + timeline | `game_full` 1.0 (implementováno 2026-11-14; `interaction` events ne) | obě, oddělené |
 
-Single-game výstup dnes nese **eventy jedné perspektivy** (detailed 1.2 / compact 2.1). Cross-game výstup nese **patterny** (schema 1.4). `game_full` je nový aditivní artefakt, který obě schopnosti propojí, ale nesmí je slít: perspektivy zůstávají oddělené a do cohortu nikdy nevstupují obě (§11.7, D8 v `AUDIT_INTEGRATION_2026-11-13.md`).
+Single-game výstup dnes nese **eventy jedné perspektivy** (detailed 1.2 / compact 2.7). Cross-game výstup nese **patterny** (schema 1.4). `game_full` je nový aditivní artefakt, který obě schopnosti propojí, ale nesmí je slít: perspektivy zůstávají oddělené a do cohortu nikdy nevstupují obě (§11.7, D8 v `AUDIT_INTEGRATION_2026-11-13.md`).
 
 ### 1.2 Co pattern není
 

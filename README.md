@@ -153,7 +153,7 @@ Per-blunder struktura s:
 - `engine_lines` (rank, move_san, eval_cp, win_prob, PV)
 - `played_move_rank`, `pattern_matches` (pattern_id, name, confidence, evidence)
 - `context_window` (3 tahy před/po s eval + win_prob)
-- `detector_version`: `DBCL-20261111-dev`
+- `detector_version`: `DBCL-20261117-dev`
 
 ### Narrative validator (`services/narrative_validator.py`)
 
@@ -278,7 +278,7 @@ Server se připojí přes stdio. Pro opencode ho registruj v `opencode.jsonc`:
 ### 5. Nebo použít CLI pipeline
 
 ```
-# Jedna hra -> compact JSON 2.1 (výchozí, offline)
+# Jedna hra -> compact JSON 2.7 (výchozí, offline)
 uv run python scripts\coach.py --game-id FVhqtv1S --username systeq --no-llm --out data\reports\FVhqtv1S.json
 
 # Explicitně schema 1.2, nebo oba tvary
@@ -473,19 +473,19 @@ lichess-analyzer-mcp/
 
 | Co | Stav |
 |---|------|
-| Testy (fast) | **254/254 pass** (`pytest -q`, 7,7 s; default vylučuje `real_engine`) |
-| Testy (real engine) | **15/15 pass** (`pytest -m real_engine`, 12,8 s); GREEN — deterministické díky `clear_hash()` ve fixture |
+| Testy (fast) | **536 passed** (`pytest -q`; default vylučuje `real_engine`; stav [2.15]/[2.16]) |
+| Testy (real engine) | **18 passed** (`pytest -m real_engine`, pinned Stockfish 18); GREEN — deterministické díky `clear_hash()` ve fixture |
 | MCP toolů | **18** (12 data + 5 coaching + `lichess_persist_report`) |
 | v4 / push | `7ce7f61` na `origin/main`; dokumentační změny lokálně, push jen na pokyn |
 | Single-game pipeline | **v4 hotová**: FIX-027 (mate), FIX-023 (containment v compactu; root fix pending), FIX-021 (slabé/čisté fáze), FIX-028 (cache refresh) |
-| Výchozí výstup | compact JSON 2.1; detailed 1.2 opt-in (`--format detailed`) |
+| Výchozí výstup | compact JSON 2.7; detailed 1.2 opt-in (`--format detailed`) |
 | Regresní compact | `FVhqtv1S` 4377, `WpQOkpc0` 2270, `bRBSphxo` (černý) 2342 znaků; limit 4500 pro FV |
 | Cache-hit overhead | 0,28–0,45 s steady state; první hit po upgradu až ~1,56 s (FIX-028 warm-up) |
 | Engine / cache | Stockfish depth 14, cache `d14n150000` |
 | CI ruff | **GREEN** (`uvx ruff check src/ tests/`, ruff 0.17.4, select E4/E7/E9/F) |
-| CI mypy | **RED** — 76 chyb/16 souborů (mypy 2.3.0, `python -m mypy src`; po P0-3 beze změny = 0 nových); gate dlouhodobě neprochází, CI pytest krok je za ním |
-| CI pytest | lokálně fast **254/254** + engine **15/15**; v CI je krok za RED mypy gate a `addopts` engine sadu vylučuje (rozhodnutí o engine kroku = D6) |
-| Patterny | 14 definovaných (A–S, I→I2), 13 aktivních detektorů + I manual_only |
+| CI mypy | **GREEN** — 0 chyb / 74 souborů (`python -m mypy src`; stav [2.16]) |
+| CI pytest | fast/engine split, pin SF18, `--strict-markers`; fast **536**, engine **18**; `addopts` engine sadu vylučuje (D6) |
+| Patterny | 17 definic (A–S + U/V), 16 detektorů + I manual_only (SESSION_HANDOFF §1) |
 | Dokumentace | `README.md` aktuální; `README_en.md` a `docs/CONTEXT_INJECT.md` zastaralé |
 
 ### Známé odchylky a technický dluh
