@@ -92,26 +92,40 @@ Hry: `RhkEoVUT`, `WxfSvX4y`, `0yeUi5EO`, `yXmiCYss`, `hJjXxxvq`
 - Chybějící `pv_played_unavailable`: 10/10 → 0/10 souborů.
 - Pattern C: `yXmiCYss` white freq 4, `hJjXxxvq` black freq 5.
 - Delta compactu 2.7 oproti 2.6: **+50 až +232 znaků** (limit +300).
-- Gates: pytest **536 passed**, Ruff clean, mypy **74 souborů** clean,
-  engine job 18 passed s pinned `Stockfish 18`.
+- Gates: pytest **547 passed / 18 deselected**, Ruff clean, mypy **74 souborů** clean,
+  engine job 18 passed s pinned `Stockfish 18` (stav 2026-11-18 po review).
 
-## 5. Otevřené položky (nejsou implementované)
+## 5. Otevřené položky — REKALIBROVÁNO 2026-11-18
 
-Z handoffu 2.7 (§6, pořadí):
+Generální code review + sémantická revize plánů rozdělila původní seznam z handoffu 2.7
+na (a) aktivní práci s acceptance criterion, (b) vyřešené/obsoletní, (c) aspirace.
+Podklady: `AUDIT_INTEGRATION` §6/§12, `PATTERN_DISCOVERY_METHODOLOGY` §11-§12,
+`01_EVIDENCE_DIGEST` §11, `CHANGELOG` [REVIEW 2026-11-18].
 
-1. **Vlna 2** — Q3 `endgame_king_activity_error`, Q4
-   `exchange_avoidance_at_pivot`, `paired_blunder`, rozdělení U na U1/U2.
-   Podmínka: cross-game validace na ≥3 hrách, `behavioral_confidence:
-   not_calibrated`.
-2. **Vlna 3** — `ph` per flag, `username: ""` v detailed, sjednocení
-   `llm.status` (`failed` vs `degraded`), `hash_mb` 64 vs 512 v dokumentaci,
-   threshold `fen 100` vs `eval_after 200`, diakritika v mitigacích.
-3. **GAMBIT vektor** — experimentální; depth 14 hodnotí gambitové tahy jako
-   chyby (`yXmiCYss` 3 `d4`, 5 `c3`).
-4. **Fáze 1 plánu** — SQLite, migrace, `analysis_runs`, `policy_fingerprint`
-   odděleně od DB `analysis_run_id`; žádný frontend dřív než source of truth.
-5. P1-3 (`internal_accuracy_score`) a P1-4 (`check_escape` jako pattern)
-   zůstávají nevyřešené — změna detailed 1.2 vyžaduje novou verzi kontraktu.
+### Aktivní roadmapa (pořadí dle EROI)
+
+| # | Položka | P | Acceptance criterion |
+|---|---|---|---|
+| 1 | Opravit decision/contract index: D13–D35 kanonicky v `AUDIT_INTEGRATION` §12 (hotovo 2026-11-18), sjednotit „current compact 2.7" ve všech aktivních docs | P0 | Každé D-id v HANDOFF/EVIDENCE/AUDIT má jednu status+autoritu; žádný aktivní soubor neříká, že 2.1 je current |
+| 2 | Sjednotit `llm.status` (`compact_serializer.py:67-68` vs `:430-431`) | P1 | `use_llm=false` = jeden deklarovaný status v compactu i detailed; auditor 8/8; při změně sémantiky nová verze schématu |
+| 3 | Opravit P0/P1 defekty z review: `report_persister.py:249` (špatné poziční argy → `opponent_pool` persist nefunguje), `engine_client.py:59` (h64/128 label vs reálných 512 MB → lživé `summary.src`), `game_analyzer.py:879` + `pv_recovery.py:109` (fabrikovaný `played_rank`), `srs_engine.py:38` (ztracený `retention_rate` po restartu), `diagnostician.py:68` („nejhorší zahájení" = nejhranější), `lichess-mcp.bat` (`-m src.server` neexistuje) | P1 | Každá oprava má regresní test; `persist_report(kind="opponent_pool")` projde; gates zelené |
+| 4 | Honest precision / pv_coverage blok (metodologie P2) | P1 | Report nese `precision` per position type a `pv_coverage` per pattern; žádná změna `strength`/`confidence`; regrese na 5-herním vzorku |
+| 5 | Wave 2 — **jeden** kandidát (Q3 *nebo* `paired_blunder`) za D4 gate | P2 | N≥30, lift≥1,4, ≥2 analýzy, FP strop publikován, `behavioral_confidence: not_calibrated`, bump `DETECTOR_VERSION`; pokles unclassified na ≥3 hrách bez ztráty precision |
+| 6 | D23/T-16 `%clk` parser — jen pokud #2 odhalí status, který jej použije | P2/P3 | `%clk` parsován per tah; `clock_data_unavailable` pouze při absenci; fixture pro oba případy |
+| 7 | D1 default phase mode — rozhodnout měřením nebo explicitně zamrazit na `ply_segment` | P3 | Jedno decision ID v AUDIT; dual-run R detektoru na 20 hrách bez změny klasifikace, nebo verzbump |
+
+### Vyřešené / obsoletní (odstraněno z aktivní práce)
+
+- `hash_mb` 64 vs 512 → adaptivní **h128/h256** (AUDIT §14 D40, CHANGELOG [2.13]).
+- threshold `fen 100` vs `eval_after 200` → **`QUIET_BLUNDER_CP = 200`** (D13, CHANGELOG [2.7]).
+- Wave 3 `ph` per flag → kosmetické; cena nové verze schématu > přínos (defer).
+- `username: ""` v detailed → jen pojmenovací konzistence (defer).
+
+### Aspirace — KEEP-AS-idea / DEFER / DROP
+
+- **DROP:** FSRS (RP §7 „rejected for now", CHANGELOG [2.10] P-04, `srs_engine.py` = SM-2-like); frontend/GUI (RP §7 non-goal).
+- **DEFER:** ELO ETL/bands (dual-perspektiva je absorbována v `coaching_opponent_pool`; ELO nemá ground truth); SQLite `analysis_runs` (pouze design, dokud neexistuje čtenář); T3.3 `interaction` events (bez measurement spec neprojde D4 gate); plná MDL kalibrace (MDL je měřicí vrstva, ne pravděpodobnost).
+- **NE:** R1/R2/R3 entropy modes, TOT třetí stav, nové nástroje `hsnr_extract`/`compare_sides`, detailed 1.3 jen kvůli odstranění `internal_accuracy_score`, SQLite migrace bez čtenáře, jakékoli „zvýšení matched na 50 %" uvolněním prahu (M §6: „Co NENÍ cíl").
 
 ## 6. Artifact index
 

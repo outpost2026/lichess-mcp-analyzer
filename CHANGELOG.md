@@ -8,6 +8,31 @@ single-game pipeline, ne balíčku `0.1.0` (ten zůstává beze změny).
 > svůj obsah v git historii a unikátní fakta v `docs/01_EVIDENCE_DIGEST.md`.
 > Historické záznamy se mají číst jako dobové, nikoli jako živé odkazy.
 
+## [REVIEW] - 2026-11-18
+
+Generální code review + sémantická/logická revize plánů po trimu. **Žádná změna
+runtime kódu v tomto záznamu** — review identifikuje defekty a rekalibruje plány;
+opravy kódu jsou v `SESSION_HANDOFF` §5 aktivní roadmapě (P1).
+
+- **Decision/contract autorita obnovena:** D13–D35 mají opět závazné znění v
+  `AUDIT_INTEGRATION` §12 (dříve jen odkaz do EVIDENCE_DIGEST, který odkazoval
+  zpět → kruhová reference). EVIDENCE_DIGEST §8 zůstává evidencí, ne autoritou.
+- `SESSION_HANDOFF` §5 rekalibrováno: 7 aktivních položek s acceptance criterion;
+  vyřešené/obsoletní (`hash_mb`, `fen 100`, `ph`) odděleny; aspirace rozděleny
+  na DROP (FSRS, frontend), DEFER (ELO ETL, SQLite, T3.3, MDL kalibrace) a NE.
+- Opraveny rozpory v aktivních docs: test count 536 → **547**, historický „compact
+  2.1" v AUDIT opatřen čtecí poznámkou (current = 2.7), `interaction` v D7 označen
+  jako neimplementovaný (T3.3), `QUIET_BLUNDER_CP = 200` (ne „fen 100").
+- **Hlavní review nálezy (kód, neopraveno v tomto záznamu):**
+  - `report_persister.py:249` špatné poziční argumenty → `persist_report(opponent_pool)` nefunguje (P0).
+  - `engine_client.py:59` + `game_analyzer.py:564,614` adaptivní hash zapsán do provenance, ale engine běžel na 512 MB → lživé `summary.src` (P1).
+  - `game_analyzer.py:879` + `pv_recovery.py:109` fabrikovaný `played_rank` (DATA-FABRICATION-001, P1).
+  - `srs_engine.py:38` ztracený `retention_rate` po restartu (P1); `diagnostician.py:68` „nejhorší zahájení" = nejhranější (P1).
+  - `llm.status` si v `compact_serializer.py:67-68` a `:430-431` odporuje (P1).
+  - `lichess-mcp.bat` volá neexistující `-m src.server`; `workspace_info.py` má zastaralý 10-tool fallback; `verify_engine_identity.py` důvěřuje neznámému binary.
+  - Testy: zastaralý `DBCL-20261111-dev` fixture, tautologické engine testy, vacuous KB path testy; `srs_engine`/`llm_client` bez testů.
+  - `verify_docs_trimming.py` neskenuje `src/tests/scripts` pro odkazy na archiv (P1 blind spot).
+
 ## [DOCS] - 2026-11-18
 
 Documentation trimming and root-state synchronization. **No payload, schema,

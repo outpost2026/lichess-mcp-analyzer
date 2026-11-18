@@ -9,6 +9,13 @@ změny_1_1: Tier 1-3 provedeny 2026-11-14; `game_full` 1.0 implementován a zdok
 účel: Zaznamenat, co z auditu 2026-11-13 platí, co bylo překlasifikováno a jak se tím mění plán. Nahrazuje dosavadní pořadí prací pro single-game větev; nemění cross-game kontrakty.
 ---
 
+> **Čtecí poznámka 2026-11-18 (review):** Tento dokument je dobový záznam rozhodnutí
+> ze 13.–17. 11. Níže se na některých místech objevuje „compact 2.1" jako tehdejší
+> kontext D9/D24/D35. **Current kontrakt je compact 2.7** (`SESSION_HANDOFF` §2,
+> `COMPACT_JSON_FOR_LLM.md`, `SUPPORTED_VERSIONS=("2.6","2.7")`). Stejně tak zmínka
+> o `interaction` v D7 (§5) je záměr: T3.3 zůstává neimplementováno (§6) a
+> `game_full` 1.0 jej neobsahuje. Závazné znění D13–D35 je v §12, D38–D40 v §14.
+
 ## 0. Účel a princip
 
 Audit z 2026-11-13 (HEAD `7e828b02`) tvrdí, že single-game pipeline analyzuje jen jednu barvu a že z toho plyne architektonická mezera. Tento dokument je **integrace auditu do kanonické pravdy**, ne jeho kopie:
@@ -283,11 +290,41 @@ Tato rozhodnutí jsou závazná a nemění se bez nového ID (`D6b` atd.).
 
 ---
 
-## 12. Historické integrace (2026-11-15) — přesunuto
+## 12. Rozhodnutí D13–D35 (historické integrace 2026-11-15) — KANON
 
-Integrace handoffu v1.2 -> v1.3, třetího auditu JSON výstupu a `WHIbVLXk`/compact 2.2
-je v `docs/01_EVIDENCE_DIGEST.md` §8 (D13-D35) a §3 (arithmetika). Původní znění
-zůstává v git historii před commitem `[DOCS] W3`. Závazné je §14 (D38-D40) výše.
+Toto je **závazné znění** decision ID D13–D35. Podrobná motivace a naměřené podklady
+jsou v `docs/01_EVIDENCE_DIGEST.md` §8 a v git historii před `[DOCS] W3`. Stav D36–D40
+je v §14. Žádné rozhodnutí níže není nahrazováno EVIDENCE_DIGESTem — ten je pouze
+evidence, ne autorita.
+
+| ID | Rozhodnutí |
+|---|---|
+| **D13** | Tichý posun + `cp>200` + bez motivu → `why=quiet_blunder` (aditivní enum), žádný nový pattern; Q1 = „Desperate Gambit Mode". |
+| **D14** | King escape v šachu → `why=check_escape`; J zůstává „blok, nikdy king move" (D11); kandidát na pattern až přes D4 gate. |
+| **D15** | `game_impact` aditivně v detailed 1.2, s matovými stavy a `mate_after`; práh ±100 cp. |
+| **D16** | P0-4/P0-5/P1-4 zamítnuty jako stale (compact 2.0); review sample nese `generated_by_commit` + `schema_v`. |
+| **D17** | Report publikuje `segment` i `chess_phase`; `phase_stats` = `effective_phase`, nikoli deprecated. |
+| **D18** | P1-1/2/3 jen dokumentace aliasů; jediná změna = jednotka `confidence` (0–1 vs 0–100). |
+| **D19** | Full emituje `endgame.not_reached`. |
+| **D20** | P1-6 sloučen do T-10 (jeden predikát C, jeden bump). |
+| **D21** | Median ACPL při `max/median > 10` (report-only). |
+| **D22** | `opening_deviation` odloženo do doby měřitelné definice. |
+| **D23** | Parser `%clk` + `clock` per move podle D10a (T-16); do té doby `clock_data_unavailable`. **Dosud neimplementováno.** |
+| **D24** | CLI barvy: `--color` > `--username` (detekce) > obě barvy v jednom JSON; `--color both` synonymum; `--format compact\|detailed\|both`; chyba = stderr + exit 1. D6a (MCP `both` = dvě volání) zůstává. |
+| **D25** | Detailed 1.2 dostává `flagged_moves[].fen_before` + blok `game` (jména, ratingy, TC, datum, URL, zahájení, výsledek); anonym = `""`, neznámý rating = `null`. |
+| **D26** | BUG-1/2 přijaty: detailed 1.2 `confidence` zpět 0–1 (= `strength`); schema 1.2 je autorita, ne `kb/schemas.py`. |
+| **D27** | `report_persister` normalizuje `confidence` podle `kind`, ne podle velikosti čísla. |
+| **D28** | BUG-5 přijat: `timings.llm_skipped` + `timings.llm_skip_reason`; deterministický fallback není pokus o providera. |
+| **D29** | `game_impact`: 9 přechodů + mrtvá zóna ±100 cp + 3 matové; střed = `equal` (ne `drawing`); `mate_after` = `for`/`against`. |
+| **D30** | BUG-3/4/6 odmítnuty: srovnatelný pár je `eval_before_mover_cp` vs `engine_lines[0]`; compact už nese `unclassified[]`; `eval_before` je záměrný alias 1.2. |
+| **D31** | `mate_missed` + `mate_via` v detailed 1.2 i compact 2.2; pravidlo `engine_lines[0].mate_in > 0` a `|eval_after| < 9000`. |
+| **D32** | `pv_played` + `pv_played_unavailable` (engine pokračování, ne soupeřova odpověď); `clusters[].plies`. |
+| **D33** | `accuracy_warning` / `summary.acc_warning` = `contains_mate_level_outlier`; lineární accuracy se nepřepočítává. |
+| **D34** | Deterministický report a prompt tisknou `game_impact` + `mate_missed`. |
+| **D35** | Compact **2.2** publikován; `flags[].game_impact` povinné (nullable); 2.1 zůstává zmrazený. |
+
+> **Poznámka k D13:** `quiet_blunder` platí až > 200 cp (`QUIET_BLUNDER_CP = 200` v kódu),
+> nikoli „fen 100". **D23** zůstává otevřené (viz `docs/01_EVIDENCE_DIGEST.md` §11).
 
 ## Appendix — jak nálezy znovu ověřit
 
