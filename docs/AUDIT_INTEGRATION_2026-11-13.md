@@ -4,8 +4,8 @@ date: 2026-11-14
 verze: 1.1
 status: ZÁVAZNÝ ROZHODOVACÍ ARTEFAKT
 audit_head: 7e828b02
-navaznost: PATTERN_DISCOVERY_METHODOLOGY.md (v1.7), GAME_FULL_1.0.md, REFACTOR_PLAN_2026-11-11.md, PLAN_SINGLE_GAME_CALIBRATION_2026-11-07.md, COMPACT_JSON_FOR_LLM.md, CANDIDATE_PATTERNS_2026-11-12.md
-změny_1_1: Tier 1-3 provedeny 2026-11-14; `game_full` 1.0 implementován a zdokumentován (`GAME_FULL_1.0.md`); T3.3 (interaction events) vědomě neimplementováno do measurement spec.
+navaznost: PATTERN_DISCOVERY_METHODOLOGY.md (v1.7), COMPACT_JSON_FOR_LLM.md (v2.7), SESSION_HANDOFF_2026-11-17.md, 01_EVIDENCE_DIGEST.md, 00_DOCS_CONTRACT.md
+změny_1_1: Tier 1-3 provedeny 2026-11-14; `game_full` 1.0 implementován a zdokumentován (`COMPACT_JSON_FOR_LLM.md` Appendix A); T3.3 (interaction events) vědomě neimplementováno do measurement spec.
 účel: Zaznamenat, co z auditu 2026-11-13 platí, co bylo překlasifikováno a jak se tím mění plán. Nahrazuje dosavadní pořadí prací pro single-game větev; nemění cross-game kontrakty.
 ---
 
@@ -17,7 +17,7 @@ Audit z 2026-11-13 (HEAD `7e828b02`) tvrdí, že single-game pipeline analyzuje 
 - každé rozhodnutí má ID (`D6`–`D11`), aby se na něj dalo odkazovat z kódu, testů a dalších dokumentů;
 - každá změna plánu je explicitní; nic se nemění „mimochodem“.
 
-**Proč to vzniká:** dosavadní iterace (P1, P2 kroky A–C) vycházely z plánu `REFACTOR_PLAN_2026-11-11.md` a `PATTERN_DISCOVERY_METHODOLOGY.md`. Audit mění priority pro single-game větev. Bez jednoho rozhodovacího artefaktu by vznikly dvě pravdy: metodologie by dál mluvila jen o cross-game a kód by se měnil podle auditu. To je drift.
+**Proč to vzniká:** dosavadní iterace (P1, P2 kroky A–C) vycházely z plánu `01_EVIDENCE_DIGEST.md` §8 a `PATTERN_DISCOVERY_METHODOLOGY.md`. Audit mění priority pro single-game větev. Bez jednoho rozhodovacího artefaktu by vznikly dvě pravdy: metodologie by dál mluvila jen o cross-game a kód by se měnil podle auditu. To je drift.
 
 **Co tento dokument NENÍ:** není to nový audit, není to implementace a není to náhrada metodologie. Je to rozhodovací vrstva mezi auditem a kódem.
 
@@ -76,7 +76,7 @@ Audit míchá tři kategorie do jedné prioritní tabulky. Kanonické rozdělen�
 | Nález | Kde | Dopad | Zařazení |
 |---|---|---|---|
 | `_resolve_color` u remíz vrací `white` | `anonymous_session.py` | anonymní session může analyzovat špatnou barvu | Tier 2 — hotovo (T2.5) |
-| `max_time_dual: 1800` je mrtvá konfigurace | `config/depth.py`; nikdo ji nečte | dual analýza běží bez stropu | Tier 3.0 — hotovo (klíč smazán, strop nemá měřené opodstatnění) |
+| `max_time_dual: 1800` je mrtvá konfigurace | `src/lichess_analyzer_mcp/config/depth.py`; nikdo ji nečte | dual analýza běží bez stropu | Tier 3.0 — hotovo (klíč smazán, strop nemá měřené opodstatnění) |
 | `unanalyzed_plies` eviduje jen plies hráče | `_run_analyze_pgn` | „partial“ kontrakt pro timeline nejde naplnit | Tier 3.4 — hotovo v `game_full` (union obou stran); single-game payload zůstává jednoperspektivní |
 | `T` má hardcoded `50`, ostatní prahy jsou `THRESHOLD_*` | `pattern_detector.per_move_patterns` | nekonzistence s konvencí | Tier 2 — hotovo (`THRESHOLD_TACTICAL_SHAPED_CP`) |
 | `cp_loss` není rekonstruovatelný z publikovaných polí | `engine_client.evaluate_move` vs `coaching_single_game` | čtenář dopočítá jinou ztrátu, než je publikovaná (iAIWvqPo ply 62: 948 / 161 / 697, naive 787) | Tier 3.5 — hotovo (D12, `best_eval_mover_cp`) |
@@ -212,15 +212,15 @@ Pořadí je závazné. Tier 1 nesmí být přeskočen, protože produkuje špatn
 | Dokument | Nový status | Co platí |
 |---|---|---|
 | `PATTERN_DISCOVERY_METHODOLOGY.md` | v1.6, závazný pro discovery | doplněna hranice single/cross-game, §11.7, §12.2 |
-| `REFACTOR_PLAN_2026-11-11.md` | historický pro Fázi 1+; Fáze 0 hotová | roadmapu single-game větve řídí tento dokument |
-| `PLAN_SINGLE_GAME_CALIBRATION_2026-11-07.md` | implementováno, kontrakt 1.2 zmrazen | poznámky k `moves_total` a eval POV |
+| `01_EVIDENCE_DIGEST.md` §8 | historický pro Fázi 1+; Fáze 0 hotová | roadmapu single-game větve řídí tento dokument |
+| `01_EVIDENCE_DIGEST.md` §3 | implementováno, kontrakt 1.2 zmrazen | poznámky k `moves_total` a eval POV |
 | `COMPACT_JSON_FOR_LLM.md` | závazný pro compact 2.1 | doplněna definice POV a jednoperspektivnosti |
 | `CLI_USAGE.md` | závazný pro CLI | opraveny verze 2.1/1.2; `both` + `username` vyřešeno v T1.2 (username se v `both` nepředává); `--format game-full` (T3.2) |
-| `GAME_FULL_1.0.md` | závazný pro `game_full` 1.0 | White POV, `mover_color`, partial kontrakt, co artefakt nedělá (T3.3) |
-| `CANDIDATE_PATTERNS_2026-11-12.md` | závazný measurement appendix | §8.5 potvrzeno auditem; merge vrstva hotová (T3.1), plnění `context_window` je další krok |
-| `CHESS_COACHING_PROMPT_TEMPLATES.md` | design reference | runtime prompt = `prompt_builder.py`; runtime text změněn v T2.3 (design doc jen odkazuje) |
-| `REPORT_STAV_2026-11-11.md` | historický snapshot | nemá se aktualizovat; jen banner |
-| `DEEP_DIVE_SINGLE_GAME_PATTERNS_2026-08-02.md` | historický | — |
+| `COMPACT_JSON_FOR_LLM.md` Appendix A | závazný pro `game_full` 1.0 | White POV, `mover_color`, partial kontrakt, co artefakt nedělá (T3.3) |
+| `01_EVIDENCE_DIGEST.md` §5-§7 | závazný measurement appendix | §8.5 potvrzeno auditem; merge vrstva hotová (T3.1), plnění `context_window` je další krok |
+| `services/prompt_builder.py` | design reference | runtime prompt = `prompt_builder.py`; runtime text změněn v T2.3 (design doc jen odkazuje) |
+| `01_EVIDENCE_DIGEST.md` §8 | historický snapshot | nemá se aktualizovat; jen banner |
+| `01_EVIDENCE_DIGEST.md` §7 | historický | — |
 | `AUDIT_REPORT_lichess-analyzer-mcp_v1/v2.md` | historické audity | — |
 
 ---

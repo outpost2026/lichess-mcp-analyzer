@@ -75,7 +75,7 @@ Compact 2.7 is **single-perspective**: every `flags[]` entry, `summary.acpl`,
 `summary.phases`, `patterns[]` and `clusters` describe the moves of the colour
 in `game.color` (always `white` or `black`). Opponent moves are not part of the
 payload. A full-game view is a different artifact (`game_full` 1.0, implemented
-2026-11-14 - see `GAME_FULL_1.0.md`), not an extension of compact 2.7.
+2026-11-14 - see `COMPACT_JSON_FOR_LLM.md` Appendix A), not an extension of compact 2.7.
 
 **Eval POV:** `bcp` and `eval_after_mover_cp` are both from the **mover's**
 point of view — the player who made the flagged move. `eval_after_mover_cp`
@@ -368,7 +368,7 @@ CLI convenience: two explicit calls keyed by colour (D24).
 
 ## Appendix A — `game_full` 1.0 (merged timeline obou barev)
 
-Původně samostatný `docs/GAME_FULL_1.0.md` (vtěleno ve W3). Závazné rozhodnutí D7a
+Původně samostatný `COMPACT_JSON_FOR_LLM.md` Appendix A (vtěleno ve W3). Závazné rozhodnutí D7a
 viz `AUDIT_INTEGRATION_2026-11-13.md`. Kód: `src/lichess_analyzer_mcp/services/timeline.py`;
 schema: `schemas/game_full_v1.0.json`; CLI: `scripts/coach.py --format game-full`.
 

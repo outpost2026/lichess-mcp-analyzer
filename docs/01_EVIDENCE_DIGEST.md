@@ -102,7 +102,7 @@
 | Coverage | 375 matched (17,5 %) / 1762 unclassified (82,5 %); 1523 / 148 / 91; blunder matched 124/220 (56,4 %); PV 276/2137 (12,9 %) | `CANDIDATE_PATTERNS` L351–352; `README` L565–571; `PATTERN_DISCOVERY` L313–321 |
 | Depth empirie | d12 29/58 s; d14 42/84 s; d18 4,9/9,8 min; d22 16,7/33,4 min; d=14 dává 95 % stejné klasifikace jako d=22 za 1/25 času | `DEPTH_POLICY.md` L88–100 |
 | Depth scaling | `time(d) ≈ time(14) × 1,52^(d−14)`; d>20 odmítnuto (16,7 min > 15 min limit) | `depth_diff_report_NktJfZZy.md` L91, L105–125 |
-| Konfigurace měření | 6 threads / Hash 512 / Stockfish 18 / i7-12700K / commit `89a0bf2`; **runtime truth je `config/depth.py`**, nikoli `DEPTH_POLICY` §4.3 (`max_time_dual` smazán T3.0) | `depth_diff_report` L10–40; `SESSION_HANDOFF` §2 |
+| Konfigurace měření | 6 threads / Hash 512 / Stockfish 18 / i7-12700K / commit `89a0bf2`; **runtime truth je `src/lichess_analyzer_mcp/config/depth.py`**, nikoli `DEPTH_POLICY` §4.3 (`max_time_dual` smazán T3.0) | `depth_diff_report` L10–40; `SESSION_HANDOFF` §2 |
 | Eval provenance | 101/7231 (1,4 %), 101/2010 (5,0 %), 228 blunderů, 98 (43,0 %), median 384; `FVhqtv1S` ply 89 cached 237 / fresh 168 | `REFACTOR_PLAN` L198, L554–572; `REPORT_STAV` L95, L105 |
 | N-03 anchor gap | **97,8 %** tahů bez `best_eval` — 318 souborů, 9 412 tahů, 9 208 bez `best_eval` | `HANDOFF_V1_3_INTEGRATION_2026-11-15.md` L87–88 |
 | `patterns: []` v single-game | **Není bug** — `min_games=3` gate (`pattern_detector.py:39`); N=1 confidence ceiling 25 ply→0,60 / 60→0,75 / 90→0,88; dual cache existuje, ale coaching je jednoperspektivní | `DEEP_DIVE_SINGLE_GAME_PATTERNS_2026-08-02.md` L17, L21, L36–43, L66–71, L104, L135–140 |

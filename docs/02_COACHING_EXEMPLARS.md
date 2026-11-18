@@ -4,6 +4,7 @@
 **Účel:** Nahradit 23 `coaching_report_*.md` + 4 opponent dokumenty + 3 pipeline logy (234 KB) jedním souborem (~28 KB) se zachováním všech unikátních technik a měření.
 
 > **DATA-FABRICATION-001 (AGENTS.md §6):** Zdroj pravdy je deterministická vrstva — `data/reports/*.json` a `data/game_cache/{game_id}_{color}_d{...}.json`. Každá `.md` narace níže je **odvozená**. Konkrétní číslo používej jen s ověřením proti JSON/cache. Ostatních ~30 reportů je v `_ARCHIVE/` (P84–P89 soft-delete přes `git mv`).
+> **Historické `data/` cesty níže:** `data/` je gitignored a regenerovatelné; některé soubory v working tree po trimu 2026-11-18 chybí. Chápej je jako provenance (game_id + depth), ne jako živý odkaz.
 
 ---
 

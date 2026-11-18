@@ -54,7 +54,7 @@ Single-game výstup dnes nese **eventy jedné perspektivy** (detailed 1.2 / comp
 
 - Není to engine label (`blunder`, `mistake`, `inaccuracy`). Label je vstup, ne výstup.
 - Není to jednorázová anomálie (viz `Z` — evidence gap).
-- Není to LLM hypotéza bez měření (§6 v `CANDIDATE_PATTERNS_2026-11-12.md` je explicitně označena jako offline, ne runtime).
+- Není to LLM hypotéza bez měření (§6 v `01_EVIDENCE_DIGEST.md` je explicitně označena jako offline, ne runtime).
 - Není to nový pattern ID bez taxonomie a FP kalibrace (rozhodnutí D4).
 
 ### 1.3 Proč je to doménově agnostické
@@ -93,7 +93,7 @@ Pravidla, která z toho plynou:
 
 Každé měření musí publikovat `n_moves`, `n_games` a `dataset_sha256` (kanonický hash složení datasetu z `services/provenance.py`). Bez těchto tří hodnot není číslo reprodukovatelné: stejný lift na jiném datasetu je jiné tvrzení. Engine hloubka **není** součástí `dataset_sha256` — patří k analysis payloadu, ne k identitě datasetu.
 
-Referenční naměřené hodnoty a jejich definice jsou v `docs/CANDIDATE_PATTERNS_2026-11-12.md` §1–2 (měřicí appendix této metodologie).
+Referenční naměřené hodnoty a jejich definice jsou v `docs/01_EVIDENCE_DIGEST.md` §1–2 (měřicí appendix této metodologie).
 
 ### 2.2 Veličiny
 
@@ -120,8 +120,8 @@ Bez `good_moves_control` nelze odlišit „pattern“ od „běžná vlastnost p
 | Kontrast | `lift >= 1.4` | GT-070 / P54 |
 | Nezávislé analýzy | `>= 2` | GT-070 / P54 |
 | FP strop na `good_moves_control` | musí být změřen a uveden | D4 |
-| Taxonomie mechanismu | F1-F8/Z | `CANDIDATE_PATTERNS_2026-11-12.md` §4 |
-| Deterministická detekce | bez LLM v runtime | REFACTOR_PLAN |
+| Taxonomie mechanismu | F1-F8/Z | `01_EVIDENCE_DIGEST.md` §4 |
+| Deterministická detekce | bez LLM v runtime | `01_EVIDENCE_DIGEST.md` §8 |
 
 **Důležité rozlišení:** těchto `N >= 30` se týká **admission gate pro nové patterny**, ne runtime detekce. Runtime cross-game detektory mají `min_games = 3` a `min_occurrences = 2` (`models/pattern.py:55-56`). To je záměrné: runtime má vysoký recall, admission má vysokou precision. Obě hranice se nesmí zaměňovat.
 
@@ -179,7 +179,7 @@ Discovery je osmi-krokový deterministický proces. Každý krok má vstup, výs
 
 ### 3.1 Proč je krok 5 nekompromisní
 
-Příklad z reálných dat (`CANDIDATE_PATTERNS_2026-11-12.md` §5):
+Příklad z reálných dat (`01_EVIDENCE_DIGEST.md` §5):
 
 | Kandidát | rate_flagged | rate_good | Lift | Verdikt |
 |---|---|---|---|---|
@@ -205,7 +205,7 @@ Pokud discovery loop generuje mnoho nových patternů, je to signál, že gate j
 | **Single-game** | `scan_single_game()` | jedna `GameAnalysis` | flags + `by_ply` + `unclassified` | `scope=single_game` |
 | **Cross-game** | `PatternDetector.detect_all()` | `list[GameAnalysis]` | `PatternMatch` | `min_games=3`, `min_occurrences=2` |
 
-Klíčové pravidlo (REFACTOR_PLAN §P0-2): **BFS a single-game musí volat stejnou implementaci**. `per_move_patterns()` je jediný zdroj pravdy pro B/J/R/S/C/T. Dva výstupy jedné pipeline si nesmí odporovat.
+Klíčové pravidlo (`01_EVIDENCE_DIGEST.md` §8 §P0-2): **BFS a single-game musí volat stejnou implementaci**. `per_move_patterns()` je jediný zdroj pravdy pro B/J/R/S/C/T. Dva výstupy jedné pipeline si nesmí odporovat.
 
 Poznámka k pokrytí knihovny: `PatternLibrary` definuje 15 ID, ale `PatternDetector` má 14 `_detect_*` metod. Chybějící `I` není bug — je to `manual_only` koncept (bait trap), který nelze deterministicky detekovat bez inferenci záměru. `detect_all` ho proto tiše přeskakuje; to je správné chování, ale musí být dokumentované, aby nevznikl dojem, že pattern `I` je aktivní.
 
@@ -308,7 +308,7 @@ Proč ne Page-Hinkley: jeho dvě konstanty (`delta` tolerance, `lambda` alarm) n
 
 ## 6. Současný stav měření
 
-Dataset: 259 dedup her / 2137 flagged tahů (`all_moves_dedup` flagged subset). Čísla v této sekci jsou z jiného datasetu než měřicí appendix `CANDIDATE_PATTERNS_2026-11-12.md` (259 vs 282 analyzovaných souborů) — proto musí každý report nést `dataset_sha256` (§2.1.1).
+Dataset: 259 dedup her / 2137 flagged tahů (`all_moves_dedup` flagged subset). Čísla v této sekci jsou z jiného datasetu než měřicí appendix `01_EVIDENCE_DIGEST.md` (259 vs 282 analyzovaných souborů) — proto musí každý report nést `dataset_sha256` (§2.1.1).
 
 | Metrika | Hodnota | Interpretace |
 |---|---|---|
@@ -479,7 +479,7 @@ Interpretace, kterou report **nesmí** přeskočit:
 
 P1 je epistemická oprava, ne feature. Bez ní je každé další číslo nedůvěryhodné. P3 (sekvence) může bez P1 vyrobit více falešných patternů, ne lepší coaching.
 
-**Stav 2026-11-12:** T1 provenance blok implementován (`services/provenance.py`, `PatternMatch.provenance`, `--json-out` v measurement skriptu, 8 testů). T2 (skutečná komprese) a T3 (drift guard) jsou další v pořadí — viz `CROSS_REPO_TRANSFER_MAP.md` §5.
+**Stav 2026-11-12:** T1 provenance blok implementován (`services/provenance.py`, `PatternMatch.provenance`, `--json-out` v measurement skriptu, 8 testů). T2 (skutečná komprese) a T3 (drift guard) jsou další v pořadí — viz `01_EVIDENCE_DIGEST.md` §9 §5.
 
 **Stav 2026-11-13:** P1 uzavřeno. Univerza obsahově (§2.1), `phase_stats` = `effective_phase` + dva auditní řezy, `accuracy_method = internal_cp_linear`, confidence rozdělená na `strength`/`support`/`hypothesis_confidence`, falešný MDL přejmenován na `coverage_score`, schema 1.3 s Wilson CI a podmíněným liftem. Z P2 hotové kroky B (skutečná dvoučlenná MDL, §11.1) a C (split-half + drift, §5.5, §11.5, schema 1.4); otevřený zůstává precision model a external validity.
 
