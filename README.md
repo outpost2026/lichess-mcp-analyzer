@@ -80,7 +80,7 @@ final_confidence = 0.5 × compression_score + 0.3 × entropy_score + 0.2 × samp
 
 **CR = N / (C_impl + C_udrz) dává smysl POUZE pokud N = počet instancí téže věci.**
 
-Pattern O byl původně pojmenován "Repetition avoidance greed", ale kód detekoval *flat eval plateau → blunder*, nikoliv *repetition refusal*. Výsledek: CR=47.8 měřilo noise, ne signal. **Oprava:** rename na "Stagnační panika" (Option A) — popis nyní odpovídá kódu. Viz `docs/CONTEXT_INJECT.md` §8.
+Pattern O byl původně pojmenován "Repetition avoidance greed", ale kód detekoval *flat eval plateau → blunder*, nikoliv *repetition refusal*. Výsledek: CR=47.8 měřilo noise, ne signal. **Oprava:** rename na "Stagnační panika" (Option A) — popis nyní odpovídá kódu. Viz `docs/01_EVIDENCE_DIGEST.md` §4 (historický záznam).
 
 **Pravidlo:** Každý pattern musí projít sémantickým auditem (AUD fáze): shoduje se jméno, mechanismus, hypotéza s kódem? Pokud ne — opravit popis nebo opravit kód.
 
@@ -161,7 +161,7 @@ Per-blunder struktura s:
 
 ### Engine lines silent fail — root cause fixed
 
-30% BFS mělo 0 engine_lines kvůli `board.san(m)` AssertionError při multi-move PV. **Fix:** sequential `board.copy()` + try/except. RUN_005: 0% failure (ze 70/70 BFS). Viz `docs/CONTEXT_INJECT.md` §5.
+30% BFS mělo 0 engine_lines kvůli `board.san(m)` AssertionError při multi-move PV. **Fix:** sequential `board.copy()` + try/except. RUN_005: 0% failure (ze 70/70 BFS). Viz `docs/01_EVIDENCE_DIGEST.md` §3.
 
 ### Pattern N — x-ray pin detection
 
@@ -486,7 +486,7 @@ lichess-analyzer-mcp/
 | CI mypy | **GREEN** — 0 chyb / 74 souborů (`python -m mypy src`; stav [2.16]) |
 | CI pytest | fast/engine split, pin SF18, `--strict-markers`; fast **536**, engine **18**; `addopts` engine sadu vylučuje (D6) |
 | Patterny | 17 definic (A–S + U/V), 16 detektorů + I manual_only (SESSION_HANDOFF §1) |
-| Dokumentace | `README.md` aktuální; `README_en.md` a `docs/CONTEXT_INJECT.md` zastaralé |
+| Dokumentace | `README.md` aktuální; `README_en.md` zastaralý; historická evidence v `docs/01_EVIDENCE_DIGEST.md` |
 
 ### Známé odchylky a technický dluh
 
@@ -654,7 +654,7 @@ Během vývoje byly identifikovány a opraveny dvě kritické chyby v `engine_cl
 
 Po opravě: ACPL MAE 3.9 oproti Lichess referenci (depth 18-22). Viz `docs/MERGE_EVAL_feat_to_main.md`.
 
-Později opraven **engine_lines silent fail**: 30% → 0% failure rate (sequential board.copy + try/except). Viz `docs/CONTEXT_INJECT.md` §5.
+Později opraven **engine_lines silent fail**: 30% → 0% failure rate (sequential board.copy + try/except). Viz `docs/01_EVIDENCE_DIGEST.md` §3.
 
 
 ## License
