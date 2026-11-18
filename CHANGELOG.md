@@ -8,6 +8,26 @@ single-game pipeline, ne balíčku `0.1.0` (ten zůstává beze změny).
 > svůj obsah v git historii a unikátní fakta v `docs/01_EVIDENCE_DIGEST.md`.
 > Historické záznamy se mají číst jako dobové, nikoli jako živé odkazy.
 
+## [Q4-EXP] - 2026-11-18
+
+Položka #5 roadmapy jako **experiment za flagem, ne produkční pattern**.
+Žádná změna `DETECTOR_VERSION`, schémat ani výchozího chování.
+
+- `pattern_detector.py`: `EXPERIMENTAL_Q4_ENABLED` z env
+  `LICHESS_EXPERIMENTAL_Q4=1` (výchozí **vypnuto**). Kandidát
+  `declined_forcing_move_at_pivot` (Q4) se emituje jen při zapnutém flagu a
+  jen když `cp_loss > 50`, engine best je forcing (`x`/`+`/`#`), sehraný tah
+  forcing není a hráč není v šachu.
+- `scan_single_game` respektuje `cand["mitigation"]` pro experimentální
+  kandidaty (produkční chování nezměněno).
+- `coaching_single_game` označí flag-on payload jako
+  `detector_version = DBCL-20261117-dev+Q4-exp`, aby nebyl zaměněn s produkčním
+  během. **Cache je klíčována policy tokenem, ne detector verzí** — experiment
+  proto musí běžet s čistou cache / `use_cache=False`, jinak Q4 neuvidí.
+- 5 testu (`tests/test_experimental_q4.py`): vypnuto / zapnuto / forcing best /
+  non-forcing played / cp prah. Gates: pytest 568 passed, Ruff clean, mypy 0/74.
+- D4 gate zůstává otevřený: prod do kontraktu až po validaci na ≥10 hrách.
+
 ## [D23] - 2026-11-18
 
 Položka #6 roadmapy (T-16 / D23 `%clk`). Žádná změna schémat 2.8 / 1.2.

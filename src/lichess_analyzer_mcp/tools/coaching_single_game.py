@@ -1,4 +1,5 @@
 import json
+import os
 import time
 
 from lichess_analyzer_mcp.app import app
@@ -710,7 +711,15 @@ async def build_response(
             "Every flagged move carries an explicit unclassified_reason. "
             "Cross-game detectors need >=3 games and are suppressed."
         ),
-        "detector_version": DETECTOR_VERSION,
+        # Q4 experiment: label the payload so flag-on output can never be
+        # mistaken for a production DBCL detection run. Cache is keyed by the
+        # policy token only - experimental runs must use a fresh/cleared cache.
+        "detector_version": DETECTOR_VERSION
+        + (
+            "+Q4-exp"
+            if os.environ.get("LICHESS_EXPERIMENTAL_Q4", "").strip().lower() in {"1", "true", "yes"}
+            else ""
+        ),
         "coverage": coverage_counts,
     }
     if unclassified_reasons:

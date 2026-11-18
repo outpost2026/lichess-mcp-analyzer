@@ -9,6 +9,8 @@ Overlap note — S vs J:
 """
 
 from collections import Counter
+import os
+
 import chess
 
 from lichess_analyzer_mcp.models.pattern import (
@@ -43,6 +45,17 @@ THRESHOLD_ACTIVE_DEFENSE_EVAL = -150
 THRESHOLD_S_CAPTURE_AVERSION_CP = 500
 THRESHOLD_GIFT_EVAL_JUMP = 70
 THRESHOLD_TACTICAL_SHAPED_CP = 50
+# REVIEW-CROSS 2026-11-18: Q4 is an EXPERIMENT, not a production pattern.
+# Enable with LICHESS_EXPERIMENTAL_Q4=1; default off so no contract/cache change.
+EXPERIMENTAL_Q4_ENABLED = os.environ.get("LICHESS_EXPERIMENTAL_Q4", "").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+}
+THRESHOLD_Q4_CP = 50
+Q4_MITIGATION = (
+    "V pivot momentu zvaz forcing tah (vymenu, capture, check), ktery zjednodusuje pozici."
+)
 # D13: a quiet (non-capture, non-check) flagged move above this loss is a
 # blunder by magnitude, not a positional shift. Threshold is published, not
 # implicit: it separates `why=quiet_blunder` from `why=quiet_positional`.
@@ -900,6 +913,26 @@ def per_move_patterns(
             }
         )
 
+    # Q4 (EXPERIMENT, D4 gate pending): declined forcing move at a pivot.
+    # Requires a MEASURED forcing engine best move; 3-game evidence is too weak
+    # for a production ID. Off by default (see EXPERIMENTAL_Q4_ENABLED).
+    if EXPERIMENTAL_Q4_ENABLED and cp > THRESHOLD_Q4_CP and not in_check:
+        best_san = str(getattr(move, "best_move_san", "") or "")
+        played_san = str(getattr(move, "move_san", "") or "")
+        best_forcing = any(token in best_san for token in ("x", "+", "#"))
+        played_forcing = any(token in played_san for token in ("x", "+", "#"))
+        if best_forcing and not played_forcing:
+            out.append(
+                {
+                    "pattern_id": "Q4",
+                    "pattern_name": "declined_forcing_move_at_pivot",
+                    "strength": min(cp / 500, 0.6),
+                    "severity": "high" if cp > 100 else "medium",
+                    "mitigation": Q4_MITIGATION,
+                    "detail": f"declined forcing best={best_san} cp_loss={cp:.0f}",
+                }
+            )
+
     return out
 
 
@@ -1078,9 +1111,9 @@ def scan_single_game(analysis: GameAnalysis) -> tuple[list[dict], dict[int, dict
                     "affected_games": [analysis.game.id] if analysis.game.id else [],
                 }
                 entry["mitigation"] = (
-                    pdef.mitigation
-                    if pdef is not None
-                    else (
+                    cand.get("mitigation")
+                    or (pdef.mitigation if pdef is not None else None)
+                    or (
                         "Review the engine line for each occurrence and compare the "
                         "played move with the top engine choice."
                     )
