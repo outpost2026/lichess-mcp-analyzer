@@ -4,14 +4,14 @@ date: 2026-11-14
 verze: 1.7
 status: ZÁVAZNÝ METODOLOGICKÝ ARTEFAKT
 účel: Popsat, jak vznikají a jak se ověřují kandidátní chess patterny; porovnat metodologii s pattern discovery v jiných doménách; vyhodnotit originalitu a efektivitu.
-návaznost: CANDIDATE_PATTERNS_2026-11-12.md, AUDIT_INTEGRATION_2026-11-13.md, REFACTOR_PLAN_2026-11-11.md, PLAN_SINGLE_GAME_CALIBRATION_2026-11-07.md, MIKOLOV_KOMPRESE_V_PATTERN_ARCHITEKTURE.md, COMPACT_JSON_FOR_LLM.md, DEEP_DIVE_SINGLE_GAME_PATTERNS_2026-08-02.md
+návaznost: AUDIT_INTEGRATION_2026-11-13.md, COMPACT_JSON_FOR_LLM.md, 01_EVIDENCE_DIGEST.md, SESSION_HANDOFF_2026-11-17.md, 00_DOCS_CONTRACT.md
 změny_1_1: Univerza přejmenována na obsahové názvy (§2.1) a sjednocena s měřicím appendixem; přidána identita datasetu (§2.1.1).
 změny_1_2: P1 — tři dimenze confidence (§2.4), coverage validator místo falešného MDL (§11.1), `strength` jako ordinální pole (§11.2); roadmap P1 rows aktualizovány.
 změny_1_3: P1 uzavřeno — schema 1.3 s Wilson CI a podmíněným liftem (§5.2), pravidlo „lift se nevymýšlí“.
 změny_1_4: P2 krok B — skutečná dvoučlenná MDL (`services/mdl.py`, §11.1) jako měřicí vrstva; naměřené gainy proxy mechanismů; `non_estimable` pro hraniční MLE.
 změny_1_5: P2 krok C — split-half stabilita a časový drift (§5.5, §11.5); Page-Hinkley zamítnut pro nekalibrovatelnost `delta`/`lambda`, nahrazen dvouvýběrovým z-testem na chronologických polovinách; schema 1.4, `PatternMatch.stability`; roadmap P2 split-half uzavřen.
-změny_1_6: Integrace auditu 2026-11-13 — hranice single-game (event, 1.2/2.1) vs cross-game (pattern, 1.4) v §1.1.1; důkazová úroveň opravena v §2.5; nová slabina §11.7 (jednoperspektivní single-game); paralelní track §12.2 s odkazem na `AUDIT_INTEGRATION_2026-11-13.md`. Cross-game kontrakty se nemění.
-změny_1_7: Tier 3 hotov — `game_full` 1.0 implementován (`services/timeline.py`, `GAME_FULL_1.0.md`); §11.7 fix označen jako hotový, `interaction` events zůstávají neimplementované (T3.3 čeká na measurement spec). Cross-game kontrakty se nemění.
+změny_1_6: Integrace auditu 2026-11-13 — hranice single-game (event, 1.2/2.7) vs cross-game (pattern, 1.4) v §1.1.1; důkazová úroveň opravena v §2.5; nová slabina §11.7 (jednoperspektivní single-game); paralelní track §12.2 s odkazem na `AUDIT_INTEGRATION_2026-11-13.md`. Cross-game kontrakty se nemění.
+změny_1_7: Tier 3 hotov — `game_full` 1.0 implementován (`services/timeline.py`, `COMPACT_JSON_FOR_LLM.md` Appendix A); §11.7 fix označen jako hotový, `interaction` events zůstávají neimplementované (T3.3 čeká na measurement spec). Cross-game kontrakty se nemění.
 ---
 
 ## 0. TL;DR
@@ -326,121 +326,11 @@ Dataset: 259 dedup her / 2137 flagged tahů (`all_moves_dedup` flagged subset). 
 
 ---
 
-## 7. Pattern vector: jak to dělají jiné domény
+## 7-9. Cross-domain srovnání a originalita — přesunuto
 
-„Pattern vector“ = jak je vzorec reprezentován jako vektor, který lze porovnávat, agregovat a sledovat v čase. Šest typů reprezentace:
-
-| Typ | Domény | Reprezentace | Metrika | Co si brát |
-|---|---|---|---|---|
-| **Support vector** | SPM, association rules | one-hot / count itemsetu | support, confidence, lift | kontrast a minimální support |
-| **Alignment vector** | process mining | edit distance trace vs model | fitness, precision | model musí mít i „precision“, ne jen coverage |
-| **Distance vector** | time series (matrix profile) | vzdálenost k nejbližšímu sousedovi | z-normalizovaná euklidovská | parameter-free, exact, reusable |
-| **Score vector** | anomaly detection | odchylka od modelu normality | anomaly score + threshold | threshold musí být kalibrovaný, ne ad hoc |
-| **Graph vector** | causal discovery | adjacency / intervention | PC, GES, NOTEARS | asociace != kauzalita; nutná intervence |
-| **Embedding** | NLP, chess stylometry | distribuční vektor | cosine, few-shot | identita hráče je testovatelná |
-
-### 7.1 Co je v těchto doménách standardem
-
-- **SPM**: `support` + `lift` + closed/maximal patterns; algoritmy GSP, SPADE, PrefixSpan, FreeSpan. Gap constraints pro časovou blízkost. (Wikipedia: Sequential pattern mining; survey arXiv:1805.10515.)
-- **Process mining**: conformance checking porovnává model s event logem; kvalita má čtyři dimenze — fitness, precision, generalization, simplicity. Koncept drift je první třída problému, ne výjimka. (arXiv:2112.02000, 2310.15826.)
-- **Time series**: matrix profile je „computed-once-use-many-times“ struktura pro motif/discord/shapelet discovery; exact a parameter-free. (arXiv:1811.03064.)
-- **Anomaly detection**: point / contextual / collective; většina metod vrací spojité skóre, binární rozhodnutí je až threshold. (Chandola 2009; Wikipedia.)
-- **MDL**: nejlepší model je ten, který nejkratší popíše data; MDL je aplikace Occamovy břitvy a je rozšiřitelné na sekvenční predikci. (Wikipedia: MDL, Kolmogorov complexity.)
-- **Chess**: behavioral stylometry identifikuje hráče z tahů s 98% accuracy na 100 hrách (arXiv:2208.01366); Maia/Maia4All modelují individuální styl s málo daty (arXiv:2507.21488); vnímání „brilliant“ tahu není jen engine best (arXiv:2406.11895).
-
-### 7.2 Náš návrh vektoru hráče
-
-Pro hráče `p` a okno `W`:
-
-```
-r_i   = e_i / d                    # rate patternu i na rozhodnuti
-b_i   = referencni rate (rating band, time control)
-l_i   = r_i / b_i                  # lift
-ci_i  = Wilson(r_i, d)
-phase = [r_i^opening, r_i^middlegame, r_i^endgame]
-color = [r_i^white, r_i^black]
-clock = [r_i^low_time, r_i^normal]
-T_ij  = P(pattern j | pattern i do k ply)   # sekvencni prechod
-H     = entropy(T)                          # rozmanitost chovani
-stab  = cosine(v_first_half, v_second_half)
-drift = |v_window1 - v_window2|             # detekce zmeny
-out   = P(win | pattern i) - P(win | no i)  # rizikovy rozdil
-```
-
-Vektor:
-
-```
-v_p = [r_i, log l_i, ci_i, phase, color, clock, H, stab, drift, out]
-```
-
-Použití:
-
-1. **Similarita hráčů** — „hráči jako vy mají tento pattern silnější“.
-2. **Drift monitoring** — změna `v_p` v čase je signál zlepšení nebo regrese.
-3. **Externí validita** — pokud patterny nesou identitu, `v_p` musí diskriminovat hráče (stylometrie).
-4. **Prioritizace lekcí** — lekce pro pattern s vysokým `r_i`, vysokým `out` a vysokým `drift`.
-
-Tento vektor **není implementován**. Je to návrh datového kontraktu pro P7 (§12).
-
----
-
-## 8. Cross-domain srovnání metodologie
-
-Skóre 0-2 na osu (0 = chybí, 1 = částečně, 2 = silné). **Kvalitativní rating autora, P~0,6; účel je orientace, ne měření.**
-
-| Metodologie | Support | FP kontrola | Generalizace | Drift | Vysvětlitelnost | Komprese | Součet |
-|---|---|---|---|---|---|---|---|
-| Naše (chess event+pattern) | 2 | 2 | 1 | 0 | 2 | 1 | **8** |
-| Sequential pattern mining | 2 | 0 | 1 | 0 | 0 | 0 | 3 |
-| Process mining / conformance | 2 | 1 | 1 | 2 | 2 | 1 | **9** |
-| Matrix profile / motif | 2 | 1 | 2 | 1 | 0 | 2 | **8** |
-| Anomaly detection + drift | 1 | 2 | 2 | 2 | 0 | 1 | **8** |
-| Causal discovery | 1 | 2 | 2 | 1 | 2 | 1 | **9** |
-| Behavioral stylometry | 1 | 2 | 2 | 0 | 0 | 1 | 6 |
-
-### 8.1 Co z tabulky plyne
-
-- Naše metodologie je **nadprůměrná v kontrole FP a vysvětlitelnosti**, podprůměrná v generalizaci a chybí jí drift úplně.
-- Process mining a causal discovery jsou lepší v tom, co nám chybí: **model + precision + drift + intervence**.
-- SPM je nejbližší algoritmicky, ale nemá kontrast — a přesně proto by samostatně nestačilo.
-- Matrix profile je nejlepší v **parameter-free** discovery; to je inspirace pro snížení prahu při nových patternách.
-
-### 8.2 Dvě chybějící dimenze
-
-1. **Precision modelu**: kolik tahů model *dovoluje*, ne jen kolik jich vysvětlí. Naše `unclassified` je fitness, ale precision neměříme.
-2. **Drift**: hráč se mění. Pattern z ledna nemusí platit v červnu. Bez drift detekce reportuje systém stále stejnou lekci.
-
----
-
-## 9. Originalita
-
-### 9.1 Co není originální (P>0,9)
-
-| Komponenta | Prior art |
-|---|---|
-| Frekvenční patterny hráče | Lichess Insights, Chess.com Insights, Aimchess weakness reports (veřejně dokumentované feature sety) |
-| Per-move blunder taxonomie | běžná engine/coaching praxe |
-| Lift / kontrast | SPM, association rules |
-| Komprese jako validita | MDL, Kolmogorov, Mikolov |
-| Pattern language (problem-context-solution) | Alexander 1977 |
-| Individuální styl hráče | behavioral stylometry (2022), Maia (2020+), Maia4All (2025) |
-| „Brilliant“ není jen best | arXiv:2406.11895 |
-
-### 9.2 Co je originální v kombinaci (P~0,75)
-
-1. **`unclassified` jako first-class výstup** s důvodem vázaným na měřený tvar tahu. Většina nástrojů buď labeluje, nebo mlčí; málokdo publikuje „nevíme“ jako kontrakt.
-2. **FP strop měřený na dobrých tazích** jako admission gate. Běžný přístup měří jen precision na flagged tazích.
-3. **Dual kontrakt single-game vs cross-game** se sdíleným jedním zdrojem pravdy (`per_move_patterns`). Zabránuje tomu, aby dva výstupy stejné pipeline odporovaly.
-4. **Deterministická evidence chain** od SAN/FEN/engine line k lekci, bez LLM v detection path.
-5. **Explicitní separace event / pattern / lesson** a odmítnutí nového ID bez taxonomie.
-
-**Kalibrace:** P~0,75, že tuto kombinaci (1)+(2)+(4) nepublikoval žádný chess nástroj. Je to absence důkazu v dostupných zdrojích, ne důkaz absence. Před produktovým tvrzením „unikátní“ je nutný patent/competitive scan (P7).
-
-### 9.3 Verdikt
-
-Metodologie je **epistemicky nadstandardní, algoritmicky neoriginální**. To je dobrá kombinace: algoritmy jsou komodita, kontrakt je obranyschopný. Riziko je, že originalita je „jen“ v dokumentaci a ne v měřeném výsledku.
-
----
+Spekulativní scoring (P~0,75) a negativní výsledky (Word2Vec 0,3107, GloVe 0,2607,
+MMR 0,5987, SVD 0,5413) jsou v `docs/01_EVIDENCE_DIGEST.md` §9. Původní text v git
+historii před `[DOCS] W3`. Jádro metodologie zůstává v §1-§6 a §11-§12.
 
 ## 10. Efektivita
 
@@ -563,7 +453,7 @@ Interpretace, kterou report **nesmí** přeskočit:
 
 **Proč to není bug:** kód dělá přesně to, co deklaruje (analýza jednoho hráče). Chybějící schopnost je **produktová mezera**, ne defekt — a proto nemá být označena jako P0 (viz `AUDIT_INTEGRATION_2026-11-13.md` §2).
 
-**Fix (implementováno 2026-11-14, Tier 3):** merge vrstva `services/timeline.py` nad **existující dual cache**. Bílý běh už dnes vyhodnocuje bílé tahy a černý běh černé, takže každý ply je vyhodnocen právě jednou. Výsledkem je artefakt `game_full` 1.0: `plies[]` s `mover_color`, White POV eval a `source` pro obě barvy. Chybějící pohled nebo měření je `status="partial"` s pojmenovanou dírou, ne dopočtená hodnota. `interaction` events **nejsou** součástí 1.0 - nemají měřenou definici ani FP kalibraci (T3.3 čeká na spec, D4 gate). Kanonický tvar: `GAME_FULL_1.0.md`; rozhodnutí a acceptance: `AUDIT_INTEGRATION_2026-11-13.md` §6 (T3.0–T3.4).
+**Fix (implementováno 2026-11-14, Tier 3):** merge vrstva `services/timeline.py` nad **existující dual cache**. Bílý běh už dnes vyhodnocuje bílé tahy a černý běh černé, takže každý ply je vyhodnocen právě jednou. Výsledkem je artefakt `game_full` 1.0: `plies[]` s `mover_color`, White POV eval a `source` pro obě barvy. Chybějící pohled nebo měření je `status="partial"` s pojmenovanou dírou, ne dopočtená hodnota. `interaction` events **nejsou** součástí 1.0 - nemají měřenou definici ani FP kalibraci (T3.3 čeká na spec, D4 gate). Kanonický tvar: `COMPACT_JSON_FOR_LLM.md` Appendix A; rozhodnutí a acceptance: `AUDIT_INTEGRATION_2026-11-13.md` §6 (T3.0–T3.4).
 
 **Co se nesmí stát:** oba pohledy nesmí vstoupit do jednoho `detect_all` cohortu — `n_units` by se zdvojnásobil a stejná hra by se počítala dvakrát (D8).
 
@@ -583,7 +473,7 @@ Interpretace, kterou report **nesmí** přeskočit:
 | **P5** | Lesson compiler + tréninkový loop | pattern → drill → měřený outcome; A/B design |
 | **P6** | External validity (stylometrie) | few-shot identifikace hráče nad baseline |
 | **P7** | Pattern vector store + drift dashboard | `v_p` per hráč, stabilní schema, competitive scan |
-| **P8** ✅ | `game_full` 1.0 — timeline + dvě perspektivy | hotovo 2026-11-14: merge dvou `GameAnalysis` bez nového engine volání; každý ply jednou; White POV eval; `status="partial"` pro chybějící data; `interaction` zůstává mimo 1.0 (T3.3, D4 gate); viz `GAME_FULL_1.0.md` |
+| **P8** ✅ | `game_full` 1.0 — timeline + dvě perspektivy | hotovo 2026-11-14: merge dvou `GameAnalysis` bez nového engine volání; každý ply jednou; White POV eval; `status="partial"` pro chybějící data; `interaction` zůstává mimo 1.0 (T3.3, D4 gate); viz `COMPACT_JSON_FOR_LLM.md` Appendix A |
 
 ### 12.1 Pořadí je závazné
 
@@ -604,46 +494,8 @@ Tato roadmapa (P1–P8) je **cross-game discovery track**. Single-game větev m�
 
 ---
 
-## 13. Závěry
+## 13. Závěry a reference — přesunuto
 
-1. **Discovery je falsifikace, ne generování.** Hodnota systému je v tom, co odmítne (K1) a co přizná jako neznámé (82,5 % unclassified).
-2. **Originalita je v kontraktu, ne v algoritmu.** Kombinace unclassified + FP strop + deterministická evidence chain je obhajitelná; jednotlivé komponenty jsou komodita.
-3. **Efektivita je asymetrická.** Vysoká explanace, nízká výtěžnost, neprokázaná generalizace. Produktový další krok není „více patternů“, ale **lesson loop a external validity**.
-4. **Největší technický dluh byl falešný MDL a nekalibrovaná confidence.** P1 ho 2026-11-13 odstranil přejmenováním (coverage, tři dimenze); skutečná MDL a kalibrace jsou P2 a musí být hotové dříve, než se přidá jakýkoli nový pattern.
-5. **Cross-domain inspirace je konkrétní:** process mining (precision, drift), matrix profile (parameter-free discovery), causal discovery (intervence), stylometrie (external validity). Žádná z nich není „víc patternů“; všechny jsou „lepší důkaz“.
+Závěry a seznam referencí jsou v `docs/01_EVIDENCE_DIGEST.md` §9-§10; původní
+text v git historii před `[DOCS] W3`.
 
----
-
-## 14. Reference
-
-### Interní
-
-- `docs/CANDIDATE_PATTERNS_2026-11-12.md` — taxonomie F1-F8/Z, FP strop, měřicí appendix univerz (§2.1), měření P0-7.
-- `docs/AUDIT_INTEGRATION_2026-11-13.md` — kanonická integrace auditu 2026-11-13: D6–D11, Tier 1–3, testovací matice, pravidla proti driftu, §12.2.
-- `docs/PLAN_SINGLE_GAME_CALIBRATION_2026-11-07.md` — zmražený kontrakt detailed 1.2 (single-game).
-- `docs/REFACTOR_PLAN_2026-11-11.md` — D1-D6, Phase 0 kritéria, §355 mechanismus; pro single-game roadmapu **historický**, aktuální pořadí řídí `AUDIT_INTEGRATION_2026-11-13.md`.
-- `docs/MIKOLOV_KOMPRESE_V_PATTERN_ARCHITEKTURE.md` — kompresní rámec (v1.0; viz korekce §11.1).
-- `docs/COMPACT_JSON_FOR_LLM.md` — compact 2.7 kontrakt.
-- `docs/DEEP_DIVE_SINGLE_GAME_PATTERNS_2026-08-02.md` — single-game pattern surface.
-- `docs/CROSS_REPO_TRANSFER_MAP.md` — přenositelné kontrakty z `ML_Ops_edukace` a `mcp-retrieval` (abstention, data identity, drift guard, RRF, kompresní měření).
-- `src/lichess_analyzer_mcp/services/pattern_detector.py` — `per_move_patterns`, `scan_single_game`, cross-game detektory.
-- `src/lichess_analyzer_mcp/models/pattern.py` — `PatternDef`, `PatternLibrary.load_baseline`.
-- `src/lichess_analyzer_mcp/services/compressibility_validator.py` — coverage validator (`coverage_score`, `support`); `strength` nemění (P1).
-- `src/lichess_analyzer_mcp/services/statistics.py` — Wilson CI a Katz rate-ratio CI (schema 1.3).
-- `src/lichess_analyzer_mcp/services/mdl.py` — skutečná dvoučlenná MDL (§11.1); `scripts/measure_pattern_mdl.py` — měření proxy mechanismů.
-- `src/lichess_analyzer_mcp/services/stability.py` — split-half (hash parita) a drift (chronologické poloviny, z-test); §5.5, §11.5.
-- `src/lichess_analyzer_mcp/kb/schemas.py` — validace artefaktu, schema 1.4 (`stability` invarianty).
-- `scripts/measure_pattern_coverage.py`, `scripts/aggregate_candidate_moves.py` — měření.
-
-### Externí (ověřeno 2026-11-12)
-
-- Sequential pattern mining — Wikipedia; survey arXiv:1805.10515 (parallel SPM).
-- Process mining — Wikipedia; conformance checking; drift v process mining arXiv:2112.02000; unsupervised drift arXiv:2310.15826.
-- Matrix profile — arXiv:1811.03064 (motif/discord/shapelet, parameter-free).
-- Anomaly detection — Chandola et al. 2009; Wikipedia (point/contextual/collective, anomaly score).
-- Causal discovery — Wikipedia (exploratory causal analysis; asociace vs kauzalita).
-- MDL / Kolmogorov complexity — Wikipedia (nejkratší popis jako model selection).
-- Pattern language — Alexander 1977; Wikipedia.
-- Behavioral stylometry — arXiv:2208.01366 (98% identifikace hráče, 100 her).
-- Maia4All — arXiv:2507.21488 (individuální modelování s málo daty).
-- Brilliance perception — arXiv:2406.11895 (brilliant != engine best).

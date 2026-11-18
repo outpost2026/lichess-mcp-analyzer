@@ -109,39 +109,9 @@ Pattern O byl původně pojmenován "Repetition avoidance greed", ale kód detek
 | `lichess_workspace_info` | Vrátí kontext pracovního prostoru |
 
 ### Compact JSON 2.7
-Compact 2.7 je **výchozí** výstup `lichess_coaching_single_game` i
-`scripts/coach.py` (schema 2.7, obvykle 1,2-6,6 kB). Obsahuje mj.
-`bcp`/`eval_after_mover_cp` pro velké chyby (arkitektura `cp = bcp − eval_after`;
-ne-anchor `eval_before_mover_cp` byl v 2.6 odstraněn), patterny u konkrétního flagu (`nm`/`mit`), `summary.src` s přesnou politikou engine, `alts`, `piece_reads`, `pv_unavailable` pro
-explicitní chybějící PV a `clusters` pro série chyb. Nově (P0-7/P0-8): každý
-flag nese `pstatus` (`matched`/`unclassified`) a při absenci patternu `why`;
-`patterns_meta` je povinné s `coverage {flagged, matched, unclassified}`;
-top-level `unclassified` je discovery feed kritických momentů bez patternu.
-Od [2.7] (D29–D35) každý flag nese povinné `game_impact`, zmeškaný mat je
-explicitní (`mate_missed`/`mate_via`), sehráno tah má engine pokračování
-(`pv_played`/`pv_played_unavailable`), `clusters[].plies` vypisuje tahy série
-a `summary.acc_warning` kvalifikuje lineární accuracy. Od [2.9] (P0-4) nese
-`patterns[].support` (měřené pokrytí flagovaných tahů) a `confidence_dims`:
-`conf` je ordinální detection strength, nikoli pravděpodobnost; behavioral
-confidence je `null` s důvodem `not_calibrated`. Od [2.13] detektor
-(`DBCL-20261117-dev`) přidává pattern C pro celé clustery (3+ flagů), U pro
-tiché blundery a V pro špatné odpovědi v šachu; `acc_warning` rozlišuje
-`contains_blunder` / `contains_mistake`.
-Plná schema 1.2 je opt-in (`--format detailed`) pro debugging a cross-game.
-Formát, null/omission politika, prompt šablona a příklady:
-`docs/COMPACT_JSON_FOR_LLM.md`.
 
-V4 (commit `7ce7f61`) doplnila `flags[].mate_in` (mat v N z nejlepší linie;
-kladné = pro hráče, záporné = proti), vynechání `eval_before`/`eval_after`
-při rozporu s `cp_loss` (FIX-023), oddělení slabých a čistých fází (FIX-021)
-a persistování obnovené PV do cache (FIX-028).
-
-L2 Resources:
-- `lichess://analysis/{key}` — uložené výsledky analýzy
-- `lichess://patterns/{key}` — uložené výsledky detekce patternů
-- `lichess://analysis/list` — seznam všech analýz
-- `lichess://patterns/list` — seznam všech pattern detekcí
-
+Kanonický runtime kontrakt (pole, null/omission politika, alias collisions, prompt
+a příklad) je v `docs/COMPACT_JSON_FOR_LLM.md`. Schema: `schemas/single_game_v2_compact_2.7.json`.
 
 ## DBCL Phase 2 — Implementovaný stav
 
@@ -469,160 +439,17 @@ lichess-analyzer-mcp/
 | Lint | ruff (CI: E4/E7/E9/F; širší sada I/UP/N/S/E501 = tech debt) |
 
 
-## Stav projektu (2026-11-11)
+## Stav projektu
 
-| Co | Stav |
-|---|------|
-| Testy (fast) | **536 passed** (`pytest -q`; default vylučuje `real_engine`; stav [2.15]/[2.16]) |
-| Testy (real engine) | **18 passed** (`pytest -m real_engine`, pinned Stockfish 18); GREEN — deterministické díky `clear_hash()` ve fixture |
-| MCP toolů | **18** (12 data + 5 coaching + `lichess_persist_report`) |
-| v4 / push | `7ce7f61` na `origin/main`; dokumentační změny lokálně, push jen na pokyn |
-| Single-game pipeline | **v4 hotová**: FIX-027 (mate), FIX-023 (containment v compactu; root fix pending), FIX-021 (slabé/čisté fáze), FIX-028 (cache refresh) |
-| Výchozí výstup | compact JSON 2.7; detailed 1.2 opt-in (`--format detailed`) |
-| Regresní compact | `FVhqtv1S` 4377, `WpQOkpc0` 2270, `bRBSphxo` (černý) 2342 znaků; limit 4500 pro FV |
-| Cache-hit overhead | 0,28–0,45 s steady state; první hit po upgradu až ~1,56 s (FIX-028 warm-up) |
-| Engine / cache | Stockfish depth 14, cache `d14n150000` |
-| CI ruff | **GREEN** (`uvx ruff check src/ tests/`, ruff 0.17.4, select E4/E7/E9/F) |
-| CI mypy | **GREEN** — 0 chyb / 74 souborů (`python -m mypy src`; stav [2.16]) |
-| CI pytest | fast/engine split, pin SF18, `--strict-markers`; fast **536**, engine **18**; `addopts` engine sadu vylučuje (D6) |
-| Patterny | 17 definic (A–S + U/V), 16 detektorů + I manual_only (SESSION_HANDOFF §1) |
-| Dokumentace | `README.md` aktuální; `README_en.md` zastaralý; historická evidence v `docs/01_EVIDENCE_DIGEST.md` |
+Aktuální kontrakty, validační vzorek, otevřené položky a pravidla pro agenta:
+`docs/SESSION_HANDOFF_2026-11-17.md`. Historie releasů: `CHANGELOG.md`.
+Root causes a datovaná měření z dřívějších iterací: `docs/01_EVIDENCE_DIGEST.md`.
+Reprezentativní coaching výstupy: `docs/02_COACHING_EXEMPLARS.md`.
 
-### Známé odchylky a technický dluh
+## Dokumentace
 
-- **`mate_in` = 3, ne 5** u `FVhqtv1S` ply 75: Stockfish v cache vrací
-  `mate 3` (PV `Qf4+ Qf6 Qxf6+`), hodnota se nepřepisuje podle handoffu.
-- **`bRBSphxo` endgame 9565/1 je perspektiva soupeře.** Hráč `systeq` hrál
-  černého: endgame je čistý (`ACPL 0.0`, 0 flagů), celkové ACPL 35.0.
-  Hodnoty 9565 a 3289 znaků pocházejí z analýzy bílého (`Hennessy3`).
-- **První cache hit po upgradu** může ještě jednou spustit PV recovery
-  (~1,56 s); další hity jsou <0,5 s. `refresh_cached_analysis` navíc
-  aktualizuje jen existující cache — PGN run cache nevytváří.
-- **`?` ve `_build_explanation`** se objeví, pokud chybí SAN nebo měřené
-  `eval_cp` (mimo matovou linii); je to explicitní placeholder, ne data.
-- **`engine_lines[].mate_in: null`** v detailed výstupu je šum (schema 1.2
-  ho toleruje); compact ho vynechává.
-- **FIX-023 warning** `ANOMALY_CP_EVAL_MISMATCH` se loguje pro každý tah,
-  nejen flagovaný — může být hlučný.
-- **Mypy dluh**: `pattern_detector` (16× return None), `diagnose_player`
-  (10× shadowing), `game_analyzer` (21× `Move|None` + dynamické
-  `_cache_hit`/`_cache_layer`), `md_reporter` (5× `.get()` na listu).
-  Skupina C (`md_reporter`, `game_analyzer`) = kandidáti na latentní
-  AttributeError, vyšetřit před ignorováním.
-- **`scripts/` je mimo CI ruff gate**: 146 nálezů (F541 74, E402 41,
-  E401 16, F401 11, F841 3, E722 1).
-- **`tests/test_engine_client.py`** býval maskován dvakrát (lokálně
-  `--ignore`, v CI za RED mypy gate). Od 2026-11-11 je rozdělen markerem
-  `real_engine`: default `pytest` = 254 fast testů (historické číslo k 11. 11.;
-  aktuálně 536), `pytest -m real_engine` = 15 testů proti skutečnému Stockfish
-  (dnes 18 selected / 11 deselected v samostatném CI jobu s pinnutým SF 18). Stale expectation `top_move == "f2c2"`
-  (závislá na buildu a `multipv`; Stockfish 18 v `multipv=1` dává `b1h7`)
-  nahrazeny invariantami: hloubka ≥ 12 + Qh4 není #1.
-- **TT carry-over mění `cp_loss` v rámci procesu** (naměřeno 2026-11-11):
-  stejný FEN + tah `f2h4` = 212 cp v čerstvém procesu, ale 402 → 545 →
-  764/997 cp po předchozí `analyze_position(multipv=3)`, protože se překlopí
-  i `best_move` (`b1h7` → `f2c2`). S `clear_hash()` před každým měřením:
-  140/140/140 cp (3 identické běhy). Testy to řeší fixture
-  `_fresh_engine_state` (GT-106/P97, GT-093/P73); v produkci se hash maže
-  jednou za hru (`game_analyzer.py:929`). Dopad na FIX-023: provenance
-  musí reportovat i stav engine, ne jen depth.
-- **P0-1 `king_capture_played` OPRAVENO (2026-11-11)**: odvozovalo se z `x`
-  v SAN během šachu, takže jakékoli braní potlačilo pattern S. Nově
-  `services/board_facts.py` = jediný zdroj predikátů (typ figury přes
-  `chess.Board`, totalita bez výjimek) pro všechna 4 místa: BFS
-  `_per_blunder_patterns`, single-game `_single_game_candidate`, cross-game
-  `_detect_s` a `BoardState`. A1: `capture_checking_piece_possible` už není
-  „jakékoli braní" (mimo sach = False). Regrese: `tests/test_board_facts.py`
-  (3 FEN fixtures + ekvivalence BFS/single-game).
-- **P0-2 sjednocení detektorů B/J/R/S/C/T (2026-11-11)**: dvě paralelní
-  implementace per-move patternů (`game_analyzer._per_blunder_patterns` a
-  `pattern_detector._single_game_candidate`) sloučeny do jediného jádra
-  `pattern_detector.per_move_patterns`; oba volající jsou thin wrappery.
-  BFS nově zahrnuje i **T** (dříve jen compact) — naměřeno na 138 fact
-  sheetch: **35 (25 %) získá T**, B/J/R/S/C beze změny. Dle plánu §288
-  jde o změnu patternu → bump `DETECTOR_VERSION` **proveden 2026-11-11**
-  (`DBCL-20260727-dev` → `DBCL-20261111-dev`) lokální migrací bez engine:
-  `scripts/migrate_detector_version.py` přepočítal `pattern_matches`
-  (277 změn, +65 id) a `board_state` (801/943) ze stored FEN, záloha
-  236 souborů (6 186 463 B) v `data/_backup_migrate_2026-11-11/`.
-- **P0-3 phase vs segment (2026-11-11)**: `_detect_phase` přejmenován na
-  `_detect_segment` (ply 20/50 — segmentace, ne šachová fáze). Nově
-  `board_facts.chess_phase` (material-based, Stockfish váhy Q=4/R=2/N,B=1,
-  cap 24; prahy ≥20 opening / ≤8 endgame) + na každém tahu
-  `chess_phase` a `phase_method` (default `ply_segment`); `phase` zůstává
-  alias na segment, payload publikuje i `segment`. Detektory R (per-move
-  i cross-game) čtou fázi přes `models.game.effective_phase` — v obou
-  režimech `ply_segment` i `material`; defaultní režim je chováním
-  identický starému `move.phase` → **0 změn patternů, bez bumpu verze**
-  (§288). Testy: `tests/test_phase_p03.py` (24 testů vč. „14 figur není
-  endgame" a skutečných koncovek).
-- **Snapshoty `systeq` 2026-11-11**: 7 her (3 blitz d12 + 4 rapid d14,
-  výsledky 3 win / 2 loss / 2 draw, 3 white + 4 black) analyzováno přes MCP,
-  sha256 + metriky v `docs/SNAPSHOT_SYSEQ_2026-11-11.json` (cache je
-  gitignored) — základ pro diffy po refaktoru. **Pozor:** opakovaný běh mění
-  `timings`, takže sha256 se liší vždy; diff musí jít přes evaly/metriky
-  (1/14 souborů se navíc neprodukoval identicky — viz CACHE-RERUN).
-- **Quiet blunder**: 98/228 blunderů (43 %) v cache s aktuálním detektorem
-  nemá motiv ani pattern (cp < 2000, medián 384). Tichý poziční blunder
-  neprojde žádnou větví `_single_game_candidate`; řešení je explicitní
-  `unclassified` stav, ne nový pattern bez mechanismu. P0-7 to měří na celé
-  cache (259 her po dedupu, 2137 flagged tahů): matched 375 (17,5 %),
-  unclassified 1762 (82,5 %); z toho `quiet_positional` 1523, `forcing_move_unexplained`
-  148, `capture_unexplained` 91. Bludery: 124/220 matched (56,4 %).
-- **Compact 2.7 má `patterns_meta` povinné** včetně `coverage`; prázdný
-  `patterns` list tak má vždy důvod. Detailed 1.2 nese `patterns_meta.coverage`
-  + histogram `unclassified_reasons` a top-level `unclassified`.
-- **MCP server může servírovat starý kód** po změně — po nasazení v4
-  restartovat proces; CLI používá aktuální kód.
-- **`datetime.utcnow()`** v `kb/writer.py:32` generuje 2 deprecation
-  warningy v testech.
-
-### CPM Lifecycle — Pattern Status
-
-| Pattern | Audit (Fáze 3) | Stav |
-|---------|----------------|------|
-| A, G, J, N, Q1, Q2, R | ✅ PASS | Produkce |
-| B | ⚠️ AUD-01 | Čeká na opravu |
-| C | ⚠️ AUD-02 | Čeká na opravu |
-| I | ✅ FIXED (concept, manual_only) | Code→I2 |
-| O | ✅ **RESOLVED** (rename → Stagnační panika) | Produkce |
-| P | ⚠️ AUD-06 | Čeká |
-| Q | ❌ AUD-05 | Merge Q+Q2 pending |
-| S | ⏳ Čeká na produkci | AUD-10 pending |
-
-
-## Odkazy na KB a dokumentaci
-
-### Strategie a plány
-- `00_STRATEGIE/02_chess/chess_mcp_strategy_v1.md` — strategický plán
-- `00_STRATEGIE/DALSI_KROKY_po_RUN_003.md` — 15-commit follow-up checklist
-- `docs/PHASE2_BUILD_PLAN.md` — build plan v3.0
-- `docs/REFACTOR_PLAN_2026-11-11.md` — audit handoffu v1.0 + fázovaný refaktor (Fáze 0–3, rozhodnutí D1–D6)
-- `docs/REPORT_STAV_2026-11-11.md` — Feynmanovský report stavu, náročnosti a důsledků
-
-### Pattern library a analýzy
-- `B2B-KB/04_KNOWLEDGE_BASE/02_chess/player_pattern_library_v1.json` — zdrojová knihovna 17 patternů
-- `B2B-KB/02_ANALYZY/02_chess/chess_self_analysis_baseline_2026-04.md` — baseline analýza
-- `data/runs/RUN_005_DBCL_v3_2026-07-27.md` — RUN_005 report (ACPL=46.1)
-
-### Lossy Compression Principle
-- `docs/MIKOLOV_KOMPRESE_V_PATTERN_ARCHITEKTURE.md` — LCP formalizace
-- `docs/PATTERN_DISCOVERY_METHODOLOGY.md` — metodologie discovery/detection, evidence hierarchie, cross-domain srovnani, originalita a roadmapa
-- `docs/CROSS_REPO_TRANSFER_MAP.md` — transfer kontraktu z `ML_Ops_edukace` a `mcp-retrieval` (provenance, komprese, drift, RRF)
-- `B2B-KB/05_EPISTEMIKA/00_kompresni_realismus/Kompresni_modelovani_v_praxi_synteza_v1.md` — syntéza
-- `B2B-KB/05_EPISTEMIKA/00_kompresni_realismus/brain_geometric_processor_summary_v2.1.md` — teoretické základy
-
-### Merge evaluation
-- `docs/MERGE_EVAL_feat_to_main.md` — empirical comparison feat vs main (3 hry, identické metriky)
-
-### DBCL audit
-- `00_STRATEGIE/DBCL_cross_audit_artifact.md` — Claude audit, 21 findings
-- `docs/AUDIT_REPORT_lichess-analyzer-mcp_v2.md` — interní audit
-
-### Session context
-- `docs/CONTEXT_INJECT.md` v6.0 (stav k 2026-09-05; aktuální stav viz `.ai_state.json`) — session timeline, anomaly log
-- `docs/CONTEXT_A_ZAMER.md` v1.0 — kompletní kontext a záměr projektu
-
+Čtecí pořadí, autorita souborů a pravidlo jednoho zdroje pravdy:
+`docs/00_DOCS_CONTRACT.md`. Veškeré historické artefakty jsou v `_ARCHIVE/`.
 
 ## Inspirace a zdroje
 

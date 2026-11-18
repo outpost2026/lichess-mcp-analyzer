@@ -363,3 +363,64 @@ alias for `detailed` for one release cycle and logs a warning.
 The MCP tool is always **single-perspective** (`color` is `white` or `black`,
 `both` is rejected with `INVALID_COLOR`, D6a). Both colours in one file is a
 CLI convenience: two explicit calls keyed by colour (D24).
+
+---
+
+## Appendix A — `game_full` 1.0 (merged timeline obou barev)
+
+Původně samostatný `docs/GAME_FULL_1.0.md` (vtěleno ve W3). Závazné rozhodnutí D7a
+viz `AUDIT_INTEGRATION_2026-11-13.md`. Kód: `src/lichess_analyzer_mcp/services/timeline.py`;
+schema: `schemas/game_full_v1.0.json`; CLI: `scripts/coach.py --format game-full`.
+
+**Co to je:** merge vrstva, **ne nová analýza**. Dual cache měří každý půltah právě jednou
+(bílý běh = tahy Bílého, černý = tahy Černého). Merge z obou `GameAnalysis` postaví jednu
+časovou osu: každý `ply` je tam právě jednou; všechna eval pole jsou **White POV**;
+`cp_loss` zůstává velikost ztráty (nikdy se nepřeklápí); co nebylo změřeno, je `null`
+(nikdy nula, nikdy odhad). Merge **nesmí spustit engine** — chybí-li jeden pohled,
+výsledek je `status="partial"` s pojmenovanou dírou.
+
+**Tvar payloadu (klíčová pole):**
+```json
+{"schema":"game_full","v":"1.0","pov":"white","game":{...},
+ "status":"complete","plies_total":78,"missing_plies":[],"unanalyzed_plies":[],
+ "coverage":{"white_plies":39,"black_plies":39,"merged_plies":78,
+             "expected_plies":78,"missing_colours":[]},
+ "source":{"white":{"available":true,"mode":"fast","acpl":24.1,"moves_measured":39},
+           "black":{"available":true,"mode":"fast","acpl":31.7,"moves_measured":39}},
+ "plies":[{"ply":1,"mover_color":"white","san":"e4","uci":"e2e4","class":"best",
+           "cp_loss":0.0,"eval_before_mover_cp":20.0,"eval_after_mover_cp":18.0,
+           "eval_before_white_cp":20.0,"eval_after_white_cp":18.0,
+           "win_prob_white_before":0.53,"win_prob_white_after":0.52,
+           "fen_before":"...","best":"d4","rank":1,"analyzed":true}]}
+```
+
+| Pole | Význam |
+|---|---|
+| `pov` | vždy `white`; jiná hodnota = validační chyba |
+| `status` | `complete` jen při známém `plies_total`, všech plies, žádném nezměřeném tahu a obou barvách |
+| `plies_total` | počet půltahů z PGN; `null` u legacy cache — nikdy odhad |
+| `missing_plies` | plies v `1..plies_total` bez analýzy; prázdné, když `plies_total` neznámý |
+| `unanalyzed_plies` | plies v payloadu explicitně nezměřené (engine timeout/budget) |
+| `coverage` | počty po barvách + `missing_colours` |
+| `source` | vždy obě barvy; `available=false` nesmí nést čísla |
+| `plies[].mover_color` | `white` pro lichý ply, `black` pro sudý |
+| `plies[].eval_*_white_cp` | White POV: pro Bílého stejné, pro Černého negované |
+| `plies[].win_prob_white_*` | White POV: pro Černého `1 − p` ( ne znaménkem) |
+| `plies[].cp_loss` | `>= 0`; `null` právě když `analyzed=false` |
+
+**Invarianty `validate_game_full()`** (1–9): konstanty `schema`/`v`/`pov`, `status ∈ {complete,partial}`;
+plies striktně rostoucí bez duplicit v `1..plies_total`; `mover_color` dle parity;
+`eval_*_white_cp == ±eval_*_mover_cp` (tolerance 1e-6); `cp_loss >= 0` a `null` jen u
+nezměřeného tahu; `unanalyzed_plies` = přesně nezměřené plies; `complete` nepřipouští díru;
+`missing_plies` a `plies` se nepřekrývají; `source` má obě barvy. Testy: `tests/test_game_full.py` (14).
+
+**Partial kontrakt (T3.4):** jen jedna barva → `partial` + `missing_colours`; legacy cache bez
+`game_plies_total` → `partial`, `plies_total=null`; engine timeout → ply s `analyzed=false`.
+
+**Determinismus:** merge jen čte cache (`_policy_token` sdílený s `lichess_analyze_game`),
+žádné wall-clock / LLM / nové engine volání, pořadí dáno `ply`; dva běhy na stejných cache
+dávají identický JSON.
+
+**Co NEDĚLÁ:** není náhrada compact 2.7 ani detailed 1.2 (ty zůstávají jednoperspektivní);
+**nemá `interaction` events** (T3.3 čeká na measurement spec a kalibraci FP); nedopočítává
+chybějící plies.

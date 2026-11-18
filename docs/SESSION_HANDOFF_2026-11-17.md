@@ -117,22 +117,17 @@ Z handoffu 2.7 (§6, pořadí):
 
 | Soubor | Účel |
 |---|---|
+| `docs/00_DOCS_CONTRACT.md` | **Start** — read order, autorita, pravidla (P1–P5, P84–P89) |
 | `CHANGELOG.md` | Historie releasů [2.1]–[2.16], přijaté/zamítnuté změny |
-| `README.md` | Stav, CLI, schémata, rychlé příklady |
+| `README.md` | Proč, jak to funguje, 18 toolů, CLI příklady |
 | `docs/SESSION_HANDOFF_2026-11-17.md` | **Tento dokument** — current state |
-| `docs/REFACTOR_PLAN_2026-11-11.md` | Originální plán fází + §11/11.1 aktuální stav |
-| `docs/AUDIT_INTEGRATION_2026-11-13.md` | Rozhodnutí D1–D40 (§12.3 historie, §14 nové) |
-| `docs/COMPACT_JSON_FOR_LLM.md` | Runtime kontrakt compact 2.7 pro LLM |
+| `docs/COMPACT_JSON_FOR_LLM.md` | Runtime kontrakt compact 2.7 + Appendix A (`game_full` 1.0) |
 | `docs/CLI_USAGE.md` | CLI, MCP tool volání, výstupní cesty |
-| `docs/HANDOFF_V1_3_INTEGRATION_2026-11-15.md` | Historický handoff (banner) |
-| `docs/LLM_INPUT_AUDIT_2026-11-16.md` | Audit LLM inputu (historický, banner) |
-| `docs/CODE_REVIEW_2026-11-16_VERIFICATION.md` | Verifikace externího review (historický) |
-| `docs/HANDOFF_2_5_VERIFICATION_2026-11-17.md` | P0/P1 handoff 2.5. |
-| `docs/CALIBRATION_2_6_2026-11-17.md` | Kalibrace `bcp`/`nm`/`mit` |
-| `docs/HANDOFF_2_7_WAVE1_VALIDATION.md` | Validace vlny 1 handoffu 2.7 |
-| `docs/HANDOFF_2_7_...` (vstup) | RLHF syntéza, hypotézy H-1..H-4, N-1..N-6, navržené architektury |
-| `docs/GAME_FULL_1.0.md` | Merge vrstva obou perspektiv, ne joint coaching |
-| `docs/PATTERN_DISCOVERY_METHODOLOGY.md` | Metodika patternů, candidate lifecycle |
+| `docs/AUDIT_INTEGRATION_2026-11-13.md` | Závazná rozhodnutí D1–D40 (§14 = D38–D40) |
+| `docs/PATTERN_DISCOVERY_METHODOLOGY.md` | Závazná metodologie patternů v1.7 |
+| `docs/01_EVIDENCE_DIGEST.md` | Historická evidence, root causes, decision provenance |
+| `docs/02_COACHING_EXEMPLARS.md` | Reprezentativní reporty + findings catalogue |
+| `_ARCHIVE/` | Původní 72+ artefaktů před trimingem 2026-11-18 (ne aktivní navigace) |
 
 Klíčový kód: `services/compact_serializer.py` (2.7 serializer + validator),
 `services/game_analyzer.py` (anchor alignment, hooky),
@@ -141,10 +136,11 @@ Klíčový kód: `services/compact_serializer.py` (2.7 serializer + validator),
 `services/pipeline_status.py`, `services/provider_health.py`,
 `tools/coaching_single_game.py`.
 
-Schémata: `schemas/single_game_v2_compact_2.7.json`,
-`schemas/single_game_v1.2.json`, `schemas/single_game_v1.1.json`,
-`schemas/single_game_v2_compact.json` (2.1),
-`schemas/game_full_v1.0.json`.
+Schémata: `schemas/single_game_v2_compact_2.7.json` (current),
+`schemas/single_game_v2_compact_2.6.json` (validator backward read),
+`schemas/single_game_v2_compact.json` (2.1 alias),
+`schemas/single_game_v1.2.json` (detailed),
+`schemas/game_full_v1.0.json`. Cross-game 1.4 je inline v `kb/schemas.py`.
 
 ## 7. Pravidla pro další agenta
 
