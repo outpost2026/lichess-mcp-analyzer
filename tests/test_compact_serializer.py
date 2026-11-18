@@ -161,6 +161,33 @@ def _compact():
     return to_compact_v2(FULL, game_meta=GAME_META, moves=MOVES)
 
 
+def test_v28_honesty_fields_present():
+    """2.8: precision is honest null, pv_coverage is measured per pattern."""
+    out = _compact()
+    assert out["v"] == "2.8"
+    assert out["precision"] == {
+        "opening": None,
+        "middlegame": None,
+        "endgame": None,
+        "basis": "not_calibrated",
+    }
+    assert isinstance(out["decisive_moves"], list)
+    assert all("pv_coverage" in pattern for pattern in out["patterns"])
+
+
+def test_decisive_moves_rank_by_impact_then_cp():
+    from lichess_analyzer_mcp.services.compact_serializer import _decisive_moves
+
+    flags = [
+        {"ply": 77, "move": "Bxh2", "cp": 478, "game_impact": "winning_to_winning"},
+        {"ply": 79, "move": "Rf4", "cp": 599, "game_impact": "winning_to_losing"},
+        {"ply": 85, "move": "Kh1", "cp": 71, "game_impact": "equal_to_losing"},
+    ]
+    got = _decisive_moves(flags)
+    assert [row["ply"] for row in got] == [79, 85]
+    assert got[0]["move"] == "Rf4" and got[0]["cp"] == 599
+
+
 def test_output_validates_against_manual_validator():
     validate_compact(_compact())
 
@@ -168,14 +195,14 @@ def test_output_validates_against_manual_validator():
 def test_output_validates_against_json_schema_file():
     jsonschema = pytest.importorskip("jsonschema")
     schema = json.load(
-        open(os.path.join(ROOT, "schemas/single_game_v2_compact_2.7.json"), encoding="utf-8")
+        open(os.path.join(ROOT, "schemas/single_game_v2_compact_2.8.json"), encoding="utf-8")
     )
     jsonschema.validate(_compact(), schema)
 
 
 def test_metadata_and_summary():
     out = _compact()
-    assert out["v"] == "2.7"
+    assert out["v"] == "2.8"
     assert out["phase_method"] == "ply_segment"
     assert out["patterns_meta"] == {
         "scope": "single_game",
@@ -281,6 +308,7 @@ def test_patterns_preserved():
             "sev": "medium",
             "plie": [40],
             "support": None,
+            "pv_coverage": 1.0,
         }
     ]
     assert out["confidence_dims"]["published_kind"] == "detection_strength"

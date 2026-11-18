@@ -3,7 +3,7 @@ title: Session handoff — lichess-mcp-analyzer (konsolidace 2026-11-17)
 status: CURRENT STATE / PŘEDÁVACÍ ARTIFACT
 repo: outpost2026/lichess-mcp-analyzer
 branch: main
-contracts: compact 2.7 | detailed 1.2 | cross-game 1.4 | game_full 1.0
+contracts: compact 2.8 | detailed 1.2 | cross-game 1.4 | game_full 1.0
 detector: DBCL-20261117-dev
 last_feature_release: 2.15
 last_consolidation: 2.16
@@ -41,7 +41,7 @@ zelené. `gh run list --limit 3`.
 | Stockfish analýza, D12 anchor, P0-3 zarovnání `engine_lines[0]` | funkční, gap 0 |
 | Deterministické patterny B/C/J/R/S/T/U/V + `unclassified` důvody | funkční |
 | Cluster Pattern C pro 3+ flagů, `clusters[].plies` | funkční |
-| Compact 2.7 + detailed 1.2, validace obou schémat | funkční |
+| Compact 2.8 + detailed 1.2, validace obou schémat | funkční |
 | `cp = bcp − eval_after_mover_cp` v compactu | 7/7 ve vzorku |
 | `acc_warning` (mate/blunder/mistake), `pipeline`, `confidence_dims` | funkční |
 | `--no-llm` = deterministický fallback, `llm_requested=false` | funkční |
@@ -49,9 +49,9 @@ zelené. `gh run list --limit 3`.
 
 ## 2. Kontrakty a klíčová rozhodnutí
 
-- **Compact 2.7** (`schemas/single_game_v2_compact_2.7.json`) je current.
-  Starší soubory 2.2–2.6 jsou zmrazené; validator čte předchozí verzi
-  (`SUPPORTED_VERSIONS = ("2.6", "2.7")`).
+- **Compact 2.8** (`schemas/single_game_v2_compact_2.8.json`) je current.
+  Starší soubory 2.2–2.7 jsou zmrazené; validator čte předchozí verzi
+  (`SUPPORTED_VERSIONS = ("2.6", "2.7", "2.8")`).
 - **Detailed 1.2** zůstává pro debug/cross-game; aliasy `eval_before`/
   `eval_after`, `internal_accuracy_score` tam stále jsou.
 - `bcp` = D12 anchor; ne-anchor `eval_before_mover_cp` odstraněn v 2.6.
@@ -66,7 +66,7 @@ zelené. `gh run list --limit 3`.
 ## 3. Příkazy pro výstup
 
 ```powershell
-# full JSON = compact 2.7 + detailed 1.2, obě barvy (výchozí)
+# full JSON = compact 2.8 + detailed 1.2, obě barvy (výchozí)
 .\.venv\Scripts\python.exe -X utf8 scripts\coach_single.py zOk3TnoC
 
 # jen compact
@@ -87,7 +87,7 @@ barev; MCP tool `color:""` vrací `INVALID_COLOR`.
 Hry: `RhkEoVUT`, `WxfSvX4y`, `0yeUi5EO`, `yXmiCYss`, `hJjXxxvq`
 (+ baseline `WHIbVLXk`, `PbOhjKa8`, `QxL4Tr8u`, `zOk3TnoC`).
 
-- 10/10 payloadů validuje proti compact 2.7 + detailed 1.2.
+- 10/10 payloadů validuje proti compact 2.8 + detailed 1.2.
 - Aritmetika `bcp − eval_after = cp`: 7/7 měřitelných flagů.
 - Chybějící `pv_played_unavailable`: 10/10 → 0/10 souborů.
 - Pattern C: `yXmiCYss` white freq 4, `hJjXxxvq` black freq 5.
@@ -106,7 +106,7 @@ Podklady: `AUDIT_INTEGRATION` §6/§12, `PATTERN_DISCOVERY_METHODOLOGY` §11-§1
 
 | # | Položka | P | Acceptance criterion |
 |---|---|---|---|
-| 1 | Opravit decision/contract index: D13–D35 kanonicky v `AUDIT_INTEGRATION` §12 (hotovo 2026-11-18), sjednotit „current compact 2.7" ve všech aktivních docs | P0 | Každé D-id v HANDOFF/EVIDENCE/AUDIT má jednu status+autoritu; žádný aktivní soubor neříká, že 2.1 je current |
+| 1 | Opravit decision/contract index: D13–D35 kanonicky v `AUDIT_INTEGRATION` §12 (hotovo 2026-11-18), sjednotit „current compact 2.8" ve všech aktivních docs | P0 | Každé D-id v HANDOFF/EVIDENCE/AUDIT má jednu status+autoritu; žádný aktivní soubor neříká, že 2.1 je current |
 | 2 | Sjednotit `llm.status` (`compact_serializer.py:67-68` vs `:430-431`) | P1 | `use_llm=false` = jeden deklarovaný status v compactu i detailed; auditor 8/8; při změně sémantiky nová verze schématu |
 | 3 | ~~Opravit P0/P1 defekty z review~~ **DONE 2026-11-18** (`[REVIEW-FIX]`): `report_persister`, engine hash provenance, fabrikovaný rank, SRS retention, diagnostician, `llm.status`, `.bat`, `workspace_info`, engine identity, audit, workspace hranice, KB opt-in | ~~P1~~ | 9 regresních testů v `tests/test_review_fixes_2026_11_18.py`; gates 556/18, Ruff/mypy/verify zelené |
 | 4 | **Evidence honesty blok** (nová cross analýza): `precision`/`pv_coverage` + **`decisive_moves[]`** + dokumentace `piece_reads` (`sq` = from-square forcing tahu v PV) | P1 | Report nese `precision` per position type a `pv_coverage` per pattern; `decisive_moves[]` vybírá `winning→losing`/`equal→losing` **před** největším `cp`; žádná změna `strength`/`confidence`; `COMPACT_JSON_FOR_LLM.md` high-level obsahuje pravidlo `sq`; regrese na 5-herním vzorku |
@@ -144,7 +144,7 @@ Vlastní čtení JSON `v2xHpqXG` (Stafford, 39 ply → `h64`) a `7l9g62Eo` (Bird
 | `CHANGELOG.md` | Historie releasů [2.1]–[2.16], přijaté/zamítnuté změny |
 | `README.md` | Proč, jak to funguje, 18 toolů, CLI příklady |
 | `docs/SESSION_HANDOFF_2026-11-17.md` | **Tento dokument** — current state |
-| `docs/COMPACT_JSON_FOR_LLM.md` | Runtime kontrakt compact 2.7 + Appendix A (`game_full` 1.0) |
+| `docs/COMPACT_JSON_FOR_LLM.md` | Runtime kontrakt compact 2.8 + Appendix A (`game_full` 1.0) |
 | `docs/CLI_USAGE.md` | CLI, MCP tool volání, výstupní cesty |
 | `docs/AUDIT_INTEGRATION_2026-11-13.md` | Závazná rozhodnutí D1–D40 (§14 = D38–D40) |
 | `docs/PATTERN_DISCOVERY_METHODOLOGY.md` | Závazná metodologie patternů v1.7 |
@@ -159,7 +159,8 @@ Klíčový kód: `services/compact_serializer.py` (2.7 serializer + validator),
 `services/pipeline_status.py`, `services/provider_health.py`,
 `tools/coaching_single_game.py`.
 
-Schémata: `schemas/single_game_v2_compact_2.7.json` (current),
+Schémata: `schemas/single_game_v2_compact_2.8.json` (current),
+`schemas/single_game_v2_compact_2.7.json` (frozen, still read by validator),
 `schemas/single_game_v2_compact_2.6.json` (validator backward read),
 `schemas/single_game_v2_compact.json` (2.1 alias),
 `schemas/single_game_v1.2.json` (detailed),

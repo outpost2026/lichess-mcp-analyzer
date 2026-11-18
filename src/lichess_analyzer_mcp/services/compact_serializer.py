@@ -133,10 +133,10 @@ from lichess_analyzer_mcp.services.game_impact import (
     pv_played,
 )
 
-SCHEMA_V = "2.7"
+SCHEMA_V = "2.8"
 # 2.6 payloads are still accepted by the dependency-free validator; only 2.7
 # output is described by the current JSON Schema file.
-SUPPORTED_VERSIONS = ("2.6", "2.7")
+SUPPORTED_VERSIONS = ("2.6", "2.7", "2.8")
 
 # 2.6/C-2: a pattern ID alone is not coaching signal. Stable short labels,
 # mirrored from the detailed pattern library (full name/mitigation stay there).
@@ -386,6 +386,34 @@ def _cluster(run: list[dict]) -> dict:
         # cross-reference flags[] to find out which moves the run contains.
         "plies": plies,
     }
+
+
+_DECISIVE_IMPACTS = {"winning_to_losing", "equal_to_losing", "equal_to_mate"}
+
+
+def _decisive_moves(flags: list[dict]) -> list[dict]:
+    """2.8: moves that left winning/equal, ranked by size (REVIEW-CROSS).
+
+    The deterministic report already ranks these ahead of a larger `cp` that
+    stayed winning; the payload must carry the same verdict as structured data.
+    """
+    out = [
+        {
+            "ply": int(flag["ply"]),
+            "move": flag["move"],
+            "cp": _cp(flag.get("cp")),
+            "game_impact": flag["game_impact"],
+        }
+        for flag in flags
+        if flag.get("game_impact") in _DECISIVE_IMPACTS
+    ]
+    out.sort(key=lambda row: -(row["cp"] if row["cp"] is not None else 0))
+    return out
+
+
+def _precision_block() -> dict:
+    """2.8: honest placeholder. No labeled outcome data => no invented number."""
+    return {"opening": None, "middlegame": None, "endgame": None, "basis": "not_calibrated"}
 
 
 def _pv(flag: dict) -> list[str]:
@@ -652,6 +680,11 @@ def to_compact_v2(
         ),
     }
 
+    # 2.8 / REVIEW-CROSS: evidence honesty fields (no fabricated precision).
+    if SCHEMA_V == "2.8":
+        compact["precision"] = _precision_block()
+        compact["decisive_moves"] = _decisive_moves(flags)
+
     # 2.7/Wave 1: qualitative board signal for the highest-cp moments.
     if piece_reads:
         compact["piece_reads"] = piece_reads
@@ -673,6 +706,15 @@ def to_compact_v2(
             unavailable[missing_ply] = str(missing_reason or "engine_lines_empty")
     if unavailable:
         compact["pv_unavailable"] = unavailable
+
+    if SCHEMA_V == "2.8":
+        # Measured share of a pattern's plies that carry a PV. Null only when
+        # the pattern has no plies (nothing to measure), never a guess.
+        for pattern in compact["patterns"]:
+            plies = pattern.get("plie") or []
+            pattern["pv_coverage"] = (
+                round(sum(1 for ply in plies if str(ply) in pv) / len(plies), 4) if plies else None
+            )
 
     # 2.2/D32: what the engine searched after the played move. Kept separate
     # from `pv` (which is the best line) so the two can never be confused.
@@ -724,7 +766,7 @@ _REQUIRED_FLAG = {
     "mate_after",
     "bcp",
 }
-_REQUIRED_PATTERN = {"id", "nm", "mit", "conf", "freq", "sev", "plie", "support"}
+_REQUIRED_PATTERN = {"id", "nm", "mit", "conf", "freq", "sev", "plie", "support", "pv_coverage"}
 _REQUIRED_PATTERNS_META = {"scope", "cross_game_suppressed", "reason", "coverage"}
 _REQUIRED_CONFIDENCE_DIMS = {
     "kinds",
@@ -755,7 +797,7 @@ def _check_keys(obj: dict, required: set[str], allowed: set[str], path: str) -> 
 
 
 def validate_compact(data: dict) -> None:
-    """Structural validation mirroring `schemas/single_game_v2_compact_2.7.json`.
+    """Structural validation mirroring `schemas/single_game_v2_compact_2.8.json`.
 
     Dependency-free on purpose: ETL must run in any environment. The test
     suite additionally validates real output against the JSON Schema file.
@@ -778,9 +820,15 @@ def validate_compact(data: dict) -> None:
             "report",
             "llm",
             "unclassified",
+            "precision",
+            "decisive_moves",
         },
         "$",
     )
+    if data["v"] == "2.8":
+        for key in ("precision", "decisive_moves"):
+            if key not in data:
+                _fail(f"$.{key}", "required in 2.8")
     if data["v"] not in SUPPORTED_VERSIONS:
         _fail("$.v", f"must be one of {SUPPORTED_VERSIONS}")
     # 2.5 payloads may still carry the non-anchor eval_before_mover_cp.
@@ -805,7 +853,7 @@ def validate_compact(data: dict) -> None:
 
     summary = data["summary"]
     required_summary = {"acpl", "acc", "phases"}
-    if data["v"] == "2.7":
+    if data["v"] in ("2.7", "2.8"):
         required_summary.add("src")
     _check_keys(
         summary,
@@ -935,9 +983,12 @@ def validate_compact(data: dict) -> None:
             if "patterns" not in flag:
                 _fail(f"{path}.patterns", "must be present when pstatus is matched")
 
-    required_pattern = (
-        _REQUIRED_PATTERN if data["v"] in SUPPORTED_VERSIONS else _REQUIRED_PATTERN - {"nm", "mit"}
-    )
+    if data["v"] == "2.8":
+        required_pattern = _REQUIRED_PATTERN
+    elif data["v"] == "2.7":
+        required_pattern = _REQUIRED_PATTERN - {"pv_coverage"}
+    else:
+        required_pattern = _REQUIRED_PATTERN - {"nm", "mit", "pv_coverage"}
     for idx, pattern in enumerate(data["patterns"]):
         path = f"$.patterns[{idx}]"
         _check_keys(pattern, required_pattern, _REQUIRED_PATTERN, path)
@@ -961,6 +1012,41 @@ def validate_compact(data: dict) -> None:
         support = pattern["support"]
         if support is not None and (not isinstance(support, (int, float)) or not 0 <= support <= 1):
             _fail(f"{path}.support", "must be a number 0..1 or null")
+        if "pv_coverage" in pattern:
+            pc = pattern["pv_coverage"]
+            if pc is not None and (not isinstance(pc, (int, float)) or not 0 <= pc <= 1):
+                _fail(f"{path}.pv_coverage", "must be a number 0..1 or null")
+
+    if data["v"] == "2.8":
+        precision = data["precision"]
+        _check_keys(
+            precision,
+            {"opening", "middlegame", "endgame", "basis"},
+            {"opening", "middlegame", "endgame", "basis"},
+            "$.precision",
+        )
+        for phase in ("opening", "middlegame", "endgame"):
+            value = precision[phase]
+            if value is not None and (not isinstance(value, (int, float)) or not 0 <= value <= 1):
+                _fail(f"$.precision.{phase}", "must be a number 0..1 or null")
+        if precision["basis"] != "not_calibrated":
+            _fail("$.precision.basis", "must be 'not_calibrated' until labeled data exists")
+        for idx, move in enumerate(data["decisive_moves"]):
+            path = f"$.decisive_moves[{idx}]"
+            _check_keys(
+                move,
+                {"ply", "move", "cp", "game_impact"},
+                {"ply", "move", "cp", "game_impact"},
+                path,
+            )
+            if not isinstance(move["ply"], int) or move["ply"] < 1:
+                _fail(f"{path}.ply", "must be a positive integer")
+            if move["game_impact"] not in _DECISIVE_IMPACTS:
+                _fail(f"{path}.game_impact", f"must be one of {sorted(_DECISIVE_IMPACTS)}")
+            if move["cp"] is not None and (
+                not isinstance(move["cp"], (int, float)) or move["cp"] < 0
+            ):
+                _fail(f"{path}.cp", "must be a non-negative number or null")
 
     dims = data["confidence_dims"]
     _check_keys(dims, _REQUIRED_CONFIDENCE_DIMS, _REQUIRED_CONFIDENCE_DIMS, "$.confidence_dims")

@@ -9,7 +9,7 @@
 
 1. `README.md` (root) — rychlý přehled, proč a jak, 18 toolů, CLI příklady.
 2. `docs/SESSION_HANDOFF_2026-11-17.md` — **current state**: kontrakty, příkazy, validační vzorek, otevřené položky, pravidla pro agenta.
-3. `docs/COMPACT_JSON_FOR_LLM.md` — **runtime kontrakt** compact 2.7 + Appendix A (`game_full` 1.0). Číst vždy před prací s payloadem.
+3. `docs/COMPACT_JSON_FOR_LLM.md` — **runtime kontrakt** compact 2.8 + Appendix A (`game_full` 1.0). Číst vždy před prací s payloadem.
 4. `docs/CLI_USAGE.md` — konkrétní volání 18 MCP toolů, PowerShell quoting, exit codes.
 5. `docs/AUDIT_INTEGRATION_2026-11-13.md` — **závazná rozhodnutí D1–D40** (při rozhodování o změně kontraktu).
 6. `docs/PATTERN_DISCOVERY_METHODOLOGY.md` — **závazná metodologie v1.7** (při práci s patterny).
@@ -25,7 +25,7 @@
 | Oblast | Kanonický zdroj | Poznámka |
 |---|---|---|
 | Current stav projektu | `SESSION_HANDOFF_2026-11-17.md` | Jediný „CURRENT STATE" artefakt |
-| Kontrakt compact 2.7 / game_full 1.0 | `COMPACT_JSON_FOR_LLM.md` + `schemas/` | `schemas/single_game_v2_compact_2.7.json`, `game_full_v1.0.json` |
+| Kontrakt compact 2.8 / game_full 1.0 | `COMPACT_JSON_FOR_LLM.md` + `schemas/` | `schemas/single_game_v2_compact_2.8.json`, `game_full_v1.0.json` |
 | Kontrakt detailed 1.2 | `schemas/single_game_v1.2.json` | kód: `coaching_single_game.py` |
 | Cross-game 1.4 | inline v `src/lichess_analyzer_mcp/kb/schemas.py` | žádný samostatný schema soubor |
 | Depth policy | `src/lichess_analyzer_mcp/config/depth.py` | runtime; `DEPTH_POLICY.md` je v `_ARCHIVE/` |

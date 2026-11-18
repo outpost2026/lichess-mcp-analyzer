@@ -8,6 +8,29 @@ single-game pipeline, ne balíčku `0.1.0` (ten zůstává beze změny).
 > svůj obsah v git historii a unikátní fakta v `docs/01_EVIDENCE_DIGEST.md`.
 > Historické záznamy se mají číst jako dobové, nikoli jako živé odkazy.
 
+## [2.8] - 2026-11-18
+
+Additive contract iteration over frozen 2.7 (author-approved bump). **No change
+to `strength`/`confidence`, no detector or engine change.**
+
+- New `schemas/single_game_v2_compact_2.8.json`; `SCHEMA_V = "2.8"`,
+  `SUPPORTED_VERSIONS = ("2.6", "2.7", "2.8")`; 2.7 stays frozen and readable.
+- `precision`: `{opening, middlegame, endgame, basis}`. All phase values are
+  **null** with `basis: not_calibrated` until labeled outcomes exist — no
+  fabricated accuracy (DATA-FABRICATION-001).
+- `decisive_moves[]`: `{ply, move, cp, game_impact}` for flags whose impact left
+  winning/equal, ranked by `cp`. Fixes the report bias toward the largest raw
+  `cp` (7l9g62Eo p77 478 `winning→winning` vs p79 599 `winning→losing`;
+  v2xHpqXG p29 vs p39). The deterministic report now applies the same ranking.
+- `patterns[].pv_coverage`: measured share of a pattern's plies carrying a PV,
+  so an LLM can tell how much of the evidence is actually observable.
+- Implementation wave 1 (separate commit `cfa57a4`): decisive-first ordering in
+  `services/ide_fallback.py` + `piece_reads.sq` documentation (from-square of
+  the forcing SAN inside the PV, not the current board square).
+- Gates: pytest **559 passed / 18 deselected**, Ruff clean, mypy 0/74,
+  `verify_docs_trimming.py` 11/11 OK. Tests migrated from 2.7 to 2.8 where
+  they asserted the emitted version; 2.7 backward-read paths untouched.
+
 ## [REVIEW-CROSS] - 2026-11-18
 
 Ověřená integrace cizí analýzy (`3.LLM` pro `v2xHpqXG`) a vlastního čtení `7l9g62Eo`

@@ -34,12 +34,12 @@ Ověření, že server i tools jsou dostupné:
 ## 1. Jednotný CLI: `scripts/coach.py`
 
 Jeden vstupní bod pro všechny reálné workflow. **Výchozí výstup je compact
-JSON 2.7** (schema `schemas/single_game_v2_compact_2.7.json`); detailed 1.2 je
+JSON 2.7** (schema `schemas/single_game_v2_compact_2.8.json`); detailed 1.2 je
 opt-in přes `--format detailed`. **Výchozí rozsah jsou obě barvy** (D24):
 jedna hra = jeden JSON s oběma perspektivami, klíčovaný `{"white": …, "black": …}`.
 
 ```powershell
-# jedna hra -> compact 2.7, obě barvy, klíčovaný JSON (výchozí)
+# jedna hra -> compact 2.8, obě barvy, klíčovaný JSON (výchozí)
 .\.venv\Scripts\python.exe -X utf8 scripts\coach.py --game-id FVhqtv1S --no-llm --out data\reports\FVhqtv1S.json
 
 # jen jedna perspektiva (výstup je pak plochý objekt, ne klíčovaný)
@@ -96,7 +96,7 @@ aggregate: {"games": 3, "mean_acpl": 191.4, "flags": {"blunder": 2, "mistake": 6
 
 Tenký wrapper nad `coach.py`: stejná pipeline, ale zapisuje rovnou do
 `data\reports\` a vypisuje lidský souhrn. **Výchozí jsou obě barvy**
-a **`--format both`** (compact 2.7 + detailed 1.2 v jednom souboru).
+a **`--format both`** (compact 2.8 + detailed 1.2 v jednom souboru).
 
 ```powershell
 # obě barvy, compact + detailed, jeden JSON (výchozí)
@@ -127,7 +127,7 @@ a **`--format both`** (compact 2.7 + detailed 1.2 v jednom souboru).
 | `--pgn PATH` | alternativa k `game_id`; cesta relativně k repozitáři |
 | `--username` | tvůj Lichess nick; určí barvu automaticky |
 | `--color white\|black\|both` | výchozí `""` = obě barvy |
-| `--format compact\|detailed\|both` | výchozí `both` (compact 2.7 + detailed 1.2) |
+| `--format compact\|detailed\|both` | výchozí `both` (compact 2.8 + detailed 1.2) |
 | `--depth N` | výchozí `14` (auto politika: 12/14/16/18) |
 | `--mode fast\|deep` | `fast` = 60 s deadline, `deep` = 120 s |
 | `--out PATH` | výchozí `data\reports\single_game_{id}_{ts}.json` |
@@ -153,7 +153,7 @@ nese detailed `analysis.run_id` (otisk politiky) a `analysis.eval_provenance`
 nese detailed `analysis.confidence_dimensions` a každý pattern tři dimenze
 (`detection_strength`, `evidence_support`, `behavioral_confidence` = `null`
 s důvodem); compact 2.3 přidal `patterns[].support` a `confidence_dims` (P0-4); 2.6 přidal `bcp`/`nm`/`mit`, 2.7 `summary.src`, `alts`, `piece_reads` a `rank_unknown`.
-Od [2.11] nese compact 2.7 `flags[].mate_after` (směr matu u `*_to_mate`) a
+Od [2.11] nese compact 2.8 `flags[].mate_after` (směr matu u `*_to_mate`) a
 `pipeline` (`analysis` / `coaching` / `llm_requested`) — stejný blok má i
 detailed 1.2, takže `--no-llm` už nečte jako selhanou analýzu.
 
@@ -251,7 +251,7 @@ Poznámky k jednotlivým toolům:
 
 ## 3. Kompaktní JSON (ETL bez LLM) — odkaz na kontrakt
 
-Compact 2.7 je **výchozí** výstup `coach.py`. Sekce výše pokrývá všechny
+Compact 2.8 je **výchozí** výstup `coach.py`. Sekce výše pokrývá všechny
 případy; zde jen minimální příklady a rozdíly.
 
 ```powershell
@@ -269,7 +269,7 @@ případy; zde jen minimální příklady a rozdíly.
 `--game-id`, `--pgn-file`, `--color`, `--depth`, `--nodes-cap`, `--mode`,
 `--out`, `--no-cache` zůstávají. Nové skripty piš proti `coach.py`.
 
-Výstup se validuje proti `schemas/single_game_v2_compact_2.7.json`. Detaily,
+Výstup se validuje proti `schemas/single_game_v2_compact_2.8.json`. Detaily,
 null/omission politika a prompt pro LLM: `docs/COMPACT_JSON_FOR_LLM.md` (kanonický runtime kontrakt).
 
 MCP tool `lichess_coaching_single_game` umí totéž přes `output_format`:
