@@ -109,14 +109,23 @@ Podklady: `AUDIT_INTEGRATION` §6/§12, `PATTERN_DISCOVERY_METHODOLOGY` §11-§1
 | 1 | Opravit decision/contract index: D13–D35 kanonicky v `AUDIT_INTEGRATION` §12 (hotovo 2026-11-18), sjednotit „current compact 2.7" ve všech aktivních docs | P0 | Každé D-id v HANDOFF/EVIDENCE/AUDIT má jednu status+autoritu; žádný aktivní soubor neříká, že 2.1 je current |
 | 2 | Sjednotit `llm.status` (`compact_serializer.py:67-68` vs `:430-431`) | P1 | `use_llm=false` = jeden deklarovaný status v compactu i detailed; auditor 8/8; při změně sémantiky nová verze schématu |
 | 3 | ~~Opravit P0/P1 defekty z review~~ **DONE 2026-11-18** (`[REVIEW-FIX]`): `report_persister`, engine hash provenance, fabrikovaný rank, SRS retention, diagnostician, `llm.status`, `.bat`, `workspace_info`, engine identity, audit, workspace hranice, KB opt-in | ~~P1~~ | 9 regresních testů v `tests/test_review_fixes_2026_11_18.py`; gates 556/18, Ruff/mypy/verify zelené |
-| 4 | Honest precision / pv_coverage blok (metodologie P2) | P1 | Report nese `precision` per position type a `pv_coverage` per pattern; žádná změna `strength`/`confidence`; regrese na 5-herním vzorku |
-| 5 | Wave 2 — **jeden** kandidát (Q3 *nebo* `paired_blunder`) za D4 gate | P2 | N≥30, lift≥1,4, ≥2 analýzy, FP strop publikován, `behavioral_confidence: not_calibrated`, bump `DETECTOR_VERSION`; pokles unclassified na ≥3 hrách bez ztráty precision |
+| 4 | **Evidence honesty blok** (nová cross analýza): `precision`/`pv_coverage` + **`decisive_moves[]`** + dokumentace `piece_reads` (`sq` = from-square forcing tahu v PV) | P1 | Report nese `precision` per position type a `pv_coverage` per pattern; `decisive_moves[]` vybírá `winning→losing`/`equal→losing` **před** největším `cp`; žádná změna `strength`/`confidence`; `COMPACT_JSON_FOR_LLM.md` high-level obsahuje pravidlo `sq`; regrese na 5-herním vzorku |
+| 5 | Wave 2 — **jeden** kandidát za D4 gate; po cross analýze je nejsilnější **Q4 `declined_forcing_move_at_pivot`**, ale **jen pokud je engine best skutečně forcing** | P2 | N≥30, lift≥1,4, ≥2 analýzy, FP strop, `behavioral_confidence: not_calibrated`, bump `DETECTOR_VERSION`; **podmínka musí vyloučit případy, kdy je best tah tichý** (většina z „7 případů" 3.LLM je jen obyčejná nepřesnost) |
 | 6 | D23/T-16 `%clk` parser — jen pokud #2 odhalí status, který jej použije | P2/P3 | `%clk` parsován per tah; `clock_data_unavailable` pouze při absenci; fixture pro oba případy |
 | 7 | D1 default phase mode — rozhodnout měřením nebo explicitně zamrazit na `ply_segment` | P3 | Jedno decision ID v AUDIT; dual-run R detektoru na 20 hrách bez změny klasifikace, nebo verzbump |
 
+### Verifikovaná cross-game evidence (2026-11-18, vlna 2)
+
+Vlastní čtení JSON `v2xHpqXG` (Stafford, 39 ply → `h64`) a `7l9g62Eo` (Bird, `h256`) proti kódu:
+
+- **Platí:** v2x ACPL 70,3/40,7; bílý 5 flagů/2 bludery (p29 `cxd4` 430 `winning→losing`, p39 `Qxc6+` 425 `losing→losing`); černý 7 flagů/**0 blunderů**, p6 `Nc6` 104 cp best `d6` `unclassified` — a černý vyhrál. 7l9: oba po 19 flagů, bílý 2 bludery (p77 `Bxh2` 478 `winning→winning` motif `high_value_capture`, p79 `Rf4` 599 `winning→losing`), černý 0 blunderů, p85 `why=check_escape`.
+- **Korekce 3.LLM:** (a) výhra černého v Staffordu **není důkazem GAMBIT vektoru** — výsledek vysvětluje blunder differential (2 vs 0), ne gambit; použití `game.result` k potlačení flagů by było outcome leakage (DATA-FABRICATION-001). Ponechat jako hypotézu, ne implementovat. (b) „Q4 — 7 případů napříč 3 hrami" neobstojí jako *forcing* pattern: většina engine best tahů je tichá (`h3`, `Bf3`, `Bh3`, `Qa3`, `d6`, `Ng4`, `Bd5`, `Qe6`, `O-O`); jen `dxe4`/`Bxg2+` jsou forcing. (c) `high_value_capture` už **2 hry** (v2x b34, 7l9 w77) → motif registrovaný, kandidát `greedy_capture` (pouze pokud `cp_loss>50`). (d) `V` už **2 hry** (7l9 w107/w119). (e) 3.LLM uvádí u v2x b34 patterny „B+T", JSON má **C+T**.
+- **Potvrzeno znovu:** `rank:null` je poctivý výstup REVIEW-FIX (v2x 5/5 a 4/7; 7l9 18/19 a 17/19); `piece_reads.sq = from_square` forcing tahu v PV (7l9 w77 `Rh3+` z h2 a `Qxh3` z f5) — problém je dokumentace, ne kód; `retry_budget_exhausted` se objevuje i v 7l9 (3+1 flagů), takže **není specifický jen pro extrémní hru** `lpDh1fIx`.
+- **Nový robustní nález pro report:** v obou hrách rozhoduje **rozdíl v bluderech, ne počet flagů** (v2x 5 vs 7; 7l9 19 vs 19, vždy 2 vs 0). `decisive_moves[]` musí přednostně brát změnu `game_impact`, nikoli největší `cp` (p77 478 cp je `winning→winning`, p79 599 cp je `winning→losing`).
+
 ### Vyřešené / obsoletní (odstraněno z aktivní práce)
 
-- `hash_mb` 64 vs 512 → adaptivní **h128/h256** (AUDIT §14 D40, CHANGELOG [2.13]).
+- `hash_mb` 64 vs 512 → adaptivní **h128/h256** (AUDIT §14 D40, CHANGELOG [2.13]); 64/128/256 v datech sedí na počtu ply, **ne config drift**.
 - threshold `fen 100` vs `eval_after 200` → **`QUIET_BLUNDER_CP = 200`** (D13, CHANGELOG [2.7]).
 - Wave 3 `ph` per flag → kosmetické; cena nové verze schématu > přínos (defer).
 - `username: ""` v detailed → jen pojmenovací konzistence (defer).

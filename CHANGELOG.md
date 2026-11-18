@@ -8,6 +8,25 @@ single-game pipeline, ne balíčku `0.1.0` (ten zůstává beze změny).
 > svůj obsah v git historii a unikátní fakta v `docs/01_EVIDENCE_DIGEST.md`.
 > Historické záznamy se mají číst jako dobové, nikoli jako živé odkazy.
 
+## [REVIEW-CROSS] - 2026-11-18
+
+Ověřená integrace cizí analýzy (`3.LLM` pro `v2xHpqXG`) a vlastního čtení `7l9g62Eo`
+do `SESSION_HANDOFF` §5. Žádná změna runtime kódu ani schémat; úrovně 0–5 a seznamy
+DROP/DEFER zůstávají nezměněny.
+
+- Roadmapa #4 rozšířena na **evidence honesty blok**: `precision`/`pv_coverage`
+  + `decisive_moves[]` (priorita `game_impact` před `cp_loss`) + dokumentace
+  `piece_reads.sq`. Podklad: `lpDh1fIx`, `v2xHpqXG`, `7l9g62Eo`.
+- Roadmapa #5 (Wave 2): Q4 `declined_forcing_move_at_pivot` je nejsilnější kandidát,
+  ale **pouze s podmínkou forcing best move** — většina z „7 případů" neprojde D4 gate.
+- Zamítnuto jako interpretace: „Stafford výhra = důkaz GAMBIT vektoru" (výsledek
+  vysvětluje blunder differential 2:0, použití `game.result` by bylo outcome leakage)
+  a „hash 64→128 drift" (adaptivní tabulka podle ply, ověřeno 39/73 ply).
+- Registr: `high_value_capture` **2 hry**, `V` **2 hry**; opraveno „B+T" → **C+T**
+  u `v2xHpqXG` b34. `rank:null` znovu potvrzen jako poctivý REVIEW-FIX výstup.
+- `retry_budget_exhausted` potvrzen i v `7l9g62Eo` (3+1 flagů) — není specifický
+  pro extrémní hru `lpDh1fIx`.
+
 ## [REVIEW-FIX] - 2026-11-18
 
 Autorizované opravy všech P0/P1 nálezů z `[REVIEW]` + 9 regresních testů
