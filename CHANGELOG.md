@@ -8,6 +8,23 @@ single-game pipeline, ne balíčku `0.1.0` (ten zůstává beze změny).
 > svůj obsah v git historii a unikátní fakta v `docs/01_EVIDENCE_DIGEST.md`.
 > Historické záznamy se mají číst jako dobové, nikoli jako živé odkazy.
 
+## [D41] - 2026-11-18
+
+Rozhodnutí D1 (default phase mode) na základě měření, ne názoru. Žádná změna
+kódu, schémat nebo `DETECTOR_VERSION`.
+
+- Nový offline nástroj `scripts/measure_d1_phase_mode.py`: dual-run per-move
+  detektorů nad 20 cache soubory `*_d14n150000.json`, Q4 experiment vypnutý.
+- Výsledek (`data/runs/D1_phase_measurement_2026-11-18.json`): 162 flagů,
+  81 s vyplněným `chess_phase`, 87 vs 86 patternů, **1 set-flip (0,62 %)**
+  a 1 R-flip (`7l9g62Eo` ply 77 `Bxh2`: segment endgame přidává R, material
+  middlegame jej odebírá).
+- `AUDIT_INTEGRATION` §15: **D41 = `ply_segment` zůstává default**, `material`
+  zůstává opt-in přes `phase_method`. D41a: měření nutno zopakovat po změně R
+  detektoru nebo prahů.
+- Roadmapa `SESSION_HANDOFF` §5 položka #7 uzavřena. Všechny položky #1–#7
+  jsou nyní DONE (Q4 nadále jako experiment za flagem, D4 gate otevřený).
+
 ## [Q4-EXP] - 2026-11-18
 
 Položka #5 roadmapy jako **experiment za flagem, ne produkční pattern**.

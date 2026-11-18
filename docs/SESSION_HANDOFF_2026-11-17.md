@@ -112,7 +112,7 @@ Podklady: `AUDIT_INTEGRATION` §6/§12, `PATTERN_DISCOVERY_METHODOLOGY` §11-§1
 | 4 | **Evidence honesty blok** (nová cross analýza): `precision`/`pv_coverage` + **`decisive_moves[]`** + dokumentace `piece_reads` (`sq` = from-square forcing tahu v PV) | P1 | Report nese `precision` per position type a `pv_coverage` per pattern; `decisive_moves[]` vybírá `winning→losing`/`equal→losing` **před** největším `cp`; žádná změna `strength`/`confidence`; `COMPACT_JSON_FOR_LLM.md` high-level obsahuje pravidlo `sq`; regrese na 5-herním vzorku |
 | 5 | Wave 2 — Q4 `declined_forcing_move_at_pivot` **EXPERIMENT za flagem** (`LICHESS_EXPERIMENTAL_Q4=1`, výchozí OFF), ne produkční pattern (`[Q4-EXP]`) | P2 (exp) | D4 gate nadále otevřen: N≥30, lift≥1,4, ≥2 analýzy, FP strop, `behavioral_confidence: not_calibrated`; do produkce až po validaci na ≥10 hrách; flag-on payload má `detector_version+Q4-exp` a vyžaduje čistou cache |
 | 6 | ~~D23/T-16 `%clk` parser~~ **DONE 2026-11-18** (`[D23]`): `parse_clock_data()`, interní coaching data, prompt + deterministický report nesou `clock_data_unavailable`, když chybí | ~~P2/P3~~ | 4 testy v `tests/test_clock_parser.py`; žádná změna schémat; gates 563/18 |
-| 7 | D1 default phase mode — rozhodnout měřením nebo explicitně zamrazit na `ply_segment` | P3 | Jedno decision ID v AUDIT; dual-run R detektoru na 20 hrách bez změny klasifikace, nebo verzbump |
+| 7 | ~~D1 default phase mode~~ **DONE 2026-11-18** (`D41` v `AUDIT_INTEGRATION` §15): 20 her / 162 flagů / **1 flip (0,62 %)** → `ply_segment` zůstává default, `material` opt-in | ~~P3~~ | `scripts/measure_d1_phase_mode.py` + `data/runs/D1_phase_measurement_2026-11-18.json`; žádná změna schémat ani `DETECTOR_VERSION` |
 
 ### Verifikovaná cross-game evidence (2026-11-18, vlna 2)
 

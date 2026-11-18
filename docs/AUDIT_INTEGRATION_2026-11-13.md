@@ -365,4 +365,21 @@ Následující rozhodnutí se vztahují k aktuálnímu kontraktu compact **2.7**
 | **D39** | Nové pattern ID **U** (unseen-threat quiet blunder) a **V** (wrong check response), protože Q1/Q2 jsou obsazené (D13). `DETECTOR_VERSION = DBCL-20261117-dev`. | D4 podmínka splněna: měřitelná pravidla + testy + cross-game detektory. |
 | **D40** | Compact verze jsou samostatné artefakty: 2.2 → 2.3 → 2.4 → 2.5 → 2.6 → 2.7. Aliasy `eval_before`/`eval_after` odstraněny v 2.5, ne-anchor `eval_before_mover_cp` v 2.6; 2.6 přidalo `bcp`/`nm`/`mit`, 2.7 `summary.src`/`alts`/`piece_reads`/`rank_unknown`. | Validator čte předchozí verzi backwards, nové payloady vždy validují proti nejnovějšímu souboru. Žádná tichá změna schématu. |
 
+## 15. Rozhodnutí D41 (2026-11-18) — D1 default phase mode
+
+**Podklad:** `scripts/measure_d1_phase_mode.py` → `data/runs/D1_phase_measurement_2026-11-18.json`.
+Offline dual-run per-move detektorů nad 20 cache soubory `*_d14n150000.json`
+(bez engine volání, Q4 experiment vypnutý): **162 měřených flagů**, z toho 81
+má vyplněný `chess_phase`; celkem 87 vzorů v `ply_segment` vs 86 v `material`;
+**1 pattern-set flip (0,62 %)** a **1 R-detector flip**.
+
+Jediný rozdíl: `7l9g62Eo` ply 77 `Bxh2` — `segment=endgame` přidává R k B+T,
+`material=middlegame` R odebírá. Ply 77 ze ~128 je v koncovce, ale materiál
+ještě koncovku nedělá; oba výklady jsou obhajitelné.
+
+| ID | Rozhodnutí | Dopad |
+|---|---|---|
+| **D41** | **Výchozí `phase_method` zůstává `ply_segment`.** `material` (`chess_phase`) zůstává dostupný opt-in přes pole `phase_method`; nemění se žádné schéma ani `DETECTOR_VERSION`. | Změna režimu by zasáhla 0,62 % flagů a v jediném případě by odebrala R právě u instruktivního kolapsu. Cena migrace (cache, testy, narativ) převyšuje přínos. Decision earned from measurement, ne z názoru. |
+| **D41a** | Měření je reproducibility artefakt v gitignored `data/runs`; pokud se změní detektor R nebo prahy, je nutné jej spustit znovu. | Zabraňuje „zastaralému decisionu" bez důkazu. |
+
 Souhrn aktuálního stavu a předávací artifact: `docs/SESSION_HANDOFF_2026-11-17.md`.
