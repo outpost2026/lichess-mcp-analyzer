@@ -875,8 +875,10 @@ def _run_analyze_pgn(
                     if entry["san"] == move_analysis.move_san:
                         played_move_rank = entry["rank"]
                         break
-                if played_move_rank == 0 and move_analysis.engine_lines:
-                    played_move_rank = len(move_analysis.engine_lines) + 1
+                # Review 2026-11-18: do NOT synthesize an exact rank when the
+                # played move was outside the searched multipv. 0 is mapped to
+                # rank:null by the serializer; rank_not_in_engine_lines carries
+                # the honest reason. len(lines)+1 was invented precision.
                 move_analysis.played_rank = played_move_rank
                 # P0-3: `best_move_san` must name the move the cp_loss anchor
                 # was measured from, not a possibly different multipv winner.

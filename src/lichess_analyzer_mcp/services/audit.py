@@ -40,9 +40,13 @@ def auditable(func):
         error = None
         try:
             result = await func(*args, **kwargs)
-            if isinstance(result, dict) and result.get("error") is not None:
+            if isinstance(result, dict) and (
+                result.get("error") is not None
+                or result.get("status") == "error"
+                or bool(result.get("errors"))
+            ):
                 ok = False
-                error = result.get("error")
+                error = result.get("error") or result.get("errors") or result.get("status")
             return result
         except Exception as e:
             ok = False

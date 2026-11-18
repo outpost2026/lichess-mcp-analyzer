@@ -92,8 +92,8 @@ Hry: `RhkEoVUT`, `WxfSvX4y`, `0yeUi5EO`, `yXmiCYss`, `hJjXxxvq`
 - Chybějící `pv_played_unavailable`: 10/10 → 0/10 souborů.
 - Pattern C: `yXmiCYss` white freq 4, `hJjXxxvq` black freq 5.
 - Delta compactu 2.7 oproti 2.6: **+50 až +232 znaků** (limit +300).
-- Gates: pytest **547 passed / 18 deselected**, Ruff clean, mypy **74 souborů** clean,
-  engine job 18 passed s pinned `Stockfish 18` (stav 2026-11-18 po review).
+- Gates: pytest **556 passed / 18 deselected**, Ruff clean, mypy **74 souborů** clean,
+  engine job 18 passed s pinned `Stockfish 18` (stav 2026-11-18 po REVIEW-FIX).
 
 ## 5. Otevřené položky — REKALIBROVÁNO 2026-11-18
 
@@ -108,7 +108,7 @@ Podklady: `AUDIT_INTEGRATION` §6/§12, `PATTERN_DISCOVERY_METHODOLOGY` §11-§1
 |---|---|---|---|
 | 1 | Opravit decision/contract index: D13–D35 kanonicky v `AUDIT_INTEGRATION` §12 (hotovo 2026-11-18), sjednotit „current compact 2.7" ve všech aktivních docs | P0 | Každé D-id v HANDOFF/EVIDENCE/AUDIT má jednu status+autoritu; žádný aktivní soubor neříká, že 2.1 je current |
 | 2 | Sjednotit `llm.status` (`compact_serializer.py:67-68` vs `:430-431`) | P1 | `use_llm=false` = jeden deklarovaný status v compactu i detailed; auditor 8/8; při změně sémantiky nová verze schématu |
-| 3 | Opravit P0/P1 defekty z review: `report_persister.py:249` (špatné poziční argy → `opponent_pool` persist nefunguje), `engine_client.py:59` (h64/128 label vs reálných 512 MB → lživé `summary.src`), `game_analyzer.py:879` + `pv_recovery.py:109` (fabrikovaný `played_rank`), `srs_engine.py:38` (ztracený `retention_rate` po restartu), `diagnostician.py:68` („nejhorší zahájení" = nejhranější), `lichess-mcp.bat` (`-m src.server` neexistuje) | P1 | Každá oprava má regresní test; `persist_report(kind="opponent_pool")` projde; gates zelené |
+| 3 | ~~Opravit P0/P1 defekty z review~~ **DONE 2026-11-18** (`[REVIEW-FIX]`): `report_persister`, engine hash provenance, fabrikovaný rank, SRS retention, diagnostician, `llm.status`, `.bat`, `workspace_info`, engine identity, audit, workspace hranice, KB opt-in | ~~P1~~ | 9 regresních testů v `tests/test_review_fixes_2026_11_18.py`; gates 556/18, Ruff/mypy/verify zelené |
 | 4 | Honest precision / pv_coverage blok (metodologie P2) | P1 | Report nese `precision` per position type a `pv_coverage` per pattern; žádná změna `strength`/`confidence`; regrese na 5-herním vzorku |
 | 5 | Wave 2 — **jeden** kandidát (Q3 *nebo* `paired_blunder`) za D4 gate | P2 | N≥30, lift≥1,4, ≥2 analýzy, FP strop publikován, `behavioral_confidence: not_calibrated`, bump `DETECTOR_VERSION`; pokles unclassified na ≥3 hrách bez ztráty precision |
 | 6 | D23/T-16 `%clk` parser — jen pokud #2 odhalí status, který jej použije | P2/P3 | `%clk` parsován per tah; `clock_data_unavailable` pouze při absenci; fixture pro oba případy |

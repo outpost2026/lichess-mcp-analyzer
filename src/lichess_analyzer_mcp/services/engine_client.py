@@ -55,8 +55,13 @@ def get_engine(
     hash_mb: Optional[int] = None, threads: Optional[int] = None
 ) -> chess.engine.SimpleEngine:
     global _engine, _engine_hash_mb, _engine_threads
-    # Adaptive hash: if requested hash differs, reconfigure or restart
-    requested = hash_mb if hash_mb is not None else 512
+    # Adaptive hash: a bare get_engine() must REUSE the already configured hash.
+    # Review 2026-11-18: the old default of 512 silently reconfigured an engine
+    # that had been set to h64/h128/h256, while provenance recorded the small
+    # value -> summary.src claimed a policy the engine never ran.
+    requested = (
+        hash_mb if hash_mb is not None else (_engine_hash_mb if _engine is not None else 512)
+    )
     requested_threads = threads if threads is not None else ENGINE_THREADS
     if _engine is None:
         with _engine_init_lock:

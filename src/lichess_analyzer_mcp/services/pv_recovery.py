@@ -105,8 +105,8 @@ def recover_missing_pv(
                 if entry.get("san") == getattr(move, "move_san", None):
                     rank = int(entry.get("rank") or 0)
                     break
-            if rank == 0:
-                rank = len(move.engine_lines) + 1
+            # Review 2026-11-18: no fabricated rank outside multipv; keep 0
+            # (serializer maps it to rank:null / rank_not_in_engine_lines).
             move.played_rank = rank
             if not getattr(move, "best_move_san", ""):
                 move.best_move_san = move.engine_lines[0].get("san") or ""

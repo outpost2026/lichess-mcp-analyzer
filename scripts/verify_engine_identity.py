@@ -42,12 +42,17 @@ def sha256_of(path: Path) -> str:
 
 
 def expected_binary_hash(config: dict, path: Path) -> str | None:
-    """Known hashes by file name; an unknown local build is reported, not trusted."""
+    """Known hashes by file name; an unknown local build is NOT trusted (review 2026-11-18)."""
     known = {
         Path(config["linux_ci"]["binary_in_archive"]).name: config["linux_ci"]["binary_sha256"],
         Path(config["local_windows_bmi2"]["binary"]).name: config["local_windows_bmi2"]["sha256"],
     }
     return known.get(path.name)
+
+
+def _hash_ok(wanted_hash: str | None, binary_hash: str) -> bool:
+    """Unknown local builds are never trusted (review 2026-11-18)."""
+    return wanted_hash is not None and binary_hash == wanted_hash
 
 
 def _resolve(raw: str) -> Path | None:
@@ -72,7 +77,7 @@ def main(argv: list[str] | None = None) -> int:
 
     binary_hash = sha256_of(path)
     wanted_hash = expected_binary_hash(config, path)
-    hash_ok = wanted_hash is None or binary_hash == wanted_hash
+    hash_ok = _hash_ok(wanted_hash, binary_hash)
 
     try:
         engine = chess.engine.SimpleEngine.popen_uci(str(path))

@@ -33,9 +33,18 @@ def _parse_game_entries(source: str, is_file: bool = False) -> list[tuple[str, s
         XXXXXXXXXXXX                                → (id, None)
     """
     if is_file:
-        if not os.path.isfile(source):
+        # Review 2026-11-18: MCP-supplied paths must stay inside the workspace.
+        root = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+        resolved = os.path.realpath(source)
+        try:
+            inside = os.path.commonpath([root, resolved]) == root
+        except ValueError:  # different drives on Windows
+            inside = False
+        if not inside:
+            raise ValueError(f"file_path outside workspace is not allowed: {source}")
+        if not os.path.isfile(resolved):
             raise FileNotFoundError(f"File not found: {source}")
-        with open(source, encoding="utf-8") as f:
+        with open(resolved, encoding="utf-8-sig") as f:
             lines = f.readlines()
     else:
         lines = source.split("\n")

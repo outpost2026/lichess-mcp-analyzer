@@ -65,8 +65,13 @@ def diagnose(analyses: list[GameAnalysis], username: str) -> WeaknessReport:
     if total_acpl > 80:
         top_weaknesses.append("Overall precision: high centipawn loss")
     if openings:
-        worst_opening = sorted(openings.items(), key=lambda x: x[1]["games"], reverse=True)[0]
-        if worst_opening[1]["blunders"] > 2:
+        # Weakness = most blunders, NOT most played (review 2026-11-18).
+        # Require >=3 games so one outlier opening is not called a weakness.
+        eligible = [(name, v) for name, v in openings.items() if v.get("games", 0) >= 3]
+        worst_opening = (
+            sorted(eligible, key=lambda x: x[1]["blunders"], reverse=True)[0] if eligible else None
+        )
+        if worst_opening is not None and worst_opening[1]["blunders"] > 2:
             top_weaknesses.append(f"Opening preparation: {worst_opening[0]}")
     return WeaknessReport(
         username=username,

@@ -6,7 +6,7 @@
 
 > **New session:** start at `docs/SESSION_HANDOFF_2026-11-17.md` (current state, commands, open items).
 
-Version: `0.1.0` | State (2026-11-18): **single-game pipeline [2.15]** (compact 2.7 default, detailed 1.2) | Tests: **547 fast** (excluding `test_engine_client.py`) / 18 real-engine (pinned Stockfish 18) | Tools: **18** | Schemas: compact 2.7 / detailed 1.2 / cross-game 1.4 / game_full 1.0
+Version: `0.1.0` | State (2026-11-18): **single-game pipeline [2.15]** (compact 2.7 default, detailed 1.2) | Tests: **556 fast** (excluding `test_engine_client.py`) / 18 real-engine (pinned Stockfish 18) | Tools: **18** | Schemas: compact 2.7 / detailed 1.2 / cross-game 1.4 / game_full 1.0
 
 
 ## Why?
@@ -375,7 +375,7 @@ lichess-analyzer-mcp/
 │   ├── pgn_to_compact.py        <- Deprecated shim over coach.py
 │   ├── setup_stockfish.ps1      <- Automatic Stockfish download
 │   └── verify_docs_trimming.py  <- Verify the 2026-11-18 docs trimming (11 assertions)
-├── tests/                       <- 547 fast + 18 real-engine (2026-11-18; marker real_engine)
+├── tests/                       <- 556 fast + 18 real-engine (2026-11-18; marker real_engine)
 ├── docs/                        <- 9 active files (trim 2026-11-18)
 │   ├── 00_DOCS_CONTRACT.md      <- Read order, authority, rules
 │   ├── SESSION_HANDOFF_*.md     <- Current state, commands, open items

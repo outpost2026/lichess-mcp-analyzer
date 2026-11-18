@@ -427,12 +427,18 @@ def _llm(block: dict | None) -> dict | None:
         return None
     provider = block.get("provider") or "unknown"
     status = block.get("status")
-    if provider == "deterministic" or status == "degraded":
+    reason = block.get("reason")
+    if status == "failed" or reason == "all_providers_failed":
+        # A genuine cascade failure stays failed (existing contract/test).
         status = "failed"
+    elif provider == "deterministic" or status == "degraded":
+        # Review 2026-11-18: `llm_disabled` / offline ETL is NOT a failed game
+        # analysis. The 2.4 notes and services/pipeline_status.py define it
+        # as `degraded`; distinguish it from all_providers_failed above.
+        status = "degraded"
     if status not in ("ok", "degraded", "failed"):
         status = "failed"
     out = {"status": status, "provider": provider}
-    reason = block.get("reason")
     if reason and reason != "ok":
         out["reason"] = reason
     return out

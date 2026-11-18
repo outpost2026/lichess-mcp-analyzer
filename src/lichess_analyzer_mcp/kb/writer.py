@@ -4,7 +4,10 @@ import json
 import os
 from datetime import datetime
 
-KB_ROOT = os.path.join(
+# Review 2026-11-18: KB location is configurable. The default preserves the
+# historical external integration, but writing there requires an explicit
+# opt-in at the MCP boundary (see tools/persist_report.py).
+_DEFAULT_KB_ROOT = os.path.join(
     os.path.dirname(__file__),
     "..",
     "..",
@@ -12,7 +15,9 @@ KB_ROOT = os.path.join(
     "..",
     "B2B-Knowledge-Base",
 )
+KB_ROOT = os.environ.get("LICHESS_KB_ROOT") or _DEFAULT_KB_ROOT
 
+# External KB directory name (not a tracked repo path, so GT-080 does not apply).
 ANALYSIS_DIR = os.path.join(KB_ROOT, "02_ANAL\xddZY", "02_chess")
 PATTERN_DIR = os.path.join(KB_ROOT, "04_KNOWLEDGE_BASE", "02_chess")
 

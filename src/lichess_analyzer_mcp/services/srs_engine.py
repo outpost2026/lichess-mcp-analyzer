@@ -36,6 +36,7 @@ class SRSEngine:
                     card = SRSCard(**c)
                     self.state.cards[card.card_id] = card
                 self.state.total_reviews = data.get("total_reviews", 0)
+                self.state.retention_rate = float(data.get("retention_rate", 0.0))
             except (json.JSONDecodeError, KeyError):
                 pass
 

@@ -5,12 +5,28 @@ Generates a coaching report through the automatic LLM provider cascade
 on explicit request. Default behavior stays ephemeral everywhere else.
 """
 
+import os
+
 from lichess_analyzer_mcp.app import app
 from lichess_analyzer_mcp.services.audit import auditable
 from lichess_analyzer_mcp.services.logger import get_logger
 from lichess_analyzer_mcp.services.report_persister import persist_report
 
 log = get_logger("persist_report")
+
+_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+
+
+def _kb_write_allowed() -> bool:
+    """External KB writes require explicit opt-in (review 2026-11-18)."""
+    from lichess_analyzer_mcp.kb.writer import KB_ROOT
+
+    kb = os.path.realpath(KB_ROOT)
+    try:
+        inside = os.path.commonpath([_REPO_ROOT, kb]) == _REPO_ROOT
+    except ValueError:  # different drives on Windows
+        inside = False
+    return inside or os.environ.get("LICHESS_KB_WRITE", "").lower() in {"1", "true", "yes"}
 
 
 @app.tool("lichess_persist_report")
@@ -53,6 +69,12 @@ async def lichess_persist_report(
         format: "json" | "md" | "both"
         target: "docs" | "kb"
     """
+    if target == "kb" and not _kb_write_allowed():
+        return {
+            "error": "KB write outside repo requires LICHESS_KB_WRITE=1 "
+            "(or set LICHESS_KB_ROOT inside the repo)",
+            "kind": kind,
+        }
     try:
         ids = [x.strip() for x in game_ids.split(",") if x.strip()] if game_ids else []
         params = {

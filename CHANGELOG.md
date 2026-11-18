@@ -8,11 +8,42 @@ single-game pipeline, ne balíčku `0.1.0` (ten zůstává beze změny).
 > svůj obsah v git historii a unikátní fakta v `docs/01_EVIDENCE_DIGEST.md`.
 > Historické záznamy se mají číst jako dobové, nikoli jako živé odkazy.
 
+## [REVIEW-FIX] - 2026-11-18
+
+Autorizované opravy všech P0/P1 nálezů z `[REVIEW]` + 9 regresních testů
+(`tests/test_review_fixes_2026_11_18.py`). **Žádná změna schémat ani kontraktů**
+(kromě sémantického vyjasnění `llm.status` v rámci existujících hodnot).
+
+- `report_persister.py:249` — `opponent_pool` nyní volá tool s keyword argumenty
+  (`username`, `depth`); dříve nefunkční cesta `persist_report(kind="opponent_pool")`.
+- `engine_client.py:59` — `get_engine()` bez argumentu **reuseuje** aktuální hash;
+  odstraněno lživé `summary.src` (`h64` label vs reálných 512 MB).
+- `game_analyzer.py:878`, `pv_recovery.py:108` — odstraněn fabrikovaný
+  `played_rank = len(engine_lines)+1`; mimo multipv zůstává `0` → `rank:null` /
+  `rank_not_in_engine_lines` (DATA-FABRICATION-001).
+- `srs_engine.py:38` — `retention_rate` se obnovuje ze JSON po restartu.
+- `diagnostician.py:68` — „nejhorší zahájení" se řadí podle blunderů (ne počtu her)
+  a vyžaduje ≥3 hry.
+- `compact_serializer.py:425` — `llm.status`: `all_providers_failed` zůstává
+  `failed`, `llm_disabled`/offline ETL je `degraded` (dle 2.4 poznámek a
+  `pipeline_status.py`).
+- `audit.py:43` — rozpoznává `{status:"error", errors:[...]}`; selhání už není
+  auditováno jako `ok`.
+- `lichess-mcp.bat` — `-m lichess_analyzer_mcp.server` (dříve neexistující `-m src.server`).
+- `workspace_info.py` — živý registry přes `app.list_tools()` (žádný 10-tool fallback),
+  platformově resolved Stockfish z `config/engine_identity.json`.
+- `verify_engine_identity.py` — neznámý binary už není důvěryhodný (`_hash_ok`).
+- `anonymous_session.py:35` — `file_path` omezen na workspace, `utf-8-sig`.
+- `kb/writer.py` + `tools/persist_report.py` — KB root přes `LICHESS_KB_ROOT`;
+  zápis mimo repo vyžaduje `LICHESS_KB_WRITE=1`.
+- Gates: pytest **556 passed / 18 deselected** (9 nových), Ruff clean, mypy 0/74,
+  `verify_docs_trimming.py` 11/11 OK.
+
 ## [REVIEW] - 2026-11-18
 
-Generální code review + sémantická/logická revize plánů po trimu. **Žádná změna
-runtime kódu v tomto záznamu** — review identifikuje defekty a rekalibruje plány;
-opravy kódu jsou v `SESSION_HANDOFF` §5 aktivní roadmapě (P1).
+Generální code review + sémantická/logická revize plánů po trimu. Tento záznam
+identifikoval defekty a rekalibroval plány; **opravy kódu následovaly v [REVIEW-FIX]
+níže** (autor odsouhlasil „vše P0+P1").
 
 - **Decision/contract autorita obnovena:** D13–D35 mají opět závazné znění v
   `AUDIT_INTEGRATION` §12 (dříve jen odkaz do EVIDENCE_DIGEST, který odkazoval

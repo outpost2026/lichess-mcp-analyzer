@@ -246,9 +246,12 @@ async def _run_tool(kind: str, params: dict, ctx=None) -> dict:
     if kind == "opponent_pool":
         from lichess_analyzer_mcp.tools.coaching_opponent_pool import lichess_coaching_opponent_pool
 
+        # Review 2026-11-18: the 2nd positional is username, not depth.
+        # Passing depth positionally made every game fail (username=int).
         return await lichess_coaching_opponent_pool(
-            ",".join(params.get("game_ids", [])),
-            params.get("depth", 0),
+            game_ids=",".join(params.get("game_ids", [])),
+            username=params.get("username", ""),
+            depth=params.get("depth", 0),
         )
     if kind == "training_plan":
         from lichess_analyzer_mcp.tools.coaching_training_plan import lichess_coaching_training_plan
