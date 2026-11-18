@@ -164,6 +164,21 @@ def test_report_never_truncated_mid_structure():
     assert "ply 41" in line and "308cp" in line
 
 
+def test_decisive_impact_precedes_larger_cp():
+    """REVIEW-CROSS: winning->losing outranks a bigger cp that stays winning."""
+    prompt = """K DISPOZICI:
+- Počet chyb: 2 blunderů, 0 chyb, 0 nepřesností
+- Blundry (s detaily):
+  ply 77 Bxh2 (loss 478cp, impact=winning_to_winning)
+  ply 79 Rf4 (loss 599cp, impact=winning_to_losing)
+- Fázový breakdown: endgame ACPL 75.3
+"""
+    content, _ = generate_deterministic_report(prompt)
+    line = next(ln for ln in content.splitlines() if ln.startswith("- Kritický moment:"))
+    assert line.index("ply 79") < line.index("ply 77")
+    assert "winning_to_losing" in line
+
+
 def test_missed_mate_and_game_impact_reach_the_report():
     """D34: '9027cp' alone reads as a catastrophe; the verdict must travel
     with it, otherwise the deterministic report contradicts the JSON."""

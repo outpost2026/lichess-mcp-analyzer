@@ -42,8 +42,13 @@ def _critical_moments(value: str, max_items: int = 3) -> str:
     ended mid-array (FIX-011). Here only `ply`, SAN and cp loss are extracted,
     so the result can never contain a half-written structure.
     """
+    # REVIEW-CROSS 2026-11-18: rank by game_impact transition, not raw cp_loss.
+    # A 478cp move that stays winning is NOT the decisive moment when a 599cp
+    # move flips winning->losing (7l9g62Eo p77 vs p79; v2xHpqXG p29 vs p39).
+    decisive_impacts = {"winning_to_losing": 2, "equal_to_losing": 2, "equal_to_mate": 2}
+    weakening_impacts = {"winning_to_equal": 1}
     seen: set[int] = set()
-    parts: list[str] = []
+    ranked: list[tuple[int, float, str]] = []
     for m in re.finditer(r"ply\s+(\d+)\s*:?\s*([^\s,(;]+)", value):
         ply = int(m.group(1))
         if ply in seen:
@@ -64,12 +69,13 @@ def _critical_moments(value: str, max_items: int = 3) -> str:
             via = f" via {missed_m.group(2)}" if missed_m.group(2) else ""
             notes.append(f"mate missed: {missed_m.group(1)}{via}")
         suffix = f" [{', '.join(notes)}]" if notes else ""
-        parts.append(
-            f"ply {ply} {san} {cp_m.group(1)}cp{suffix}" if cp_m else f"ply {ply} {san}{suffix}"
-        )
-        if len(parts) >= max_items:
-            break
-    return "; ".join(parts)
+        text = f"ply {ply} {san} {cp_m.group(1)}cp{suffix}" if cp_m else f"ply {ply} {san}{suffix}"
+        impact = impact_m.group(1) if impact_m else ""
+        priority = decisive_impacts.get(impact, weakening_impacts.get(impact, 0))
+        cp = float(cp_m.group(1)) if cp_m else 0.0
+        ranked.append((priority, cp, text))
+    ranked.sort(key=lambda row: (-row[0], -row[1]))
+    return "; ".join(row[2] for row in ranked[:max_items])
 
 
 def _bullet_value(prompt: str, label_prefix: str) -> str:
