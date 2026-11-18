@@ -6,14 +6,14 @@
 
 > **Nová session:** začni v `docs/SESSION_HANDOFF_2026-11-17.md` (current stav, příkazy, otevřené položky).
 
-Verze: `0.1.0` | Stav (2026-11-17): **single-game pipeline [2.15]** (compact 2.7 default, detailed 1.2) | Testy: **536 fast** (bez `test_engine_client.py`) / 18 real-engine (pinnutý Stockfish 18) | Nástrojů: **18** | Schémata: compact 2.7 / detailed 1.2 / cross-game 1.4 / game_full 1.0
+Verze: `0.1.0` | Stav (2026-11-18): **single-game pipeline [2.15]** (compact 2.7 default, detailed 1.2) | Testy: **547 fast** (bez `test_engine_client.py`) / 18 real-engine (pinnutý Stockfish 18) | Nástrojů: **18** | Schémata: compact 2.7 / detailed 1.2 / cross-game 1.4 / game_full 1.0
 
 
 ## Proč?
 
 Tento repozitář vzniká se **dvojím účelem**:
 
-1. **Šachový analyzátor** — personalizovaný tréninkový nástroj, který stáhne tvoje partie z Lichess, analyzuje každý tah Stockfishem, detekuje 14+ vzorových patternů (A–S) z herní historie, diagnostikuje fázové slabiny a pomáhá se z nich učit pomocí spaced repetition.
+1. **Šachový analyzátor** — personalizovaný tréninkový nástroj, který stáhne tvoje partie z Lichess, analyzuje každý tah Stockfishem, detekuje 17 vzorových patternů (A–S + U/V) z herní historie, diagnostikuje fázové slabiny a pomáhá se z nich učit pomocí spaced repetition.
 
 2. **MCP stavebnice** — demonstrační projekt, na kterém se ověřují principy tvorby MCP serverů v praxi. Každá komponenta (Lichess API, Stockfish engine, pattern detection engine, SRS, B2B-Knowledge-Base persistence) je samostatně použitelná a přenositelná do jiné domény.
 
@@ -37,7 +37,7 @@ lichess-analyzer-mcp (Python FastMCP)
        +--- LLM reasoning (cascade) ------- NVIDIA / Cerebras / DeepSeek V4 Flash
        +--- SM-2-like engine -------------- spaced repetition
        +--- KB writer --------------------- B2B-Knowledge-Base
-       +--- MD reporter ------------------- docs/ coaching reports
+       +--- MD reporter ------------------- data/reports/ (gitignored)
 ```
 
 
@@ -161,7 +161,7 @@ Pipeline data (patterns + weakness)
        |
        v generate_md_report()
        |
-       v docs/coaching_report_{user}_{ts}.md
+       v data/reports/coaching_report_{user}_{ts}.md (gitignored)
 ```
 
 Přepíná se env var `DEFAULT_PROVIDER`:
@@ -353,7 +353,7 @@ lichess-analyzer-mcp/
 │       │   ├── game_llm_cache.py    ← per-game LLM cache
 │       │   ├── llm_client.py        ← multi-provider LLM cascade
 │       │   ├── narrative_validator.py ← LLM hallucination guard (5 claims)
-│       │   ├── pattern_detector.py  ← 14 detectorů (A–S, I→I2 merged)
+│       │   ├── pattern_detector.py  ← 16 detektorů (A–S + U/V; I manual_only)
 │       │   ├── diagnostician.py     ← cross-game weakness report
 │       │   ├── srs_engine.py        ← SM-2 spaced repetition
 │       │   ├── compressibility_validator.py ← compression ratio validation
@@ -373,7 +373,7 @@ lichess-analyzer-mcp/
 │   ├── pgn_to_compact.py        ← Deprecated shim nad coach.py
 │   ├── setup_stockfish.ps1      ← Automatické stažení Stockfish
 │   └── ...                      ← 20+ pomocných scriptů
-├── tests/                       ← 536 fast + 18 real-engine (2026-11-17; marker real_engine)
+├── tests/                       ← 547 fast + 18 real-engine (2026-11-18; marker real_engine)
 │   ├── test_services.py         ← modely, komprese, validace
 │   ├── test_prompt_contract.py  ← schema a mapování promptů
 │   ├── test_engine_client.py    ← Stockfish (sdílený engine; real-engine = marker real_engine)
@@ -395,24 +395,22 @@ lichess-analyzer-mcp/
 │   ├── test_mate_score.py       ← FIX-027 mate_in
 │   ├── test_eval_consistency.py ← FIX-023 cp/eval invariant
 │   └── test_cache_refresh.py    ← FIX-028 refresh cache a overhead
-├── docs/
-│   ├── CONTEXT_A_ZAMER.md       ← Kompletní kontext a záměr projektu
-│   ├── CONTEXT_INJECT.md        ← Session timeline (v6.0 k 2026-09-05; aktuální stav v .ai_state.json)
-│   ├── MERGE_EVAL_feat_to_main.md ← Merge evaluation + empirical run comparison
-│   ├── PHASE2_BUILD_PLAN.md     ← Build plan + MCP pitva pravidla
-│   ├── 01_DBCL_unity_synthesis.md ← DBCL architektura
-│   ├── 02_DBCL_meta_evaluation.md ← 3-kanál noise framework
-│   ├── MIKOLOV_KOMPRESE_V_PATTERN_ARCHITEKTURE.md ← Lossy Compression Principle formalizace
-│   ├── CLI_USAGE.md             ← Spouštění bez MCP klienta (PowerShell příklady)
-│   ├── COMPACT_JSON_FOR_LLM.md  ← Schema 2.7: formát + prompt pro LLM agenta
-│   └── coaching_reports/        ← Generované tréninkové reporty
+├── docs/                        ← 9 aktivních souborů (trim 2026-11-18)
+│   ├── 00_DOCS_CONTRACT.md      ← Read order, autorita, pravidla
+│   ├── SESSION_HANDOFF_*.md     ← Aktuální stav, příkazy, otevřené položky
+│   ├── COMPACT_JSON_FOR_LLM.md  ← Runtime kontrakt 2.7 + game_full Appendix A
+│   ├── CLI_USAGE.md             ← CLI + 18 MCP tool volání
+│   ├── AUDIT_INTEGRATION_*.md   ← Závazná rozhodnutí D1–D40
+│   ├── PATTERN_DISCOVERY_*.md   ← Závazná metodologie v1.7
+│   ├── HALUCINACE_ROOT_CAUSE_ANALYSIS.md ← Anti-fabrikace
+│   ├── 01_EVIDENCE_DIGEST.md    ← Historická evidence a decision provenance
+│   └── 02_COACHING_EXEMPLARS.md ← Reprezentativní reporty + findings
+├── _ARCHIVE/                    ← 113 historických artefaktů (git historie, ne aktivní navigace)
 ├── data/
 │   ├── game_cache/              ← Cache analýz (JSON, Stockfish + LLM)
 │   ├── pgn_cache/               ← PGN import cache
 │   ├── resource_store/          ← L2 Resource persistence
 │   └── runs/                    ← RUN_003–RUN_005 reporty
-├── 00_STRATEGIE/                ← Coaching reporty, DALSÍ_KROKY, DBCL audit
-├── .session/                    ← Session context
 ├── lichess-mcp.bat              ← Cross-shell launcher (Windows)
 ├── .env                         ← LICHESS_TOKEN (necommitovat)
 ├── README.md                    ← Tento soubor (CZ)
@@ -479,7 +477,7 @@ Během vývoje byly identifikovány a opraveny dvě kritické chyby v `engine_cl
 - **Inverze perspektivy** — cp_loss počítán z opačné strany
 - **Best-move porovnání** — cp_loss počítán jako delta before/after, nikoliv best/actual
 
-Po opravě: ACPL MAE 3.9 oproti Lichess referenci (depth 18-22). Viz `docs/MERGE_EVAL_feat_to_main.md`.
+Po opravě: ACPL MAE 3.9 oproti Lichess referenci (depth 18-22). Viz `docs/01_EVIDENCE_DIGEST.md` §4 (historický experiment).
 
 Později opraven **engine_lines silent fail**: 30% → 0% failure rate (sequential board.copy + try/except). Viz `docs/01_EVIDENCE_DIGEST.md` §3.
 

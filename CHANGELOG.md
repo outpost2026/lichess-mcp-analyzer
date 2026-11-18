@@ -3,6 +3,45 @@
 Všechny změny formátu a pipeline. Verze odpovídají kontraktu compact JSON /
 single-game pipeline, ne balíčku `0.1.0` (ten zůstává beze změny).
 
+> **Poznámka k historickým odkazům (2026-11-18):** cesty v položkách před `[DOCS]`
+> platily v době daného release. Soubory později přesunuté do `_ARCHIVE/` mají
+> svůj obsah v git historii a unikátní fakta v `docs/01_EVIDENCE_DIGEST.md`.
+> Historické záznamy se mají číst jako dobové, nikoli jako živé odkazy.
+
+## [DOCS] - 2026-11-18
+
+Documentation trimming and root-state synchronization. **No payload, schema,
+detector, or runtime behavior change** - contract versions remain compact 2.7 /
+detailed 1.2 / cross-game 1.4 / game_full 1.0 (viz SESSION_HANDOFF).
+
+- `docs/` compressed from **81 artifacts (1 054 KB) to 9 active files (163 KB)**
+  (-89 % files, -84 % bytes). 113 historical artifacts moved to `_ARCHIVE/`
+  via `git mv` (git history preserved; no hard deletes of tracked content).
+- New active docs: `00_DOCS_CONTRACT.md` (read order + authority),
+  `01_EVIDENCE_DIGEST.md` (unique root causes, dated measurements, D1-D40
+  provenance extracted from the archived era), `02_COACHING_EXEMPLARS.md`
+  (4 representative techniques + findings catalogue + anti-patterns).
+- `GAME_FULL_1.0.md` content merged into `COMPACT_JSON_FOR_LLM.md` Appendix A;
+  historical sections of `AUDIT_INTEGRATION` (§12-12.3) and
+  `PATTERN_DISCOVERY_METHODOLOGY` (§7-9, §13-14) moved to the digest/archive.
+- Version drift fixed in active docs: title 2.3 -> 2.7, schema path -> 2.7,
+  CLI 2.1 -> 2.7, D35 `game_impact` attributed to [2.2] (not 2.7),
+  `eval_before_mover_cp` removal attributed to 2.6, U/V event and detector
+  counts, stale test/detector figures in `README.md`.
+- Auxiliary trimming: 22 unreferenced scripts, 4 superseded schemas (2.3 kept -
+  two tests still read it), all 13 `00_STRATEGIE` and 3 old `.session` snapshots
+  archived. `data/reports` locally pruned 186 -> 127 files (one newest generation
+  per game_id/type); ~240 KB of gitignored local logs/cache removed.
+- Root state synchronized: `README.md` and `README_en.md` reflect actual state
+  (547 fast tests, 18 tools, 17 patterns, 9 active docs), `.ai_state.json`
+  refreshed to HEAD `5bd81a3` with legacy sections preserved under
+  `_archived_2026_11_12`.
+- New `scripts/verify_docs_trimming.py` (11 assertions, mirror of the GT v2
+  `assemble_verify.py` pattern). Gates: pytest **547 passed / 18 deselected**,
+  Ruff clean, mypy **0 errors / 74 files**. Verification: **11/11 OK**.
+- Commits: `6f2694d` (checkpoint), `f6eaa98` (W1), `4eb9741` (W2),
+  `68e460e` (W3), `1af7942` (W4), `5bd81a3` (W5). Push not performed.
+
 ## [2.16] - 2026-11-17
 
 Konsolidace pro předání do nové session. Žádná změna payloadu ani detekce.
