@@ -49,12 +49,15 @@ def _sanitize_id(raw: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_-]", "", raw)
 
 
-def _pgn_cache_path(game_id: str) -> str:
-    return os.path.join(PGN_CACHE_DIR, f"{_sanitize_id(game_id)}.pgn")
+def _pgn_cache_path(game_id: str, *, clocks: bool = False) -> str:
+    # D23 (2026-11-19): clock-aware exports need a separate cache namespace.
+    # A legacy `.pgn` without [%clk] must never be served as clock data.
+    suffix = ".clocks.pgn" if clocks else ".pgn"
+    return os.path.join(PGN_CACHE_DIR, f"{_sanitize_id(game_id)}{suffix}")
 
 
-def _load_pgn_cache(game_id: str) -> Optional[str]:
-    path = _pgn_cache_path(game_id)
+def _load_pgn_cache(game_id: str, *, clocks: bool = False) -> Optional[str]:
+    path = _pgn_cache_path(game_id, clocks=clocks)
     if not os.path.isfile(path):
         return None
     try:
@@ -64,9 +67,9 @@ def _load_pgn_cache(game_id: str) -> Optional[str]:
         return None
 
 
-def _save_pgn_cache(game_id: str, pgn: str) -> None:
+def _save_pgn_cache(game_id: str, pgn: str, *, clocks: bool = False) -> None:
     os.makedirs(PGN_CACHE_DIR, exist_ok=True)
-    path = _pgn_cache_path(game_id)
+    path = _pgn_cache_path(game_id, clocks=clocks)
     tmp = path + ".tmp"
     try:
         with open(tmp, "w", encoding="utf-8") as f:
@@ -408,12 +411,15 @@ def get_pending_analysis(username: str, depth: int = 0) -> list[str]:
 
 
 def fetch_game_pgn(game_id: str) -> str:
-    cached = _load_pgn_cache(game_id)
+    # D23 fix (2026-11-19): Lichess PGN export needs `clocks=True`, otherwise
+    # the response has no `[%clk ...]` comments and the clock parser can only
+    # report `clock_data_unavailable`. Clock-aware PGNs use their own cache key.
+    cached = _load_pgn_cache(game_id, clocks=True)
     if cached is not None:
         return cached
     client = get_client()
-    pgn = cast(str, client.games.export(game_id, as_pgn=True))
-    _save_pgn_cache(game_id, pgn)
+    pgn = cast(str, client.games.export(game_id, as_pgn=True, clocks=True))
+    _save_pgn_cache(game_id, pgn, clocks=True)
     return pgn
 
 

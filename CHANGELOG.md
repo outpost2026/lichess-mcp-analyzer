@@ -8,6 +8,21 @@ single-game pipeline, ne balíčku `0.1.0` (ten zůstává beze změny).
 > svůj obsah v git historii a unikátní fakta v `docs/01_EVIDENCE_DIGEST.md`.
 > Historické záznamy se mají číst jako dobové, nikoli jako živé odkazy.
 
+## [CLOCK-API] - 2026-11-19
+
+Oprava Lichess PGN exportu pro D23 clock data (3.LLM handoff, 19.11.).
+
+- `lichess_client.fetch_game_pgn()` nyní volá
+  `client.games.export(game_id, as_pgn=True, clocks=True)` — bez `clocks=True`
+  Lichess nevrací `[%clk ...]` komentáře a `parse_clock_data()` mohlo jen
+  hlásit `clock_data_unavailable`. Berserk 0.14 `clocks` parametr podporuje
+  (ověřeno z podpisu `Games.export`).
+- Clock-aware PGN má vlastní cache jmenný prostor (`*.clocks.pgn`), aby se
+  starý `.pgn` bez hodin nikdy nevracel jako clock data.
+- 1 regresní test (`tests/test_clock_parser.py`): export volá `clocks=True`,
+  vznikne `.clocks.pgn`, parser najde `[%clk`. Gates: pytest 569 passed,
+  Ruff clean, mypy 0/74.
+
 ## [D41] - 2026-11-18
 
 Rozhodnutí D1 (default phase mode) na základě měření, ne názoru. Žádná změna
