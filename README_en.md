@@ -6,7 +6,7 @@
 
 > **New session:** start at `docs/SESSION_HANDOFF_2026-11-17.md` (current state, commands, open items).
 
-Version: `0.1.0` | State (2026-11-18): **single-game pipeline [2.15]** (compact 2.8 default, detailed 1.2) | Tests: **556 fast** (excluding `test_engine_client.py`) / 18 real-engine (pinned Stockfish 18) | Tools: **18** | Schemas: compact 2.8 / detailed 1.2 / cross-game 1.4 / game_full 1.0
+Version: `0.1.0` | State (2026-11-18): **single-game pipeline [2.15]** (compact 2.9 default, detailed 1.2) | Tests: **556 fast** (excluding `test_engine_client.py`) / 18 real-engine (pinned Stockfish 18) | Tools: **18** | Schemas: compact 2.9 / detailed 1.2 / cross-game 1.4 / game_full 1.0
 
 
 ## Why?
@@ -110,9 +110,9 @@ Pattern O was originally named "Repetition avoidance greed", but the code detect
 | `lichess_persist_report` | Generate and persist a report to disk (data/reports or KB) |
 | `lichess_workspace_info` | Return workspace context |
 
-### Compact JSON 2.8
+### Compact JSON 2.9
 
-The canonical runtime contract (fields, null/omission policy, alias collisions, prompt, and example) is `docs/COMPACT_JSON_FOR_LLM.md`. Schema: `schemas/single_game_v2_compact_2.8.json`.
+The canonical runtime contract (fields, null/omission policy, alias collisions, prompt, and example) is `docs/COMPACT_JSON_FOR_LLM.md`. Schema: `schemas/single_game_v2_compact_2.9.json`.
 
 
 ## DBCL Phase 2 - implemented state
@@ -250,7 +250,7 @@ The server connects over stdio. For opencode, register it in `opencode.jsonc`:
 ### 5. Or use the CLI pipeline
 
 ```
-# One game -> compact JSON 2.8 (default, offline)
+# One game -> compact JSON 2.9 (default, offline)
 uv run python scripts\coach.py --game-id FVhqtv1S --username systeq --no-llm --out data\reports\FVhqtv1S.json
 
 # Explicit detailed 1.2, or both forms
@@ -368,7 +368,7 @@ lichess-analyzer-mcp/
 │       │   └── schemas.py       <- KB schema definitions
 │       └── patterns/
 ├── scripts/
-│   ├── coach.py                 <- Unified CLI: game / PGN / batch, compact 2.8 default
+│   ├── coach.py                 <- Unified CLI: game / PGN / batch, compact 2.9 default
 │   ├── run_pipeline.py          <- CLI batch pipeline
 │   ├── coach_single.py          <- Legacy single-game CLI (deprecated)
 │   ├── mcp_call.py              <- CLI runner for all 18 MCP tools

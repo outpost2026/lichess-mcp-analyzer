@@ -11,7 +11,7 @@ změny_1_1: Tier 1-3 provedeny 2026-11-14; `game_full` 1.0 implementován a zdok
 
 > **Čtecí poznámka 2026-11-18 (review):** Tento dokument je dobový záznam rozhodnutí
 > ze 13.–17. 11. Níže se na některých místech objevuje „compact 2.1" jako tehdejší
-> kontext D9/D24/D35. **Current kontrakt je compact 2.8** (`SESSION_HANDOFF` §2,
+> kontext D9/D24/D35. **Current kontrakt je compact 2.9** (`SESSION_HANDOFF` §2,
 > `COMPACT_JSON_FOR_LLM.md`, `SUPPORTED_VERSIONS=("2.6","2.7")`). Stejně tak zmínka
 > o `interaction` v D7 (§5) je záměr: T3.3 zůstává neimplementováno (§6) a
 > `game_full` 1.0 jej neobsahuje. Závazné znění D13–D35 je v §12, D38–D40 v §14.

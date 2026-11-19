@@ -161,10 +161,93 @@ def _compact():
     return to_compact_v2(FULL, game_meta=GAME_META, moves=MOVES)
 
 
+def test_v29_decisive_includes_every_mate_transition():
+    from lichess_analyzer_mcp.services.compact_serializer import _decisive_moves
+
+    flags = [
+        {
+            "ply": 38,
+            "move": "Kf8",
+            "cp": 9996,
+            "game_impact": "equal_to_mate",
+            "mate_missed": None,
+            "mate_via": None,
+            "best": "Kh8",
+        },
+        {
+            "ply": 58,
+            "move": "Nb6",
+            "cp": 10138,
+            "game_impact": "winning_to_mate",
+            "mate_missed": None,
+            "mate_via": None,
+            "best": "Bb6+",
+        },
+        {
+            "ply": 44,
+            "move": "Qc7",
+            "cp": 9424,
+            "game_impact": "losing_to_mate",
+            "mate_missed": None,
+            "mate_via": None,
+            "best": "Qb6",
+        },
+    ]
+    got = _decisive_moves(flags)
+    assert [row["ply"] for row in got] == [58, 38, 44]
+    assert all(set(row) >= {"mate_missed", "mate_via", "best"} for row in got)
+
+
+def test_v29_momentum_moves_rule():
+    from lichess_analyzer_mcp.services.compact_serializer import _momentum_moves
+
+    flags = [
+        {
+            "ply": 41,
+            "move": "Nxd6+",
+            "cp": 9124,
+            "game_impact": "winning_to_winning",
+            "mate_missed": 3,
+            "mate_via": "Nf6+",
+            "best": "Nf6+",
+        },
+        {
+            "ply": 49,
+            "move": "Qf3",
+            "cp": 646,
+            "game_impact": "winning_to_winning",
+            "mate_missed": None,
+            "mate_via": None,
+            "best": "Rxa7",
+        },
+        {
+            "ply": 7,
+            "move": "a3",
+            "cp": 80,
+            "game_impact": "winning_to_winning",
+            "mate_missed": None,
+            "mate_via": None,
+            "best": "d4",
+        },
+        {
+            "ply": 9,
+            "move": "d3",
+            "cp": 338,
+            "game_impact": "equal_to_losing",
+            "mate_missed": None,
+            "mate_via": None,
+            "best": "e4",
+        },
+    ]
+    got = _momentum_moves(flags)
+    assert [row["ply"] for row in got] == [41, 49]
+    assert got[0]["mate_via"] == "Nf6+"
+
+
 def test_v28_honesty_fields_present():
     """2.8: precision is honest null, pv_coverage is measured per pattern."""
     out = _compact()
-    assert out["v"] == "2.8"
+    assert out["v"] == "2.9"
     assert out["precision"] == {
         "opening": None,
         "middlegame": None,
@@ -195,14 +278,14 @@ def test_output_validates_against_manual_validator():
 def test_output_validates_against_json_schema_file():
     jsonschema = pytest.importorskip("jsonschema")
     schema = json.load(
-        open(os.path.join(ROOT, "schemas/single_game_v2_compact_2.8.json"), encoding="utf-8")
+        open(os.path.join(ROOT, "schemas/single_game_v2_compact_2.9.json"), encoding="utf-8")
     )
     jsonschema.validate(_compact(), schema)
 
 
 def test_metadata_and_summary():
     out = _compact()
-    assert out["v"] == "2.8"
+    assert out["v"] == "2.9"
     assert out["phase_method"] == "ply_segment"
     assert out["patterns_meta"] == {
         "scope": "single_game",

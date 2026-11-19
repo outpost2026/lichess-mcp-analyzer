@@ -23,7 +23,7 @@ změny_1_7: Tier 3 hotov — `game_full` 1.0 implementován (`services/timeline.
 5. Originalita je **v kombinaci kontraktů**, ne v algoritmech. Jednotlivé komponenty (frekvence, lift, MDL, conformance, motif discovery) mají prior art. Kombinace „explicitní unclassified + FP strop na dobrých tazích + dual single/cross-game kontrakt + deterministická evidence chain“ v publikovaných chess nástrojích doložena není (P~0,75; absence důkazu, ne důkaz absence).
 6. Efektivita: **vysoká explanační, nízká discovery výtěžnost, neprokázaná diskriminační validita**. `compressibility_validator` je od 2026-11-13 **coverage validator** (`coverage_score`, `support`), ne MDL; `confidence` je jen alias `strength` a nikde se nečte jako pravděpodobnost. Skutečná dvoučlenná MDL je od 2026-11-13 implementovaná v měřicí vrstvě (§11.1); kalibrace zůstává P2.
 7. Stabilita je od 2026-11-13 **měřená, ne tvrzená**: split-half s deterministickým hashem a časový drift na chronologických polovinách (§5.5). `unstable` je příznak k prošetření, ne verdikt; když není co testovat, je `null`, nikdy `false`.
-8. Hranice produktu je od 2026-11-13 explicitní: **single-game vrstva vydává eventy jedné perspektivy** (detailed 1.2 / compact 2.8), **cross-game vrstva vydává patterny** (schema 1.4). Celopartiová timeline a dva pohledy jsou nový artefakt `game_full` 1.0, ne rozšíření 1.2/2.7 (§1.1.1, §11.7, §12.2).
+8. Hranice produktu je od 2026-11-13 explicitní: **single-game vrstva vydává eventy jedné perspektivy** (detailed 1.2 / compact 2.9), **cross-game vrstva vydává patterny** (schema 1.4). Celopartiová timeline a dva pohledy jsou nový artefakt `game_full` 1.0, ne rozšíření 1.2/2.7 (§1.1.1, §11.7, §12.2).
 
 ---
 
@@ -48,7 +48,7 @@ Audit 2026-11-13 ukázal, že „pattern“ a „celá partie“ nejsou totéž.
 | **Player Behavior Analysis** | které chyby a mechanismy se u hráče opakují napříč hrami | pattern (E2–E3) | cross-game schema 1.4 | jedna barva hráče |
 | **Full Game Dynamics** | jak se v jedné partii vyvíjela interakce obou hráčů | event + timeline | `game_full` 1.0 (implementováno 2026-11-14; `interaction` events ne) | obě, oddělené |
 
-Single-game výstup dnes nese **eventy jedné perspektivy** (detailed 1.2 / compact 2.8). Cross-game výstup nese **patterny** (schema 1.4). `game_full` je nový aditivní artefakt, který obě schopnosti propojí, ale nesmí je slít: perspektivy zůstávají oddělené a do cohortu nikdy nevstupují obě (§11.7, D8 v `AUDIT_INTEGRATION_2026-11-13.md`).
+Single-game výstup dnes nese **eventy jedné perspektivy** (detailed 1.2 / compact 2.9). Cross-game výstup nese **patterny** (schema 1.4). `game_full` je nový aditivní artefakt, který obě schopnosti propojí, ale nesmí je slít: perspektivy zůstávají oddělené a do cohortu nikdy nevstupují obě (§11.7, D8 v `AUDIT_INTEGRATION_2026-11-13.md`).
 
 ### 1.2 Co pattern není
 

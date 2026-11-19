@@ -45,7 +45,13 @@ def _critical_moments(value: str, max_items: int = 3) -> str:
     # REVIEW-CROSS 2026-11-18: rank by game_impact transition, not raw cp_loss.
     # A 478cp move that stays winning is NOT the decisive moment when a 599cp
     # move flips winning->losing (7l9g62Eo p77 vs p79; v2xHpqXG p29 vs p39).
-    decisive_impacts = {"winning_to_losing": 2, "equal_to_losing": 2, "equal_to_mate": 2}
+    decisive_impacts = {
+        "winning_to_losing": 2,
+        "equal_to_losing": 2,
+        "equal_to_mate": 2,
+        "winning_to_mate": 2,
+        "losing_to_mate": 2,
+    }
     weakening_impacts = {"winning_to_equal": 1}
     seen: set[int] = set()
     ranked: list[tuple[int, float, str]] = []

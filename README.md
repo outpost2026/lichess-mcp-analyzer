@@ -6,7 +6,7 @@
 
 > **Nová session:** začni v `docs/SESSION_HANDOFF_2026-11-17.md` (current stav, příkazy, otevřené položky).
 
-Verze: `0.1.0` | Stav (2026-11-18): **single-game pipeline [2.15]** (compact 2.8 default, detailed 1.2) | Testy: **556 fast** (bez `test_engine_client.py`) / 18 real-engine (pinnutý Stockfish 18) | Nástrojů: **18** | Schémata: compact 2.8 / detailed 1.2 / cross-game 1.4 / game_full 1.0
+Verze: `0.1.0` | Stav (2026-11-18): **single-game pipeline [2.15]** (compact 2.9 default, detailed 1.2) | Testy: **556 fast** (bez `test_engine_client.py`) / 18 real-engine (pinnutý Stockfish 18) | Nástrojů: **18** | Schémata: compact 2.9 / detailed 1.2 / cross-game 1.4 / game_full 1.0
 
 
 ## Proč?
@@ -108,10 +108,10 @@ Pattern O byl původně pojmenován "Repetition avoidance greed", ale kód detek
 | `lichess_persist_report` | Generuje a ukládá report na disk (docs / KB) |
 | `lichess_workspace_info` | Vrátí kontext pracovního prostoru |
 
-### Compact JSON 2.8
+### Compact JSON 2.9
 
 Kanonický runtime kontrakt (pole, null/omission politika, alias collisions, prompt
-a příklad) je v `docs/COMPACT_JSON_FOR_LLM.md`. Schema: `schemas/single_game_v2_compact_2.8.json`.
+a příklad) je v `docs/COMPACT_JSON_FOR_LLM.md`. Schema: `schemas/single_game_v2_compact_2.9.json`.
 
 ## DBCL Phase 2 — Implementovaný stav
 
@@ -248,7 +248,7 @@ Server se připojí přes stdio. Pro opencode ho registruj v `opencode.jsonc`:
 ### 5. Nebo použít CLI pipeline
 
 ```
-# Jedna hra -> compact JSON 2.8 (výchozí, offline)
+# Jedna hra -> compact JSON 2.9 (výchozí, offline)
 uv run python scripts\coach.py --game-id FVhqtv1S --username systeq --no-llm --out data\reports\FVhqtv1S.json
 
 # Explicitně schema 1.2, nebo oba tvary
@@ -366,7 +366,7 @@ lichess-analyzer-mcp/
 │       │   └── schemas.py       ← KB schema definitions
 │       └── patterns/
 ├── scripts/
-│   ├── coach.py                 ← Jednotný CLI: hra / PGN / batch, compact 2.8 default
+│   ├── coach.py                 ← Jednotný CLI: hra / PGN / batch, compact 2.9 default
 │   ├── run_pipeline.py          ← CLI batch pipeline
 │   ├── coach_single.py          ← Starší CLI single-game (deprecated)
 │   ├── mcp_call.py              ← CLI runner pro všech 18 MCP toolů

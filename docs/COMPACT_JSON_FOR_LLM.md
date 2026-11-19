@@ -1,8 +1,8 @@
-# Compact JSON 2.8 - guide for an LLM agent
+# Compact JSON 2.9 - guide for an LLM agent
 
 Compact JSON is the hand-off format between this pipeline and an LLM. It is
 produced **offline** (no LLM at ETL time) and contains only what a coaching
-answer needs. Schema: `schemas/single_game_v2_compact_2.8.json` (2.7 and 2.6 are still read for backward compatibility).
+answer needs. Schema: `schemas/single_game_v2_compact_2.9.json` (2.8, 2.7 and 2.6 are still read for backward compatibility).
 
 It is the **default** output. Schema 1.2 (detailed) is opt-in via
 `--format detailed` and exists for debugging and cross-game work.
@@ -12,7 +12,7 @@ regression `FVhqtv1S`; measured 4400 chars) versus 13–26 kB for schema 1.2.
 
 ## One game, both colours (D24)
 
-Compact 2.8 is single-perspective by contract, so a complete game is **two
+Compact 2.9 is single-perspective by contract, so a complete game is **two
 compact payloads in one file**, keyed by colour:
 
 ```json
@@ -57,7 +57,8 @@ artifact.
 | `patterns[].support` | 2.3/P0-4: measured share of flagged moves in this game covered by that pattern (`flagged_moves_in_game` basis, denominator in detailed `evidence_support_n_units`). Null = no measured move. This is **evidence support**, not detector strength |
 | `patterns[].pv_coverage` | 2.8: measured share of this pattern's plies that carry a PV (`pv`), 0-1 or null when the pattern has no plies. It tells an LLM how much of the pattern's evidence is actually observable — a low value means the pattern is less verifiable, not less present |
 | `precision` | 2.8: `{opening, middlegame, endgame, basis}`. **Currently all phase values are `null` with `basis: not_calibrated`** — there are no labeled outcomes, so no precision number may be invented. Never replace `null` with a guessed value |
-| `decisive_moves` | 2.8: `{ply, move, cp, game_impact}[]` for flags whose impact left winning/equal (`winning_to_losing`, `equal_to_losing`, `equal_to_mate`), ranked by `cp` descending. This is the honest answer to "which move decided the game" — a bigger `cp` that stayed `winning_to_winning` is NOT decisive |
+| `decisive_moves` | 2.9: `{ply, move, cp, game_impact, mate_missed, mate_via, best}[]` for **every mate transition** (`winning_to_mate`, `equal_to_mate`, `losing_to_mate`) plus `winning/equal_to_losing`, ranked by `cp` descending. A missed mate is decisive even when the impact stayed winning. `mate_via` names the mating SAN; `best` the engine choice |
+| `momentum_moves` | 2.9: `{ply, move, cp, game_impact, mate_missed, mate_via, best}[]` for `winning_to_winning` swings that still deserve narration: `mate_missed > 0` OR `cp > 500`. Example: aFZC293b white 41 `Nxd6+` 9124 cp with `mate_missed=3 via Nf6+` — the single most important moment was previously absent from the structured decisive list |
 | `confidence_dims` | 2.3/P0-4: mandatory. `kinds` = `detection_strength`, `evidence_support`, `behavioral_confidence`; `published_kind = detection_strength` names what `conf` means; `behavioral_confidence = null` with `behavioral_confidence_reason = not_calibrated`. Never present a pattern `conf` as a calibrated probability |
 | `pipeline` | 2.7: mandatory. `analysis` = `complete`/`partial`/`failed`, `coaching` = `llm`/`deterministic_fallback`/`data_only`/`failed`, `llm_requested` = false when the caller deliberately ran offline. Do **not** read `status=degraded` as "analysis failed" while `pipeline.analysis=complete` |
 | `phase_method` | which phase source the detectors used: `ply_segment`, `material`, or `mixed` (P0-3). `summary.phases` follows this source; the detailed payload additionally publishes `segment_stats` and `chess_phase_stats` so the difference is auditable (P1) |
@@ -74,11 +75,11 @@ artifact.
 
 ### Perspective and eval POV
 
-Compact 2.8 is **single-perspective**: every `flags[]` entry, `summary.acpl`,
+Compact 2.9 is **single-perspective**: every `flags[]` entry, `summary.acpl`,
 `summary.phases`, `patterns[]` and `clusters` describe the moves of the colour
 in `game.color` (always `white` or `black`). Opponent moves are not part of the
 payload. A full-game view is a different artifact (`game_full` 1.0, implemented
-2026-11-14 - see `COMPACT_JSON_FOR_LLM.md` Appendix A), not an extension of compact 2.8.
+2026-11-14 - see `COMPACT_JSON_FOR_LLM.md` Appendix A), not an extension of compact 2.9.
 
 **Eval POV:** `bcp` and `eval_after_mover_cp` are both from the **mover's**
 point of view — the player who made the flagged move. `eval_after_mover_cp`
@@ -159,7 +160,7 @@ Verified on live tool outputs (4 games × 2 colours, 2026-11-16). These are
 intentional compatibility surfaces, not independent measurements:
 
 - **Same value, two names.** Detailed 1.2 still mirrors `eval_before`/
-  `eval_after` to `*_mover_cp`; compact 2.8 replaces the non-anchor before-eval
+  `eval_after` to `*_mover_cp`; compact 2.9 replaces the non-anchor before-eval
   with `bcp`. `accuracy` mirrors
   `internal_accuracy_score`; `strength` = `confidence` = `detection_strength`
   = compact `conf`; `segment` = `phase`; compact `acc_warning` = detailed
@@ -424,6 +425,6 @@ nezměřeného tahu; `unanalyzed_plies` = přesně nezměřené plies; `complete
 žádné wall-clock / LLM / nové engine volání, pořadí dáno `ply`; dva běhy na stejných cache
 dávají identický JSON.
 
-**Co NEDĚLÁ:** není náhrada compact 2.8 ani detailed 1.2 (ty zůstávají jednoperspektivní);
+**Co NEDĚLÁ:** není náhrada compact 2.9 ani detailed 1.2 (ty zůstávají jednoperspektivní);
 **nemá `interaction` events** (T3.3 čeká na measurement spec a kalibraci FP); nedopočítává
 chybějící plies.

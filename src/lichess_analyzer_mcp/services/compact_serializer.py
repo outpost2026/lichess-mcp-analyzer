@@ -133,10 +133,10 @@ from lichess_analyzer_mcp.services.game_impact import (
     pv_played,
 )
 
-SCHEMA_V = "2.8"
+SCHEMA_V = "2.9"
 # 2.6 payloads are still accepted by the dependency-free validator; only 2.7
 # output is described by the current JSON Schema file.
-SUPPORTED_VERSIONS = ("2.6", "2.7", "2.8")
+SUPPORTED_VERSIONS = ("2.6", "2.7", "2.8", "2.9")
 
 # 2.6/C-2: a pattern ID alone is not coaching signal. Stable short labels,
 # mirrored from the detailed pattern library (full name/mitigation stay there).
@@ -388,7 +388,16 @@ def _cluster(run: list[dict]) -> dict:
     }
 
 
-_DECISIVE_IMPACTS = {"winning_to_losing", "equal_to_losing", "equal_to_mate"}
+# 2.9: every mate transition is decisive, including winning_to_mate and
+# losing_to_mate (the 3.LLM handoff showed both were silently dropped).
+_DECISIVE_IMPACTS = {
+    "winning_to_losing",
+    "equal_to_losing",
+    "equal_to_mate",
+    "winning_to_mate",
+    "losing_to_mate",
+}
+MOMENTUM_CP = 500
 
 
 def _decisive_moves(flags: list[dict]) -> list[dict]:
@@ -403,9 +412,35 @@ def _decisive_moves(flags: list[dict]) -> list[dict]:
             "move": flag["move"],
             "cp": _cp(flag.get("cp")),
             "game_impact": flag["game_impact"],
+            "mate_missed": flag.get("mate_missed"),
+            "mate_via": flag.get("mate_via"),
+            "best": flag.get("best") or "",
         }
         for flag in flags
         if flag.get("game_impact") in _DECISIVE_IMPACTS
+    ]
+    out.sort(key=lambda row: -(row["cp"] if row["cp"] is not None else 0))
+    return out
+
+
+def _momentum_moves(flags: list[dict]) -> list[dict]:
+    """2.9: winning-to-winning swings that still deserve a narrative slot."""
+    out = [
+        {
+            "ply": int(flag["ply"]),
+            "move": flag["move"],
+            "cp": _cp(flag.get("cp")),
+            "game_impact": flag["game_impact"],
+            "mate_missed": flag.get("mate_missed"),
+            "mate_via": flag.get("mate_via"),
+            "best": flag.get("best") or "",
+        }
+        for flag in flags
+        if flag.get("game_impact") == "winning_to_winning"
+        and (
+            (isinstance(flag.get("mate_missed"), int) and flag["mate_missed"] > 0)
+            or (isinstance(flag.get("cp"), (int, float)) and flag["cp"] > MOMENTUM_CP)
+        )
     ]
     out.sort(key=lambda row: -(row["cp"] if row["cp"] is not None else 0))
     return out
@@ -681,9 +716,11 @@ def to_compact_v2(
     }
 
     # 2.8 / REVIEW-CROSS: evidence honesty fields (no fabricated precision).
-    if SCHEMA_V == "2.8":
+    if SCHEMA_V in ("2.8", "2.9"):
         compact["precision"] = _precision_block()
         compact["decisive_moves"] = _decisive_moves(flags)
+    if SCHEMA_V == "2.9":
+        compact["momentum_moves"] = _momentum_moves(flags)
 
     # 2.7/Wave 1: qualitative board signal for the highest-cp moments.
     if piece_reads:
@@ -707,7 +744,7 @@ def to_compact_v2(
     if unavailable:
         compact["pv_unavailable"] = unavailable
 
-    if SCHEMA_V == "2.8":
+    if SCHEMA_V in ("2.8", "2.9"):
         # Measured share of a pattern's plies that carry a PV. Null only when
         # the pattern has no plies (nothing to measure), never a guess.
         for pattern in compact["patterns"]:
@@ -822,13 +859,16 @@ def validate_compact(data: dict) -> None:
             "unclassified",
             "precision",
             "decisive_moves",
+            "momentum_moves",
         },
         "$",
     )
-    if data["v"] == "2.8":
+    if data["v"] in ("2.8", "2.9"):
         for key in ("precision", "decisive_moves"):
             if key not in data:
-                _fail(f"$.{key}", "required in 2.8")
+                _fail(f"$.{key}", f"required in {data['v']}")
+    if data["v"] == "2.9" and "momentum_moves" not in data:
+        _fail("$.momentum_moves", "required in 2.9")
     if data["v"] not in SUPPORTED_VERSIONS:
         _fail("$.v", f"must be one of {SUPPORTED_VERSIONS}")
     # 2.5 payloads may still carry the non-anchor eval_before_mover_cp.
@@ -853,7 +893,7 @@ def validate_compact(data: dict) -> None:
 
     summary = data["summary"]
     required_summary = {"acpl", "acc", "phases"}
-    if data["v"] in ("2.7", "2.8"):
+    if data["v"] in ("2.7", "2.8", "2.9"):
         required_summary.add("src")
     _check_keys(
         summary,
@@ -1017,7 +1057,7 @@ def validate_compact(data: dict) -> None:
             if pc is not None and (not isinstance(pc, (int, float)) or not 0 <= pc <= 1):
                 _fail(f"{path}.pv_coverage", "must be a number 0..1 or null")
 
-    if data["v"] == "2.8":
+    if data["v"] in ("2.8", "2.9"):
         precision = data["precision"]
         _check_keys(
             precision,
@@ -1031,14 +1071,12 @@ def validate_compact(data: dict) -> None:
                 _fail(f"$.precision.{phase}", "must be a number 0..1 or null")
         if precision["basis"] != "not_calibrated":
             _fail("$.precision.basis", "must be 'not_calibrated' until labeled data exists")
+        decisive_keys = {"ply", "move", "cp", "game_impact"}
+        if data["v"] == "2.9":
+            decisive_keys |= {"mate_missed", "mate_via", "best"}
         for idx, move in enumerate(data["decisive_moves"]):
             path = f"$.decisive_moves[{idx}]"
-            _check_keys(
-                move,
-                {"ply", "move", "cp", "game_impact"},
-                {"ply", "move", "cp", "game_impact"},
-                path,
-            )
+            _check_keys(move, decisive_keys, decisive_keys, path)
             if not isinstance(move["ply"], int) or move["ply"] < 1:
                 _fail(f"{path}.ply", "must be a positive integer")
             if move["game_impact"] not in _DECISIVE_IMPACTS:
@@ -1047,6 +1085,13 @@ def validate_compact(data: dict) -> None:
                 not isinstance(move["cp"], (int, float)) or move["cp"] < 0
             ):
                 _fail(f"{path}.cp", "must be a non-negative number or null")
+        if data["v"] == "2.9":
+            momentum_keys = {"ply", "move", "cp", "game_impact", "mate_missed", "mate_via", "best"}
+            for idx, move in enumerate(data["momentum_moves"]):
+                path = f"$.momentum_moves[{idx}]"
+                _check_keys(move, momentum_keys, momentum_keys, path)
+                if move["game_impact"] != "winning_to_winning":
+                    _fail(f"{path}.game_impact", "momentum_moves must stay winning_to_winning")
 
     dims = data["confidence_dims"]
     _check_keys(dims, _REQUIRED_CONFIDENCE_DIMS, _REQUIRED_CONFIDENCE_DIMS, "$.confidence_dims")

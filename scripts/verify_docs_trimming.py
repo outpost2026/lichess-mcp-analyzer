@@ -137,7 +137,7 @@ for name in ACTIVE:
             bad_version.append("%s: %s" % (name, wrong))
 chk("version drift removed", not bad_version, "hits=%s" % bad_version)
 compact = read(os.path.join(DOCS, "COMPACT_JSON_FOR_LLM.md"))
-chk("COMPACT_JSON title says 2.8", compact.startswith("# Compact JSON 2.8"))
+chk("COMPACT_JSON title says 2.9", compact.startswith("# Compact JSON 2.9"))
 
 # 7. ASCII filenames (GT-080)
 bad_ascii = [f for f in files if not re.fullmatch(r"[A-Za-z0-9._/-]+", f)]

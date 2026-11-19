@@ -8,6 +8,25 @@ single-game pipeline, ne balíčku `0.1.0` (ten zůstává beze změny).
 > svůj obsah v git historii a unikátní fakta v `docs/01_EVIDENCE_DIGEST.md`.
 > Historické záznamy se mají číst jako dobové, nikoli jako živé odkazy.
 
+## [2.9] - 2026-11-19
+
+Additive contract iteration over frozen 2.8, driven by the 3.LLM handoff and
+verified claims V1–V27. **No detector, engine or ELO change.**
+
+- `schemas/single_game_v2_compact_2.9.json`; `SCHEMA_V = "2.9"`,
+  `SUPPORTED_VERSIONS = ("2.6","2.7","2.8","2.9")`; 2.8 stays frozen/readable.
+- `decisive_moves[]`: every mate transition is now decisive, including
+  **`winning_to_mate`** and **`losing_to_mate`** (V1/V22/V25 gap). Items carry
+  optional `mate_missed`, `mate_via`, `best` so a missed mate in a still-winning
+  position is no longer invisible (aFZC293b W41 `Nxd6+`, 9124 cp, mate in 3).
+- New `momentum_moves[]`: `winning_to_winning` swings with `mate_missed > 0`
+  or `cp > 500` (V3/V20 gap; DclcmVZy W49 646 cp).
+- Deterministic report ranking uses the same extended impact set, so the
+  narrative and the structured fields agree.
+- Two new tests (all mate transitions, momentum rule); tests migrated 2.8→2.9.
+  Gates: pytest **571 passed / 18 deselected**, Ruff clean, mypy 0/74,
+  `verify_docs_trimming.py` 11/11 OK.
+
 ## [CLOCK-API] - 2026-11-19
 
 Oprava Lichess PGN exportu pro D23 clock data (3.LLM handoff, 19.11.).
